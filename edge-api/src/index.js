@@ -49,6 +49,42 @@ export default {
         return getProductById(request, id, env);
       }
 
+      if (path.startsWith("/api/products/") && request.method === "PUT") {
+        const id = path.split("/").pop();
+        return updateProduct(request, id, env);
+      }
+
+      if (path.startsWith("/api/products/") && request.method === "DELETE") {
+        const id = path.split("/").pop();
+        return deleteProduct(request, id, env);
+      }
+
+      if (path === "/api/admin/products" && request.method === "GET") {
+        return listAdminProducts(request, env);
+      }
+
+      if (path === "/api/admin/users" && request.method === "GET") {
+        return listAdminUsers(request, env);
+      }
+
+      if (path.startsWith("/api/admin/users/") && request.method === "PUT") {
+        const id = path.split("/").pop();
+        return updateAdminUser(request, id, env);
+      }
+
+      if (path === "/api/bookings" && request.method === "POST") {
+        return createBooking(request, env);
+      }
+
+      if (path === "/api/admin/bookings" && request.method === "GET") {
+        return listAdminBookings(request, env);
+      }
+
+      if (path.startsWith("/api/admin/bookings/") && request.method === "PUT") {
+        const id = path.split("/").pop();
+        return updateBookingStatus(request, id, env);
+      }
+
       return json({ message: "Route not found" }, 404, request, env);
     } catch (error) {
       return json(
@@ -84,26 +120,19 @@ async function register(request, env) {
 
   const passwordHash = await hashPassword(password, email);
   const created = await env.DB.prepare(
-    "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)"
+    "INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)"
   )
-    .bind(name, email, passwordHash)
+    .bind(name, email, passwordHash, "member", "active")
     .run();
 
   const userId = created.meta.last_row_id;
+  const user = { id: userId, name, email, role: "member", status: "active" };
   const token = await signJwt(
-    { sub: String(userId), email, name },
+    { sub: String(userId), email, name, role: user.role, status: user.status },
     env.JWT_SECRET || "dev-secret"
   );
 
-  return json(
-    {
-      token,
-      user: { id: userId, name, email },
-    },
-    201,
-    request,
-    env
-  );
+  return json({ token, user }, 201, request, env);
 }
 
 async function login(request, env) {
@@ -116,7 +145,7 @@ async function login(request, env) {
   }
 
   const user = await env.DB.prepare(
-    "SELECT id, name, email, password_hash FROM users WHERE email = ?"
+    "SELECT id, name, email, password_hash, role, status FROM users WHERE email = ?"
   )
     .bind(email)
     .first();
@@ -125,20 +154,36 @@ async function login(request, env) {
     return json({ message: "Invalid credentials" }, 401, request, env);
   }
 
+  if ((user.status || "active") !== "active") {
+    return json({ message: "This account is inactive" }, 403, request, env);
+  }
+
   const passwordHash = await hashPassword(password, email);
   if (passwordHash !== user.password_hash) {
     return json({ message: "Invalid credentials" }, 401, request, env);
   }
 
   const token = await signJwt(
-    { sub: String(user.id), email: user.email, name: user.name },
+    {
+      sub: String(user.id),
+      email: user.email,
+      name: user.name,
+      role: user.role || "member",
+      status: user.status || "active",
+    },
     env.JWT_SECRET || "dev-secret"
   );
 
   return json(
     {
       token,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role || "member",
+        status: user.status || "active",
+      },
     },
     200,
     request,
@@ -153,7 +198,8 @@ async function listProducts(request, url, env) {
   const page = Math.max(Number(url.searchParams.get("page") || 1), 1);
   const offset = (page - 1) * limit;
 
-  let query = "SELECT id, name, description, category, city, price_per_day, rating, image_url FROM products WHERE 1=1";
+  let query =
+    "SELECT id, owner_user_id, name, description, category, city, price_per_day, rating, image_url, quantity FROM products WHERE 1=1";
   const binds = [];
 
   if (category) {
@@ -189,7 +235,7 @@ async function getProductById(request, id, env) {
   }
 
   const product = await env.DB.prepare(
-    "SELECT id, name, description, category, city, price_per_day, rating, image_url FROM products WHERE id = ?"
+    "SELECT id, owner_user_id, name, description, category, city, price_per_day, rating, image_url, quantity FROM products WHERE id = ?"
   )
     .bind(Number(id))
     .first();
@@ -202,42 +248,359 @@ async function getProductById(request, id, env) {
 }
 
 async function createProduct(request, env) {
-  const payload = await readAuthUser(request, env);
-  if (!payload) {
-    return json({ message: "Unauthorized" }, 401, request, env);
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
   }
 
   const body = await readJson(request);
-  const name = (body.name || "").trim();
-  const description = (body.description || "").trim();
-  const category = (body.category || "device").trim();
-  const city = (body.city || "Riyadh").trim();
-  const price = Number(body.pricePerDay || 0);
-  const imageUrl = (body.imageUrl || "").trim();
-
-  if (!name || !description || !Number.isFinite(price) || price < 0) {
-    return json({ message: "Invalid product payload" }, 400, request, env);
+  const product = normalizeProductInput(body);
+  if (product.error) {
+    return json({ message: product.error }, 400, request, env);
   }
 
   const created = await env.DB.prepare(
-    "INSERT INTO products (owner_user_id, name, description, category, city, price_per_day, rating, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO products (owner_user_id, name, description, category, city, price_per_day, rating, image_url, quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   )
-    .bind(Number(payload.sub), name, description, category, city, price, 0, imageUrl || null)
+    .bind(
+      Number(admin.sub),
+      product.name,
+      product.description,
+      product.category,
+      product.city,
+      product.pricePerDay,
+      product.rating,
+      product.imageUrl,
+      product.quantity
+    )
     .run();
 
   return json({ id: created.meta.last_row_id, message: "Product created" }, 201, request, env);
 }
 
+async function updateProduct(request, id, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  if (!/^\d+$/.test(String(id))) {
+    return json({ message: "Invalid product id" }, 400, request, env);
+  }
+
+  const existing = await env.DB.prepare("SELECT id FROM products WHERE id = ?").bind(Number(id)).first();
+  if (!existing) {
+    return json({ message: "Product not found" }, 404, request, env);
+  }
+
+  const body = await readJson(request);
+  const product = normalizeProductInput(body);
+  if (product.error) {
+    return json({ message: product.error }, 400, request, env);
+  }
+
+  await env.DB.prepare(
+    "UPDATE products SET name = ?, description = ?, category = ?, city = ?, price_per_day = ?, rating = ?, image_url = ?, quantity = ? WHERE id = ?"
+  )
+    .bind(
+      product.name,
+      product.description,
+      product.category,
+      product.city,
+      product.pricePerDay,
+      product.rating,
+      product.imageUrl,
+      product.quantity,
+      Number(id)
+    )
+    .run();
+
+  return json({ message: "Product updated" }, 200, request, env);
+}
+
+async function deleteProduct(request, id, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  if (!/^\d+$/.test(String(id))) {
+    return json({ message: "Invalid product id" }, 400, request, env);
+  }
+
+  const deleted = await env.DB.prepare("DELETE FROM products WHERE id = ?").bind(Number(id)).run();
+  if (!deleted.meta.changes) {
+    return json({ message: "Product not found" }, 404, request, env);
+  }
+
+  return json({ message: "Product deleted" }, 200, request, env);
+}
+
+async function listAdminProducts(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT p.id, p.owner_user_id, p.name, p.description, p.category, p.city, p.price_per_day, p.rating, p.image_url, p.quantity,
+            u.name AS owner_name, u.email AS owner_email
+     FROM products p
+     LEFT JOIN users u ON u.id = p.owner_user_id
+     ORDER BY p.id DESC`
+  ).all();
+
+  return json(
+    {
+      products: (results || []).map((row) => ({
+        ...mapProduct(row),
+        ownerName: row.owner_name || null,
+        ownerEmail: row.owner_email || null,
+      })),
+    },
+    200,
+    request,
+    env
+  );
+}
+
+async function listAdminUsers(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const { results } = await env.DB.prepare(
+    "SELECT id, name, email, role, status, created_at FROM users ORDER BY id DESC"
+  ).all();
+
+  return json({ users: results || [] }, 200, request, env);
+}
+
+async function updateAdminUser(request, id, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  if (!/^\d+$/.test(String(id))) {
+    return json({ message: "Invalid user id" }, 400, request, env);
+  }
+
+  const body = await readJson(request);
+  const role = (body.role || "member").trim();
+  const status = (body.status || "active").trim();
+
+  if (!["admin", "member"].includes(role)) {
+    return json({ message: "Invalid role" }, 400, request, env);
+  }
+
+  if (!["active", "inactive"].includes(status)) {
+    return json({ message: "Invalid status" }, 400, request, env);
+  }
+
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(Number(id)).first();
+  if (!existing) {
+    return json({ message: "User not found" }, 404, request, env);
+  }
+
+  await env.DB.prepare("UPDATE users SET role = ?, status = ? WHERE id = ?")
+    .bind(role, status, Number(id))
+    .run();
+
+  return json({ message: "User updated" }, 200, request, env);
+}
+
+async function createBooking(request, env) {
+  const user = await readAuthUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  if ((user.status || "active") !== "active") {
+    return json({ message: "This account is inactive" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const productId = Number(body.productId);
+  const quantity = Number(body.quantity || 1);
+  const startDate = (body.startDate || "").trim();
+  const endDate = (body.endDate || "").trim();
+
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return json({ message: "Invalid product id" }, 400, request, env);
+  }
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return json({ message: "Quantity must be at least 1" }, 400, request, env);
+  }
+
+  if (!startDate || !endDate) {
+    return json({ message: "Start date and end date are required" }, 400, request, env);
+  }
+
+  const product = await env.DB.prepare(
+    "SELECT id, price_per_day, quantity FROM products WHERE id = ?"
+  )
+    .bind(productId)
+    .first();
+
+  if (!product) {
+    return json({ message: "Product not found" }, 404, request, env);
+  }
+
+  if ((product.quantity ?? 0) < quantity) {
+    return json({ message: "Requested quantity is not available" }, 400, request, env);
+  }
+
+  const days = Math.max(1, calculateRentalDays(startDate, endDate));
+  const totalPrice = Number(product.price_per_day) * quantity * days;
+
+  const created = await env.DB.prepare(
+    "INSERT INTO bookings (user_id, product_id, start_date, end_date, quantity, total_price, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  )
+    .bind(Number(user.sub), productId, startDate, endDate, quantity, totalPrice, "pending")
+    .run();
+
+  return json(
+    {
+      id: created.meta.last_row_id,
+      message: "Booking created",
+    },
+    201,
+    request,
+    env
+  );
+}
+
+async function listAdminBookings(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT b.id, b.start_date, b.end_date, b.quantity, b.total_price, b.status, b.created_at,
+            u.id AS user_id, u.name AS user_name, u.email AS user_email,
+            p.id AS product_id, p.name AS product_name, p.city AS product_city
+     FROM bookings b
+     JOIN users u ON u.id = b.user_id
+     JOIN products p ON p.id = b.product_id
+     ORDER BY b.id DESC`
+  ).all();
+
+  return json(
+    {
+      bookings: (results || []).map((row) => ({
+        id: row.id,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        quantity: row.quantity,
+        totalPrice: row.total_price,
+        status: row.status,
+        createdAt: row.created_at,
+        user: {
+          id: row.user_id,
+          name: row.user_name,
+          email: row.user_email,
+        },
+        product: {
+          id: row.product_id,
+          name: row.product_name,
+          city: row.product_city,
+        },
+      })),
+    },
+    200,
+    request,
+    env
+  );
+}
+
+async function updateBookingStatus(request, id, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  if (!/^\d+$/.test(String(id))) {
+    return json({ message: "Invalid booking id" }, 400, request, env);
+  }
+
+  const body = await readJson(request);
+  const status = (body.status || "").trim();
+  if (!["pending", "confirmed", "cancelled", "completed"].includes(status)) {
+    return json({ message: "Invalid booking status" }, 400, request, env);
+  }
+
+  const existing = await env.DB.prepare("SELECT id FROM bookings WHERE id = ?").bind(Number(id)).first();
+  if (!existing) {
+    return json({ message: "Booking not found" }, 404, request, env);
+  }
+
+  await env.DB.prepare("UPDATE bookings SET status = ? WHERE id = ?")
+    .bind(status, Number(id))
+    .run();
+
+  return json({ message: "Booking updated" }, 200, request, env);
+}
+
+function normalizeProductInput(body) {
+  const name = (body.name || "").trim();
+  const description = (body.description || "").trim();
+  const category = (body.category || "device").trim();
+  const city = (body.city || "Riyadh").trim();
+  const pricePerDay = Number(body.pricePerDay);
+  const rating = Number.isFinite(Number(body.rating)) ? Number(body.rating) : 0;
+  const quantity = Number(body.quantity);
+  const imageUrl = (body.imageUrl || "").trim() || null;
+
+  if (!name || !description) {
+    return { error: "Name and description are required" };
+  }
+
+  if (!Number.isFinite(pricePerDay) || pricePerDay < 0) {
+    return { error: "Invalid price per day" };
+  }
+
+  if (!Number.isInteger(quantity) || quantity < 0) {
+    return { error: "Quantity must be a non-negative integer" };
+  }
+
+  if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
+    return { error: "Rating must be between 0 and 5" };
+  }
+
+  return {
+    name,
+    description,
+    category,
+    city,
+    pricePerDay,
+    rating,
+    quantity,
+    imageUrl,
+  };
+}
+
 function mapProduct(row) {
   return {
     _id: String(row.id),
+    ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
     name: row.name,
     description: row.description,
     category: row.category,
     city: row.city,
     pricePerDay: row.price_per_day,
     rating: row.rating,
-    images: [{ url: row.image_url || "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80" }],
+    quantity: row.quantity ?? 1,
+    images: [
+      {
+        url:
+          row.image_url ||
+          "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
+      },
+    ],
   };
 }
 
@@ -355,4 +718,25 @@ async function readAuthUser(request, env) {
   if (!auth.startsWith("Bearer ")) return null;
   const token = auth.slice("Bearer ".length);
   return verifyJwt(token, env.JWT_SECRET || "dev-secret");
+}
+
+async function requireAdmin(request, env) {
+  const payload = await readAuthUser(request, env);
+  if (!payload || payload.role !== "admin" || (payload.status || "active") !== "active") {
+    return null;
+  }
+
+  return payload;
+}
+
+function calculateRentalDays(startDate, endDate) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 1;
+  }
+
+  const diff = end.getTime() - start.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1;
 }

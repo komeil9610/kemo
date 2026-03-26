@@ -21,6 +21,10 @@ main = "cloudflare/worker.js"
 binding = "ASSETS"
 directory = "./build"
 
+[[services]]
+binding = "EDGE_API"
+service = "rentit-edge-api"
+
 [vars]
 API_ORIGIN = "https://rentit-edge-api.bobkumeel.workers.dev"
 ```
@@ -29,7 +33,8 @@ API_ORIGIN = "https://rentit-edge-api.bobkumeel.workers.dev"
 
 - تقديم ملفات React المبنية من `build/`
 - إعادة توجيه مسارات SPA إلى `index.html`
-- تمرير أي طلب يبدأ بـ `/api/` إلى الـ backend worker
+- تمرير أي طلب يبدأ بـ `/api/` إلى الـ backend worker عبر `Service Binding`
+- واستخدام `API_ORIGIN` كـ fallback إذا لم يكن الـ binding متاحًا
 
 ### أوامر النشر
 

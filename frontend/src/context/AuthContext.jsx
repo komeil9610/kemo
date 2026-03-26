@@ -18,26 +18,21 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      
-      try {
-        const response = await authService.login(email, password);
-        const nextToken = response.data?.token || `demo-token-${Date.now()}`;
-        const nextUser = response.data?.user || { name: email.split('@')[0], email };
-        setToken(nextToken);
-        setUser(nextUser);
-        localStorage.setItem('authToken', nextToken);
-        localStorage.setItem('authUser', JSON.stringify(nextUser));
-      } catch (apiError) {
-        const fallbackUser = { name: email.split('@')[0], email };
-        const fallbackToken = `demo-token-${Date.now()}`;
-        setToken(fallbackToken);
-        setUser(fallbackUser);
-        localStorage.setItem('authToken', fallbackToken);
-        localStorage.setItem('authUser', JSON.stringify(fallbackUser));
-        console.warn('Login API unavailable, using demo auth state.', apiError);
+      const response = await authService.login(email, password);
+      const nextToken = response.data?.token;
+      const nextUser = response.data?.user;
+      if (!nextToken || !nextUser) {
+        throw new Error('Login response is incomplete');
       }
+      setToken(nextToken);
+      setUser(nextUser);
+      localStorage.setItem('authToken', nextToken);
+      localStorage.setItem('authUser', JSON.stringify(nextUser));
+      return true;
     } catch (err) {
-      setError(err.message);
+      const message = err?.response?.data?.message || err.message || 'Login failed';
+      setError(message);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -54,26 +49,21 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      
-      try {
-        const response = await authService.register(userData);
-        const nextToken = response.data?.token || `demo-token-${Date.now()}`;
-        const nextUser = response.data?.user || { name: userData.name, email: userData.email };
-        setToken(nextToken);
-        setUser(nextUser);
-        localStorage.setItem('authToken', nextToken);
-        localStorage.setItem('authUser', JSON.stringify(nextUser));
-      } catch (apiError) {
-        const fallbackUser = { name: userData.name || 'Member', email: userData.email };
-        const fallbackToken = `demo-token-${Date.now()}`;
-        setToken(fallbackToken);
-        setUser(fallbackUser);
-        localStorage.setItem('authToken', fallbackToken);
-        localStorage.setItem('authUser', JSON.stringify(fallbackUser));
-        console.warn('Register API unavailable, using demo auth state.', apiError);
+      const response = await authService.register(userData);
+      const nextToken = response.data?.token;
+      const nextUser = response.data?.user;
+      if (!nextToken || !nextUser) {
+        throw new Error('Register response is incomplete');
       }
+      setToken(nextToken);
+      setUser(nextUser);
+      localStorage.setItem('authToken', nextToken);
+      localStorage.setItem('authUser', JSON.stringify(nextUser));
+      return true;
     } catch (err) {
-      setError(err.message);
+      const message = err?.response?.data?.message || err.message || 'Registration failed';
+      setError(message);
+      return false;
     } finally {
       setLoading(false);
     }

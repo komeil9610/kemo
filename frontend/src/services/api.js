@@ -46,6 +46,14 @@ export const productService = {
   delete: (id) => apiClient.delete(`/products/${id}`),
 };
 
+export const adminService = {
+  getProducts: () => apiClient.get('/admin/products'),
+  getUsers: () => apiClient.get('/admin/users'),
+  updateUser: (id, data) => apiClient.put(`/admin/users/${id}`, data),
+  getBookings: () => apiClient.get('/admin/bookings'),
+  updateBooking: (id, data) => apiClient.put(`/admin/bookings/${id}`, data),
+};
+
 // Bookings Service
 export const bookingService = {
   getAll: () => apiClient.get('/bookings'),

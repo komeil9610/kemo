@@ -6,5 +6,9 @@ compatibility_date = "2026-03-26"
 binding = "ASSETS"
 directory = "./build"
 
+[[services]]
+binding = "EDGE_API"
+service = "rentit-edge-api"
+
 [vars]
 API_ORIGIN = "https://rentit-edge-api.bobkumeel.workers.dev"

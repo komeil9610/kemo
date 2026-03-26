@@ -11,8 +11,10 @@ export default function Register() {
 
   const onSubmit = async (event) => {
     event.preventDefault();
-    await register({ name, email, password });
-    navigate('/dashboard');
+    const success = await register({ name, email, password });
+    if (success) {
+      navigate('/');
+    }
   };
 
   return (

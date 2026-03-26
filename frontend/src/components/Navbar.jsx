@@ -6,6 +6,7 @@ import { useLang } from '../context/LangContext';
 export default function Navbar() {
   const { token, user, logout } = useAuth();
   const { lang, isRTL, toggleLang, t } = useLang();
+  const isAdmin = user?.role === 'admin';
 
   return (
     <header className="nav-wrap" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -15,7 +16,7 @@ export default function Navbar() {
           <NavLink to="/">{t('home')}</NavLink>
           <NavLink to="/products">{t('products')}</NavLink>
           <NavLink to="/cart">{t('cart')}</NavLink>
-          {token ? <NavLink to="/dashboard">{t('dashboard')}</NavLink> : null}
+          {isAdmin ? <NavLink to="/dashboard">{t('dashboard')}</NavLink> : null}
         </div>
         <div className="nav-actions">
           <button className="btn-light" onClick={toggleLang} type="button">
@@ -28,7 +29,7 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <span className="user-chip">{user?.name || user?.email || 'Member'}</span>
+              <span className="user-chip">{isAdmin ? 'Admin' : (user?.name || user?.email || 'Member')}</span>
               <button className="btn-danger" onClick={logout} type="button">{t('logout')}</button>
             </>
           )}

@@ -29,6 +29,10 @@ export default {
 };
 
 function proxyApiRequest(request, env) {
+  if (env.EDGE_API) {
+    return env.EDGE_API.fetch(request);
+  }
+
   const incomingUrl = new URL(request.url);
   const apiOrigin = env.API_ORIGIN || "https://rentit-edge-api.bobkumeel.workers.dev";
   const upstreamUrl = new URL(`${incomingUrl.pathname}${incomingUrl.search}`, apiOrigin);
