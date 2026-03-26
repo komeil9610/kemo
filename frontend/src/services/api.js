@@ -1,7 +1,15 @@
 // Frontend API Service
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const isLocalhost =
+  typeof window !== 'undefined' &&
+  ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL ||
+  (isLocalhost
+    ? 'http://localhost:5000/api'
+    : '/api');
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,

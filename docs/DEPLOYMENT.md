@@ -1,5 +1,60 @@
 # دليل النشر | Deployment Guide
 
+## الربط الحالي بين Frontend و Edge API | Current Frontend/Worker Connection
+
+المسار الموصى به حاليًا داخل هذا المشروع هو:
+
+- `frontend`: منشور على `Cloudflare Workers Static Assets`
+- `edge-api`: منشور على `Cloudflare Workers`
+- الطلبات من الواجهة تذهب إلى `/api/*` على نفس الدومين
+- Worker الخاص بالواجهة يعمل `proxy` إلى `API_ORIGIN`
+
+### Frontend on Cloudflare
+
+ملف [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml) يحتوي على:
+
+```toml
+name = "rentit-frontend"
+main = "cloudflare/worker.js"
+
+[assets]
+binding = "ASSETS"
+directory = "./build"
+
+[vars]
+API_ORIGIN = "https://rentit-edge-api.bobkumeel.workers.dev"
+```
+
+ملف [frontend/cloudflare/worker.js](/home/bobby/Desktop/rentit/frontend/cloudflare/worker.js) يقوم بـ:
+
+- تقديم ملفات React المبنية من `build/`
+- إعادة توجيه مسارات SPA إلى `index.html`
+- تمرير أي طلب يبدأ بـ `/api/` إلى الـ backend worker
+
+### أوامر النشر
+
+```bash
+# الواجهة
+cd frontend
+npm install
+npm run cf:deploy
+
+# الـ backend
+cd ../edge-api
+npm install
+npm run deploy
+```
+
+### التطوير المحلي
+
+في التطوير المحلي، ما زال الـ frontend يدعم:
+
+```bash
+REACT_APP_API_URL=http://localhost:5000/api
+```
+
+أما في الإنتاج على Cloudflare فيستخدم نفس الأصل عبر `/api` تلقائيًا، لذلك لا تحتاج `REACT_APP_API_URL` على Cloudflare.
+
 ## خوادم الإنتاج | Production Servers
 
 ### الخوادم الموصى بها | Recommended Hosting

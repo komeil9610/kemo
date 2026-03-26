@@ -22,6 +22,12 @@ npm start
 npm run build
 ```
 
+للنشر على Cloudflare Workers Static Assets:
+
+```bash
+npm run cf:deploy
+```
+
 ---
 
 ## 📁 بنية المشروع | Project Structure
@@ -121,24 +127,26 @@ const getProducts = async () => {
 
 ## 🚀 النشر | Deployment
 
-### نشر على Vercel
+### نشر على Cloudflare
+
+هذا المشروع مجهز الآن للنشر عبر `Cloudflare Workers Static Assets`.
 
 ```bash
-# تثبيت Vercel CLI
-npm install -g vercel
+# أول مرة فقط
+npm install
 
-# نشر المشروع
-vercel
+# تسجيل الدخول إلى Cloudflare
+npx wrangler login
+
+# نشر الواجهة
+npm run cf:deploy
 ```
 
-### نشر على Netlify
+الواجهة تستخدم نفس الدومين للـ API في الإنتاج عبر proxy داخل Worker:
 
-```bash
-# بناء المشروع
-npm run build
-
-# السحب والإفلات dist إلى Netlify
-```
+- المتصفح يطلب `/api/...`
+- Worker يمرر الطلب إلى `API_ORIGIN`
+- لا تحتاج إعداد `CORS` في المتصفح بين الـ frontend والـ backend
 
 ---
 

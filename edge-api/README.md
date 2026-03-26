@@ -32,3 +32,10 @@ This service is the zero-cost oriented backend path for RentIT.
 Set frontend env:
 
 - `REACT_APP_API_URL=https://<your-worker-subdomain>.workers.dev/api`
+
+## CORS
+
+This Worker allows the frontend origin through `CORS_ALLOWED_ORIGINS`.
+
+- Current default: `http://localhost:3000,http://127.0.0.1:3000`
+- In production with the Cloudflare frontend worker, the browser calls the same origin and the worker proxies `/api/*`, so cross-origin browser access is usually unnecessary.

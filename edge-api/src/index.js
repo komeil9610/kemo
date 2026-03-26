@@ -1,11 +1,12 @@
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization",
-};
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
 
 export default {
   async fetch(request, env) {
+    const corsHeaders = buildCorsHeaders(request, env);
+
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
@@ -21,7 +22,9 @@ export default {
             service: "rentit-edge-api",
             date: new Date().toISOString(),
           },
-          200
+          200,
+          request,
+          env
         );
       }
 
@@ -34,7 +37,7 @@ export default {
       }
 
       if (path === "/api/products" && request.method === "GET") {
-        return listProducts(url, env);
+        return listProducts(request, url, env);
       }
 
       if (path === "/api/products" && request.method === "POST") {
@@ -43,17 +46,19 @@ export default {
 
       if (path.startsWith("/api/products/") && request.method === "GET") {
         const id = path.split("/").pop();
-        return getProductById(id, env);
+        return getProductById(request, id, env);
       }
 
-      return json({ message: "Route not found" }, 404);
+      return json({ message: "Route not found" }, 404, request, env);
     } catch (error) {
       return json(
         {
           message: "Internal error",
           error: error?.message || "Unknown error",
         },
-        500
+        500,
+        request,
+        env
       );
     }
   },
@@ -66,7 +71,7 @@ async function register(request, env) {
   const password = body.password || "";
 
   if (!name || !email || password.length < 6) {
-    return json({ message: "Invalid name, email, or password" }, 400);
+    return json({ message: "Invalid name, email, or password" }, 400, request, env);
   }
 
   const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
@@ -74,7 +79,7 @@ async function register(request, env) {
     .first();
 
   if (existing) {
-    return json({ message: "Email already exists" }, 409);
+    return json({ message: "Email already exists" }, 409, request, env);
   }
 
   const passwordHash = await hashPassword(password, email);
@@ -95,7 +100,9 @@ async function register(request, env) {
       token,
       user: { id: userId, name, email },
     },
-    201
+    201,
+    request,
+    env
   );
 }
 
@@ -105,7 +112,7 @@ async function login(request, env) {
   const password = body.password || "";
 
   if (!email || !password) {
-    return json({ message: "Email and password are required" }, 400);
+    return json({ message: "Email and password are required" }, 400, request, env);
   }
 
   const user = await env.DB.prepare(
@@ -115,12 +122,12 @@ async function login(request, env) {
     .first();
 
   if (!user) {
-    return json({ message: "Invalid credentials" }, 401);
+    return json({ message: "Invalid credentials" }, 401, request, env);
   }
 
   const passwordHash = await hashPassword(password, email);
   if (passwordHash !== user.password_hash) {
-    return json({ message: "Invalid credentials" }, 401);
+    return json({ message: "Invalid credentials" }, 401, request, env);
   }
 
   const token = await signJwt(
@@ -128,13 +135,18 @@ async function login(request, env) {
     env.JWT_SECRET || "dev-secret"
   );
 
-  return json({
-    token,
-    user: { id: user.id, name: user.name, email: user.email },
-  });
+  return json(
+    {
+      token,
+      user: { id: user.id, name: user.name, email: user.email },
+    },
+    200,
+    request,
+    env
+  );
 }
 
-async function listProducts(url, env) {
+async function listProducts(request, url, env) {
   const category = (url.searchParams.get("category") || "").trim();
   const city = (url.searchParams.get("city") || "").trim();
   const limit = Math.min(Number(url.searchParams.get("limit") || 12), 50);
@@ -159,16 +171,21 @@ async function listProducts(url, env) {
 
   const { results } = await env.DB.prepare(query).bind(...binds).all();
 
-  return json({
-    products: (results || []).map(mapProduct),
-    page,
-    limit,
-  });
+  return json(
+    {
+      products: (results || []).map(mapProduct),
+      page,
+      limit,
+    },
+    200,
+    request,
+    env
+  );
 }
 
-async function getProductById(id, env) {
+async function getProductById(request, id, env) {
   if (!/^\d+$/.test(String(id))) {
-    return json({ message: "Invalid product id" }, 400);
+    return json({ message: "Invalid product id" }, 400, request, env);
   }
 
   const product = await env.DB.prepare(
@@ -178,16 +195,16 @@ async function getProductById(id, env) {
     .first();
 
   if (!product) {
-    return json({ message: "Product not found" }, 404);
+    return json({ message: "Product not found" }, 404, request, env);
   }
 
-  return json({ product: mapProduct(product) });
+  return json({ product: mapProduct(product) }, 200, request, env);
 }
 
 async function createProduct(request, env) {
   const payload = await readAuthUser(request, env);
   if (!payload) {
-    return json({ message: "Unauthorized" }, 401);
+    return json({ message: "Unauthorized" }, 401, request, env);
   }
 
   const body = await readJson(request);
@@ -199,7 +216,7 @@ async function createProduct(request, env) {
   const imageUrl = (body.imageUrl || "").trim();
 
   if (!name || !description || !Number.isFinite(price) || price < 0) {
-    return json({ message: "Invalid product payload" }, 400);
+    return json({ message: "Invalid product payload" }, 400, request, env);
   }
 
   const created = await env.DB.prepare(
@@ -208,7 +225,7 @@ async function createProduct(request, env) {
     .bind(Number(payload.sub), name, description, category, city, price, 0, imageUrl || null)
     .run();
 
-  return json({ id: created.meta.last_row_id, message: "Product created" }, 201);
+  return json({ id: created.meta.last_row_id, message: "Product created" }, 201, request, env);
 }
 
 function mapProduct(row) {
@@ -232,14 +249,39 @@ async function readJson(request) {
   }
 }
 
-function json(data, status = 200) {
+function json(data, status = 200, request, env = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
-      ...corsHeaders,
+      ...buildCorsHeaders(request, env),
     },
   });
+}
+
+function buildCorsHeaders(request, env) {
+  const requestOrigin = request.headers.get("Origin");
+  const allowedOrigins = getAllowedOrigins(env);
+  const allowOrigin =
+    requestOrigin && allowedOrigins.includes(requestOrigin)
+      ? requestOrigin
+      : allowedOrigins[0];
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    Vary: "Origin",
+  };
+}
+
+function getAllowedOrigins(env) {
+  const configuredOrigins = (env.CORS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return [...new Set([...configuredOrigins, ...DEFAULT_ALLOWED_ORIGINS])];
 }
 
 async function hashPassword(password, salt) {

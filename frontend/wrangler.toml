@@ -1,0 +1,10 @@
+name = "rentit-frontend"
+main = "cloudflare/worker.js"
+compatibility_date = "2026-03-26"
+
+[assets]
+binding = "ASSETS"
+directory = "./build"
+
+[vars]
+API_ORIGIN = "https://rentit-edge-api.bobkumeel.workers.dev"
