@@ -1,11 +1,50 @@
 import React from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import { AuthProvider } from './context/AuthContext';
+import { LangProvider } from './context/LangContext';
+import Navbar from './components/Navbar';
+import ProtectedRoute from './components/ProtectedRoute';
+import Home from './pages/Home';
+import Products from './pages/Products';
+import ProductDetail from './pages/ProductDetail';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Cart from './pages/Cart';
+import Dashboard from './pages/Dashboard';
+import './index.css';
 
-function App() {
+export default function App() {
   return (
-    <div>
-      <h1>RentIT</h1>
-    </div>
+    <LangProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Navbar />
+          <main className="app-shell">
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/products/:id" element={<ProductDetail />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/cart" element={<Cart />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+          <Toaster
+            position="bottom-right"
+            toastOptions={{ style: { background: '#1a1916', color: '#fff', border: '1px solid #333129' } }}
+          />
+        </BrowserRouter>
+      </AuthProvider>
+    </LangProvider>
   );
 }
-
-export default App;

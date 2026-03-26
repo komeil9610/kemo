@@ -2,6 +2,7 @@
   "name": "rentit-frontend",
   "version": "1.0.0",
   "description": "RentIT Frontend - React Web Application",
+  "homepage": ".",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
