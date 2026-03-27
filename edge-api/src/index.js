@@ -76,6 +76,24 @@ export default {
         return createBooking(request, env);
       }
 
+      if ((path === "/api/bookings" || path === "/api/orders") && request.method === "GET") {
+        return listUserOrders(request, env);
+      }
+
+      if ((path.startsWith("/api/bookings/") || path.startsWith("/api/orders/")) && request.method === "GET") {
+        const id = path.split("/").pop();
+        return getUserOrderById(request, id, env);
+      }
+
+      if (path.startsWith("/api/bookings/") && path.endsWith("/cancel") && request.method === "PUT") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return cancelUserOrder(request, id, env);
+      }
+
+      if (path === "/api/cart/checkout" && request.method === "POST") {
+        return checkoutCart(request, env);
+      }
+
       if (path === "/api/admin/bookings" && request.method === "GET") {
         return listAdminBookings(request, env);
       }
@@ -462,6 +480,10 @@ async function createBooking(request, env) {
     .bind(Number(user.sub), productId, startDate, endDate, quantity, totalPrice, "pending")
     .run();
 
+  await env.DB.prepare("UPDATE products SET quantity = quantity - ? WHERE id = ?")
+    .bind(quantity, productId)
+    .run();
+
   return json(
     {
       id: created.meta.last_row_id,
@@ -533,16 +555,235 @@ async function updateBookingStatus(request, id, env) {
     return json({ message: "Invalid booking status" }, 400, request, env);
   }
 
-  const existing = await env.DB.prepare("SELECT id FROM bookings WHERE id = ?").bind(Number(id)).first();
+  const existing = await env.DB.prepare(
+    "SELECT id, product_id, quantity, status FROM bookings WHERE id = ?"
+  )
+    .bind(Number(id))
+    .first();
   if (!existing) {
     return json({ message: "Booking not found" }, 404, request, env);
+  }
+
+  const stockAdjustment = getStockAdjustment(existing.status, status, existing.quantity);
+  if (stockAdjustment < 0) {
+    const product = await env.DB.prepare("SELECT quantity FROM products WHERE id = ?")
+      .bind(existing.product_id)
+      .first();
+
+    if (!product || (product.quantity ?? 0) < Math.abs(stockAdjustment)) {
+      return json({ message: "Not enough stock to reactivate this booking" }, 400, request, env);
+    }
   }
 
   await env.DB.prepare("UPDATE bookings SET status = ? WHERE id = ?")
     .bind(status, Number(id))
     .run();
 
+  if (stockAdjustment !== 0) {
+    await env.DB.prepare("UPDATE products SET quantity = quantity + ? WHERE id = ?")
+      .bind(stockAdjustment, existing.product_id)
+      .run();
+  }
+
   return json({ message: "Booking updated" }, 200, request, env);
+}
+
+async function listUserOrders(request, env) {
+  const user = await readActiveUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT b.id, b.start_date, b.end_date, b.quantity, b.total_price, b.status, b.created_at,
+            p.id AS product_id, p.name AS product_name, p.city AS product_city, p.image_url AS product_image_url
+     FROM bookings b
+     JOIN products p ON p.id = b.product_id
+     WHERE b.user_id = ?
+     ORDER BY b.id DESC`
+  )
+    .bind(Number(user.sub))
+    .all();
+
+  return json(
+    {
+      orders: (results || []).map(mapBookingRow),
+    },
+    200,
+    request,
+    env
+  );
+}
+
+async function getUserOrderById(request, id, env) {
+  const user = await readActiveUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  if (!/^\d+$/.test(String(id))) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const order = await env.DB.prepare(
+    `SELECT b.id, b.start_date, b.end_date, b.quantity, b.total_price, b.status, b.created_at,
+            p.id AS product_id, p.name AS product_name, p.city AS product_city, p.image_url AS product_image_url
+     FROM bookings b
+     JOIN products p ON p.id = b.product_id
+     WHERE b.id = ? AND b.user_id = ?`
+  )
+    .bind(Number(id), Number(user.sub))
+    .first();
+
+  if (!order) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  return json({ order: mapBookingRow(order) }, 200, request, env);
+}
+
+async function cancelUserOrder(request, id, env) {
+  const user = await readActiveUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  if (!/^\d+$/.test(String(id))) {
+    return json({ message: "Invalid booking id" }, 400, request, env);
+  }
+
+  const booking = await env.DB.prepare(
+    "SELECT id, user_id, product_id, quantity, status FROM bookings WHERE id = ?"
+  )
+    .bind(Number(id))
+    .first();
+
+  if (!booking || Number(booking.user_id) !== Number(user.sub)) {
+    return json({ message: "Booking not found" }, 404, request, env);
+  }
+
+  if (booking.status === "cancelled") {
+    return json({ message: "Booking already cancelled" }, 400, request, env);
+  }
+
+  await env.DB.prepare("UPDATE bookings SET status = ? WHERE id = ?")
+    .bind("cancelled", Number(id))
+    .run();
+
+  await env.DB.prepare("UPDATE products SET quantity = quantity + ? WHERE id = ?")
+    .bind(Number(booking.quantity), Number(booking.product_id))
+    .run();
+
+  return json({ message: "Booking cancelled" }, 200, request, env);
+}
+
+async function checkoutCart(request, env) {
+  const user = await readActiveUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const body = await readJson(request);
+  const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!items.length) {
+    return json({ message: "Cart is empty" }, 400, request, env);
+  }
+
+  const normalizedItems = [];
+  const reservedByProduct = new Map();
+  let grandTotal = 0;
+
+  for (const item of items) {
+    const productId = Number(item.productId);
+    const quantity = Number(item.quantity || 1);
+    const startDate = (item.startDate || "").trim();
+    const endDate = (item.endDate || "").trim();
+
+    if (!Number.isInteger(productId) || productId <= 0) {
+      return json({ message: "Invalid product in cart" }, 400, request, env);
+    }
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return json({ message: "Cart quantity must be at least 1" }, 400, request, env);
+    }
+
+    if (!startDate || !endDate) {
+      return json({ message: "Each cart item must include start and end date" }, 400, request, env);
+    }
+
+    const product = await env.DB.prepare(
+      "SELECT id, name, city, image_url, price_per_day, quantity FROM products WHERE id = ?"
+    )
+      .bind(productId)
+      .first();
+
+    if (!product) {
+      return json({ message: "One of the selected products no longer exists" }, 404, request, env);
+    }
+
+    const reservedQuantity = reservedByProduct.get(productId) || 0;
+    if ((product.quantity ?? 0) < quantity + reservedQuantity) {
+      return json({ message: `Not enough stock for ${product.name}` }, 400, request, env);
+    }
+
+    const days = Math.max(1, calculateRentalDays(startDate, endDate));
+    const totalPrice = Number(product.price_per_day) * quantity * days;
+    grandTotal += totalPrice;
+
+    normalizedItems.push({
+      productId,
+      quantity,
+      startDate,
+      endDate,
+      totalPrice,
+      product,
+    });
+
+    reservedByProduct.set(productId, reservedQuantity + quantity);
+  }
+
+  const createdOrders = [];
+
+  for (const item of normalizedItems) {
+    const created = await env.DB.prepare(
+      "INSERT INTO bookings (user_id, product_id, start_date, end_date, quantity, total_price, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+      .bind(
+        Number(user.sub),
+        item.productId,
+        item.startDate,
+        item.endDate,
+        item.quantity,
+        item.totalPrice,
+        "pending"
+      )
+      .run();
+
+    await env.DB.prepare("UPDATE products SET quantity = quantity - ? WHERE id = ?")
+      .bind(item.quantity, item.productId)
+      .run();
+
+    createdOrders.push({
+      id: created.meta.last_row_id,
+      productId: item.productId,
+      productName: item.product.name,
+      quantity: item.quantity,
+      totalPrice: item.totalPrice,
+      status: "pending",
+    });
+  }
+
+  return json(
+    {
+      message: "Checkout completed",
+      orders: createdOrders,
+      total: grandTotal,
+    },
+    201,
+    request,
+    env
+  );
 }
 
 function normalizeProductInput(body) {
@@ -601,6 +842,26 @@ function mapProduct(row) {
           "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
       },
     ],
+  };
+}
+
+function mapBookingRow(row) {
+  return {
+    id: row.id,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    quantity: row.quantity,
+    totalPrice: row.total_price,
+    status: row.status,
+    createdAt: row.created_at,
+    product: {
+      id: row.product_id,
+      name: row.product_name,
+      city: row.product_city,
+      imageUrl:
+        row.product_image_url ||
+        "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
+    },
   };
 }
 
@@ -720,13 +981,34 @@ async function readAuthUser(request, env) {
   return verifyJwt(token, env.JWT_SECRET || "dev-secret");
 }
 
-async function requireAdmin(request, env) {
+async function readActiveUser(request, env) {
   const payload = await readAuthUser(request, env);
-  if (!payload || payload.role !== "admin" || (payload.status || "active") !== "active") {
+  if (!payload || (payload.status || "active") !== "active") {
     return null;
   }
 
   return payload;
+}
+
+async function requireAdmin(request, env) {
+  const payload = await readActiveUser(request, env);
+  if (!payload || payload.role !== "admin") {
+    return null;
+  }
+
+  return payload;
+}
+
+function getStockAdjustment(previousStatus, nextStatus, quantity) {
+  if (previousStatus !== "cancelled" && nextStatus === "cancelled") {
+    return Number(quantity);
+  }
+
+  if (previousStatus === "cancelled" && nextStatus !== "cancelled") {
+    return -Number(quantity);
+  }
+
+  return 0;
 }
 
 function calculateRentalDays(startDate, endDate) {

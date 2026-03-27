@@ -1,6 +1,8 @@
 // Frontend API Service
 import axios from 'axios';
 
+const CART_STORAGE_KEY = 'rentitCart';
+
 const isLocalhost =
   typeof window !== 'undefined' &&
   ['localhost', '127.0.0.1'].includes(window.location.hostname);
@@ -8,7 +10,7 @@ const isLocalhost =
 const API_BASE_URL =
   process.env.REACT_APP_API_URL ||
   (isLocalhost
-    ? 'http://localhost:5000/api'
+    ? 'http://127.0.0.1:8787/api'
     : '/api');
 
 const apiClient = axios.create({
@@ -56,10 +58,86 @@ export const adminService = {
 
 // Bookings Service
 export const bookingService = {
-  getAll: () => apiClient.get('/bookings'),
-  getById: (id) => apiClient.get(`/bookings/${id}`),
+  getAll: () => apiClient.get('/orders'),
+  getById: (id) => apiClient.get(`/orders/${id}`),
   create: (data) => apiClient.post('/bookings', data),
   cancel: (id) => apiClient.put(`/bookings/${id}/cancel`),
+};
+
+export const orderService = {
+  getAll: () => apiClient.get('/orders'),
+  getById: (id) => apiClient.get(`/orders/${id}`),
+  cancel: (id) => apiClient.put(`/bookings/${id}/cancel`),
+};
+
+export const cartService = {
+  checkout: (items) => apiClient.post('/cart/checkout', { items }),
+};
+
+const readCart = () => {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeCart = (items) => {
+  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+  return items;
+};
+
+const clampCartQuantity = (quantity, maxQuantity) =>
+  Math.max(1, Math.min(Number(quantity || 1), Number(maxQuantity || quantity || 1)));
+
+export const cartStorage = {
+  getItems: () => readCart(),
+  addItem: (item) => {
+    const items = readCart();
+    const existingIndex = items.findIndex(
+      (entry) =>
+        String(entry.productId) === String(item.productId) &&
+        entry.startDate === item.startDate &&
+        entry.endDate === item.endDate
+    );
+
+    if (existingIndex >= 0) {
+      const current = items[existingIndex];
+      items[existingIndex] = {
+        ...current,
+        quantity: clampCartQuantity(
+          Number(current.quantity || 0) + Number(item.quantity || 1),
+          current.availableQuantity || item.availableQuantity
+        ),
+      };
+    } else {
+      items.push({
+        ...item,
+        quantity: clampCartQuantity(item.quantity, item.availableQuantity),
+      });
+    }
+
+    return writeCart(items);
+  },
+  updateItem: (cartItemId, nextValues) => {
+    const items = readCart().map((item) =>
+      item.id === cartItemId
+        ? {
+            ...item,
+            ...nextValues,
+            quantity: clampCartQuantity(
+              nextValues.quantity ?? item.quantity,
+              item.availableQuantity
+            ),
+          }
+        : item
+    );
+    return writeCart(items);
+  },
+  removeItem: (cartItemId) => writeCart(readCart().filter((item) => item.id !== cartItemId)),
+  clear: () => writeCart([]),
 };
 
 // Payments Service

@@ -21,10 +21,11 @@
 
 ```
 rentit/
-├── backend/              # Node.js + Express API Server
-├── frontend/             # React Web Application
+├── backend/              # Legacy Node.js + Express API Server
+├── edge-api/             # Cloudflare Worker API + D1
+├── frontend/             # React app + Workers Static Assets frontend worker
 ├── mobile/               # React Native Mobile App
-├── database/             # MongoDB Schemas & Migrations
+├── database/             # Legacy database notes
 ├── docs/                 # Project Documentation
 └── .github/              # GitHub & Config Files
 ```
@@ -36,7 +37,7 @@ rentit/
 ### المتطلبات | Requirements
 - Node.js v16+ 
 - npm أو yarn
-- MongoDB
+- Cloudflare account + Wrangler
 - Git
 
 ### الإعداد | Setup
@@ -49,9 +50,9 @@ cd rentit
 
 #### 2. تثبيت البيئة | Install dependencies
 
-**Backend:**
+**Edge API:**
 ```bash
-cd backend
+cd edge-api
 npm install
 ```
 
@@ -61,9 +62,15 @@ cd ../frontend
 npm install
 ```
 
+**Legacy Backend:**
+```bash
+cd backend
+npm install
+```
+
 **Mobile:**
 ```bash
-cd ../mobile
+cd mobile
 npm install
 ```
 
@@ -73,18 +80,40 @@ npm install
 cp .env.example .env
 ```
 
-#### 4. تشغيل المشروع | Run the project
+#### 4. إعداد Cloudflare | Cloudflare setup
 
-**Backend:**
+**D1 Database**
 ```bash
-cd backend
-npm start
+cd edge-api
+npx wrangler d1 create rentit_db
+npm run db:migrate:remote
 ```
 
-**Frontend:**
+**JWT Secret**
+```bash
+cd edge-api
+npx wrangler secret put JWT_SECRET
+```
+
+**أول حساب أدمن**
+```bash
+cd edge-api
+npm run admin:sql -- "RentIT Admin" "admin@rentit.com" "your-strong-password"
+# ثم نفّذ SQL الناتج على D1 عبر wrangler d1 execute
+```
+
+#### 5. تشغيل المشروع | Run the project
+
+**Edge API Worker**
+```bash
+cd edge-api
+npm run dev
+```
+
+**Frontend Worker + Static Assets**
 ```bash
 cd frontend
-npm start
+npm run cf:dev
 ```
 
 **Mobile (iOS/Android Emulator):**
@@ -105,14 +134,30 @@ npm start
 
 ---
 
-## 🏗️ بنية قاعدة البيانات | Database Structure
+## ☁️ البنية الحالية | Current Cloudflare Architecture
 
-- **Users** - بيانات المستخدمين
-- **Products** - المنتجات للتأجير
-- **Bookings** - الحجوزات
-- **Payments** - معاملات الدفع
-- **Reviews** - التقييمات
-- **Categories** - تصنيفات المنتجات
+- `Workers Static Assets`: الواجهة الأمامية React مع Worker يقدّم الملفات الثابتة ويتعامل مع SPA fallback
+- `Service Bindings`: الواجهة تستدعي `EDGE_API` مباشرة عند توفر الربط
+- `D1 Database`: تخزين المستخدمين، المنتجات، والحجوزات/الطلبات
+- `Auth`: تسجيل جديد وتسجيل دخول عبر JWT داخل Worker
+- `Orders`: صفحة طلبات مستقلة للعملاء عبر `/orders`
+
+## 📊 الصلاحيات | Roles
+
+**Admin**
+
+- إضافة وتعديل وحذف المنتجات
+- إدارة المستخدمين
+- متابعة الطلبات وتحديث حالتها
+- لوحة تحكم كاملة
+
+**Customer**
+
+- تسجيل جديد وتسجيل دخول
+- عرض المنتجات
+- إضافة منتجات إلى السلة
+- إتمام الطلب من السلة
+- الاطلاع على الطلبات وإلغاء المعلق منها
 
 ---
 

@@ -16,6 +16,7 @@ export default function Navbar() {
           <NavLink to="/">{t('home')}</NavLink>
           <NavLink to="/products">{t('products')}</NavLink>
           <NavLink to="/cart">{t('cart')}</NavLink>
+          {token ? <NavLink to="/orders">{t('orders')}</NavLink> : null}
           {isAdmin ? <NavLink to="/dashboard">{t('dashboard')}</NavLink> : null}
         </div>
         <div className="nav-actions">

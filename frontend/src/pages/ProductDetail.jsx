@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { bookingService, productService } from '../services/api';
+import { cartStorage, productService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 export default function ProductDetail() {
@@ -43,19 +43,29 @@ export default function ProductDetail() {
     );
   }
 
-  const submitBooking = async (event) => {
+  const addToCart = (event) => {
     event.preventDefault();
-    try {
-      await bookingService.create({
-        productId: Number(id),
-        startDate: booking.startDate,
-        endDate: booking.endDate,
-        quantity: Number(booking.quantity),
-      });
-      setMessage('تم إرسال الحجز بنجاح. ستجده في لوحة تحكم الإدارة.');
-    } catch (error) {
-      setMessage(error?.response?.data?.message || 'تعذر إنشاء الحجز');
+    const quantity = Number(booking.quantity);
+
+    if (quantity <= 0) {
+      setMessage('الكمية يجب أن تكون 1 على الأقل');
+      return;
     }
+
+    cartStorage.addItem({
+      id: `${id}-${booking.startDate}-${booking.endDate}`,
+      productId: Number(id),
+      productName: product.name,
+      productImage: product.images?.[0]?.url,
+      city: product.city,
+      pricePerDay: Number(product.pricePerDay || 0),
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      quantity,
+      availableQuantity: Number(product.quantity || 0),
+    });
+
+    setMessage('تمت إضافة المنتج إلى السلة بنجاح');
   };
 
   return (
@@ -72,8 +82,8 @@ export default function ProductDetail() {
           <p><strong>التقييم:</strong> {product.rating}</p>
 
           {token ? (
-            <form className="booking-form" onSubmit={submitBooking}>
-              <h3>احجز هذا المنتج</h3>
+            <form className="booking-form" onSubmit={addToCart}>
+              <h3>أضف هذا المنتج إلى السلة</h3>
               <div className="dashboard-grid-2">
                 <div>
                   <label>من</label>
@@ -87,10 +97,11 @@ export default function ProductDetail() {
               <label>الكمية</label>
               <input className="input" type="number" min="1" max={product.quantity || 1} value={booking.quantity} onChange={(e) => setBooking({ ...booking, quantity: Number(e.target.value) })} required />
               {message ? <p className={message.includes('بنجاح') ? 'success-text' : 'error-text'}>{message}</p> : null}
-              <button className="btn-primary" type="submit">إرسال الحجز</button>
+              <button className="btn-primary" type="submit">إضافة إلى السلة</button>
+              <Link className="btn-secondary" to="/cart">فتح السلة</Link>
             </form>
           ) : (
-            <p className="muted">سجّل الدخول أولًا حتى تتمكن من إنشاء حجز.</p>
+            <p className="muted">سجّل الدخول أولًا حتى تتمكن من إضافة المنتجات إلى السلة وإتمام الطلب.</p>
           )}
         </div>
         <Link className="btn-primary" to="/products">Back to products</Link>
