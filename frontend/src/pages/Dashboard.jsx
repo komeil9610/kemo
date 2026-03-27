@@ -269,6 +269,14 @@ export default function Dashboard() {
           <p className="hero-kicker dashboard-kicker">Admin Console</p>
           <h2 className="section-title">لوحة تحكم احترافية لـ RentIT</h2>
           <p>مرحبًا {user?.name || 'Admin'}، من هنا تدير المنتجات والمستخدمين والحجوزات من مكان واحد.</p>
+          <div className="dashboard-quick-actions">
+            <button className="btn-primary" type="button" onClick={() => setActiveTab('home')}>
+              تعديل الصفحة الرئيسية
+            </button>
+            <button className="btn-light" type="button" onClick={() => setActiveTab('footer')}>
+              تعديل الـ Footer
+            </button>
+          </div>
         </div>
         <div className="dashboard-hero-side">
           <div className="dashboard-badge">الصلاحية: {user?.role || 'member'}</div>
@@ -303,7 +311,30 @@ export default function Dashboard() {
       {loading ? <div className="loading">جارٍ تحميل لوحة التحكم...</div> : null}
 
       {!loading && activeTab === 'overview' ? (
-        <div className="dashboard-overview-grid">
+        <div className="dashboard-overview-wrapper">
+          <div className="dashboard-admin-links">
+            <article className="detail-card admin-link-card">
+              <div>
+                <h3>إعدادات الصفحة الرئيسية</h3>
+                <p>عدّل عنوان الـ hero والأزرار والإحصائيات الظاهرة للزوار.</p>
+              </div>
+              <button className="btn-primary" type="button" onClick={() => setActiveTab('home')}>
+                فتح الإعدادات
+              </button>
+            </article>
+
+            <article className="detail-card admin-link-card">
+              <div>
+                <h3>إعدادات الـ Footer</h3>
+                <p>حدّث الروابط، خدمة العملاء، النبذة المختصرة وأيقونات التواصل.</p>
+              </div>
+              <button className="btn-secondary" type="button" onClick={() => setActiveTab('footer')}>
+                فتح الإعدادات
+              </button>
+            </article>
+          </div>
+
+          <div className="dashboard-overview-grid">
           <div className="detail-card insight-card">
             <h3>آخر المنتجات</h3>
             {products.slice(0, 4).map((product) => (
@@ -330,6 +361,7 @@ export default function Dashboard() {
                 <strong>{booking.status}</strong>
               </div>
             ))}
+          </div>
           </div>
         </div>
       ) : null}
