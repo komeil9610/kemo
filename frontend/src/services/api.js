@@ -54,6 +54,18 @@ export const adminService = {
   updateUser: (id, data) => apiClient.put(`/admin/users/${id}`, data),
   getBookings: () => apiClient.get('/admin/bookings'),
   updateBooking: (id, data) => apiClient.put(`/admin/bookings/${id}`, data),
+  getFooter: () => apiClient.get('/admin/footer'),
+  updateFooter: (data) => apiClient.put('/admin/footer', data),
+  getHomeSettings: () => apiClient.get('/admin/home-settings'),
+  updateHomeSettings: (data) => apiClient.put('/admin/home-settings', data),
+};
+
+export const footerService = {
+  get: () => apiClient.get('/footer'),
+};
+
+export const homeService = {
+  get: () => apiClient.get('/home-settings'),
 };
 
 // Bookings Service

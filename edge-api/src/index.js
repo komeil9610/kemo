@@ -40,6 +40,14 @@ export default {
         return listProducts(request, url, env);
       }
 
+      if (path === "/api/footer" && request.method === "GET") {
+        return getFooterSettings(request, env);
+      }
+
+      if (path === "/api/home-settings" && request.method === "GET") {
+        return getHomeSettings(request, env);
+      }
+
       if (path === "/api/products" && request.method === "POST") {
         return createProduct(request, env);
       }
@@ -61,6 +69,22 @@ export default {
 
       if (path === "/api/admin/products" && request.method === "GET") {
         return listAdminProducts(request, env);
+      }
+
+      if (path === "/api/admin/footer" && request.method === "GET") {
+        return getAdminFooterSettings(request, env);
+      }
+
+      if (path === "/api/admin/footer" && request.method === "PUT") {
+        return updateAdminFooterSettings(request, env);
+      }
+
+      if (path === "/api/admin/home-settings" && request.method === "GET") {
+        return getAdminHomeSettings(request, env);
+      }
+
+      if (path === "/api/admin/home-settings" && request.method === "PUT") {
+        return updateAdminHomeSettings(request, env);
       }
 
       if (path === "/api/admin/users" && request.method === "GET") {
@@ -380,6 +404,133 @@ async function listAdminProducts(request, env) {
     request,
     env
   );
+}
+
+async function getFooterSettings(request, env) {
+  const settings = await readFooterSettings(env);
+  return json({ footer: settings }, 200, request, env);
+}
+
+async function getHomeSettings(request, env) {
+  const settings = await readHomeSettings(env);
+  return json({ homeSettings: settings }, 200, request, env);
+}
+
+async function getAdminFooterSettings(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const settings = await readFooterSettings(env);
+  return json({ footer: settings }, 200, request, env);
+}
+
+async function updateAdminFooterSettings(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const normalized = normalizeFooterSettingsInput(body);
+  if (normalized.error) {
+    return json({ message: normalized.error }, 400, request, env);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO footer_settings (
+      id,
+      about_text,
+      useful_links_json,
+      customer_service_links_json,
+      social_links_json,
+      copyright_text,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(id) DO UPDATE SET
+      about_text = excluded.about_text,
+      useful_links_json = excluded.useful_links_json,
+      customer_service_links_json = excluded.customer_service_links_json,
+      social_links_json = excluded.social_links_json,
+      copyright_text = excluded.copyright_text,
+      updated_at = CURRENT_TIMESTAMP`
+  )
+    .bind(
+      1,
+      normalized.aboutText,
+      JSON.stringify(normalized.usefulLinks),
+      JSON.stringify(normalized.customerServiceLinks),
+      JSON.stringify(normalized.socialLinks),
+      normalized.copyrightText
+    )
+    .run();
+
+  const settings = await readFooterSettings(env);
+  return json({ message: "Footer updated", footer: settings }, 200, request, env);
+}
+
+async function getAdminHomeSettings(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const settings = await readHomeSettings(env);
+  return json({ homeSettings: settings }, 200, request, env);
+}
+
+async function updateAdminHomeSettings(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const normalized = normalizeHomeSettingsInput(body);
+  if (normalized.error) {
+    return json({ message: normalized.error }, 400, request, env);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO home_settings (
+      id,
+      hero_kicker,
+      hero_title,
+      hero_subtitle,
+      primary_button_text,
+      primary_button_url,
+      secondary_button_text,
+      secondary_button_url,
+      stats_json,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(id) DO UPDATE SET
+      hero_kicker = excluded.hero_kicker,
+      hero_title = excluded.hero_title,
+      hero_subtitle = excluded.hero_subtitle,
+      primary_button_text = excluded.primary_button_text,
+      primary_button_url = excluded.primary_button_url,
+      secondary_button_text = excluded.secondary_button_text,
+      secondary_button_url = excluded.secondary_button_url,
+      stats_json = excluded.stats_json,
+      updated_at = CURRENT_TIMESTAMP`
+  )
+    .bind(
+      1,
+      normalized.heroKicker,
+      normalized.heroTitle,
+      normalized.heroSubtitle,
+      normalized.primaryButtonText,
+      normalized.primaryButtonUrl,
+      normalized.secondaryButtonText,
+      normalized.secondaryButtonUrl,
+      JSON.stringify(normalized.stats)
+    )
+    .run();
+
+  const settings = await readHomeSettings(env);
+  return json({ message: "Home settings updated", homeSettings: settings }, 200, request, env);
 }
 
 async function listAdminUsers(request, env) {
@@ -824,6 +975,110 @@ function normalizeProductInput(body) {
   };
 }
 
+function normalizeFooterSettingsInput(body) {
+  const aboutText = String(body.aboutText || "").trim();
+  const copyrightText = String(body.copyrightText || "").trim();
+  const usefulLinks = normalizeFooterLinkList(body.usefulLinks, "label");
+  const customerServiceLinks = normalizeFooterLinkList(body.customerServiceLinks, "label");
+  const socialLinks = normalizeFooterLinkList(body.socialLinks, "platform");
+
+  if (!aboutText) {
+    return { error: "About text is required" };
+  }
+
+  if (!copyrightText) {
+    return { error: "Copyright text is required" };
+  }
+
+  if (usefulLinks.error || customerServiceLinks.error || socialLinks.error) {
+    return { error: usefulLinks.error || customerServiceLinks.error || socialLinks.error };
+  }
+
+  return {
+    aboutText,
+    copyrightText,
+    usefulLinks: usefulLinks.items,
+    customerServiceLinks: customerServiceLinks.items,
+    socialLinks: socialLinks.items,
+  };
+}
+
+function normalizeHomeSettingsInput(body) {
+  const heroKicker = String(body.heroKicker || "").trim();
+  const heroTitle = String(body.heroTitle || "").trim();
+  const heroSubtitle = String(body.heroSubtitle || "").trim();
+  const primaryButtonText = String(body.primaryButtonText || "").trim();
+  const primaryButtonUrl = String(body.primaryButtonUrl || "").trim();
+  const secondaryButtonText = String(body.secondaryButtonText || "").trim();
+  const secondaryButtonUrl = String(body.secondaryButtonUrl || "").trim();
+  const stats = normalizeHomeStats(body.stats);
+
+  if (!heroKicker || !heroTitle || !heroSubtitle) {
+    return { error: "Hero content is required" };
+  }
+
+  if (!primaryButtonText || !primaryButtonUrl || !secondaryButtonText || !secondaryButtonUrl) {
+    return { error: "Hero buttons are required" };
+  }
+
+  if (stats.error) {
+    return { error: stats.error };
+  }
+
+  return {
+    heroKicker,
+    heroTitle,
+    heroSubtitle,
+    primaryButtonText,
+    primaryButtonUrl,
+    secondaryButtonText,
+    secondaryButtonUrl,
+    stats: stats.items,
+  };
+}
+
+function normalizeHomeStats(value) {
+  if (!Array.isArray(value)) {
+    return { error: "Invalid home stats payload" };
+  }
+
+  const items = value
+    .map((entry) => ({
+      value: String(entry?.value || "").trim(),
+      label: String(entry?.label || "").trim(),
+    }))
+    .filter((entry) => entry.value || entry.label);
+
+  for (const entry of items) {
+    if (!entry.value || !entry.label) {
+      return { error: "Each stat requires value and label" };
+    }
+  }
+
+  return { items };
+}
+
+function normalizeFooterLinkList(value, titleKey) {
+  if (!Array.isArray(value)) {
+    return { error: "Invalid footer links payload" };
+  }
+
+  const items = value
+    .map((entry) => ({
+      [titleKey]: String(entry?.[titleKey] || "").trim(),
+      url: String(entry?.url || "").trim(),
+    }))
+    .filter((entry) => entry[titleKey] || entry.url);
+
+  for (const entry of items) {
+    if (!entry[titleKey] || !entry.url) {
+      return { error: "Each footer link requires text and URL" };
+    }
+  }
+
+  return { items };
+}
+
 function mapProduct(row) {
   return {
     _id: String(row.id),
@@ -863,6 +1118,110 @@ function mapBookingRow(row) {
         "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
     },
   };
+}
+
+async function readFooterSettings(env) {
+  const row = await env.DB.prepare(
+    `SELECT id, about_text, useful_links_json, customer_service_links_json, social_links_json, copyright_text
+     FROM footer_settings
+     WHERE id = 1`
+  ).first();
+
+  if (!row) {
+    return getDefaultFooterSettings();
+  }
+
+  return mapFooterSettings(row);
+}
+
+function mapFooterSettings(row) {
+  return {
+    aboutText: row.about_text,
+    usefulLinks: parseJsonArray(row.useful_links_json),
+    customerServiceLinks: parseJsonArray(row.customer_service_links_json),
+    socialLinks: parseJsonArray(row.social_links_json),
+    copyrightText: row.copyright_text,
+  };
+}
+
+function getDefaultFooterSettings() {
+  return {
+    aboutText:
+      "Rent It منصة موثوقة لتأجير المنتجات والخدمات بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.",
+    usefulLinks: [
+      { label: "الرئيسية", url: "/" },
+      { label: "المنتجات", url: "/products" },
+      { label: "طلباتي", url: "/orders" },
+    ],
+    customerServiceLinks: [
+      { label: "الدعم الفني", url: "mailto:support@rentit.app" },
+      { label: "واتساب", url: "https://wa.me/966500000000" },
+      { label: "الأسئلة الشائعة", url: "/products" },
+    ],
+    socialLinks: [
+      { platform: "instagram", url: "https://instagram.com/rentit.app" },
+      { platform: "x", url: "https://x.com/rentitapp" },
+      { platform: "linkedin", url: "https://linkedin.com/company/rentit" },
+    ],
+    copyrightText: "جميع الحقوق محفوظة لكميل",
+  };
+}
+
+async function readHomeSettings(env) {
+  const row = await env.DB.prepare(
+    `SELECT
+      hero_kicker,
+      hero_title,
+      hero_subtitle,
+      primary_button_text,
+      primary_button_url,
+      secondary_button_text,
+      secondary_button_url,
+      stats_json
+     FROM home_settings
+     WHERE id = 1`
+  ).first();
+
+  if (!row) {
+    return getDefaultHomeSettings();
+  }
+
+  return {
+    heroKicker: row.hero_kicker,
+    heroTitle: row.hero_title,
+    heroSubtitle: row.hero_subtitle,
+    primaryButtonText: row.primary_button_text,
+    primaryButtonUrl: row.primary_button_url,
+    secondaryButtonText: row.secondary_button_text,
+    secondaryButtonUrl: row.secondary_button_url,
+    stats: parseJsonArray(row.stats_json),
+  };
+}
+
+function getDefaultHomeSettings() {
+  return {
+    heroKicker: "RentIT Marketplace",
+    heroTitle: "Rent smarter. Own less. Do more.",
+    heroSubtitle: "Discover verified rentals for devices, costumes, and services across Saudi Arabia.",
+    primaryButtonText: "Browse Products",
+    primaryButtonUrl: "/products",
+    secondaryButtonText: "Get Started",
+    secondaryButtonUrl: "/register",
+    stats: [
+      { value: "10K+", label: "Trusted Users" },
+      { value: "4.9/5", label: "Average Rating" },
+      { value: "35+", label: "Cities Covered" },
+    ],
+  };
+}
+
+function parseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 async function readJson(request) {

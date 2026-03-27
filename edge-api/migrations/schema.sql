@@ -47,3 +47,68 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(user_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_product_id ON bookings(product_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+
+CREATE TABLE IF NOT EXISTS footer_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  about_text TEXT NOT NULL DEFAULT 'Rent It منصة موثوقة لتأجير المنتجات والخدمات بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
+  useful_links_json TEXT NOT NULL DEFAULT '[]',
+  customer_service_links_json TEXT NOT NULL DEFAULT '[]',
+  social_links_json TEXT NOT NULL DEFAULT '[]',
+  copyright_text TEXT NOT NULL DEFAULT 'جميع الحقوق محفوظة لكميل',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO footer_settings (
+  id,
+  about_text,
+  useful_links_json,
+  customer_service_links_json,
+  social_links_json,
+  copyright_text
+)
+VALUES (
+  1,
+  'Rent It منصة موثوقة لتأجير المنتجات والخدمات بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
+  '[{"label":"الرئيسية","url":"/"},{"label":"المنتجات","url":"/products"},{"label":"طلباتي","url":"/orders"}]',
+  '[{"label":"الدعم الفني","url":"mailto:support@rentit.app"},{"label":"واتساب","url":"https://wa.me/966500000000"},{"label":"الأسئلة الشائعة","url":"/products"}]',
+  '[{"platform":"instagram","url":"https://instagram.com/rentit.app"},{"platform":"x","url":"https://x.com/rentitapp"},{"platform":"linkedin","url":"https://linkedin.com/company/rentit"}]',
+  'جميع الحقوق محفوظة لكميل'
+)
+ON CONFLICT(id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS home_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  hero_kicker TEXT NOT NULL DEFAULT 'RentIT Marketplace',
+  hero_title TEXT NOT NULL DEFAULT 'Rent smarter. Own less. Do more.',
+  hero_subtitle TEXT NOT NULL DEFAULT 'Discover verified rentals for devices, costumes, and services across Saudi Arabia.',
+  primary_button_text TEXT NOT NULL DEFAULT 'Browse Products',
+  primary_button_url TEXT NOT NULL DEFAULT '/products',
+  secondary_button_text TEXT NOT NULL DEFAULT 'Get Started',
+  secondary_button_url TEXT NOT NULL DEFAULT '/register',
+  stats_json TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO home_settings (
+  id,
+  hero_kicker,
+  hero_title,
+  hero_subtitle,
+  primary_button_text,
+  primary_button_url,
+  secondary_button_text,
+  secondary_button_url,
+  stats_json
+)
+VALUES (
+  1,
+  'RentIT Marketplace',
+  'Rent smarter. Own less. Do more.',
+  'Discover verified rentals for devices, costumes, and services across Saudi Arabia.',
+  'Browse Products',
+  '/products',
+  'Get Started',
+  '/register',
+  '[{"value":"10K+","label":"Trusted Users"},{"value":"4.9/5","label":"Average Rating"},{"value":"35+","label":"Cities Covered"}]'
+)
+ON CONFLICT(id) DO NOTHING;

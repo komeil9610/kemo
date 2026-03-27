@@ -13,11 +13,32 @@ const emptyForm = {
   imageUrl: '',
 };
 
+const emptyFooterForm = {
+  aboutText: '',
+  usefulLinks: [],
+  customerServiceLinks: [],
+  socialLinks: [],
+  copyrightText: '',
+};
+
+const emptyHomeSettingsForm = {
+  heroKicker: '',
+  heroTitle: '',
+  heroSubtitle: '',
+  primaryButtonText: '',
+  primaryButtonUrl: '',
+  secondaryButtonText: '',
+  secondaryButtonUrl: '',
+  stats: [],
+};
+
 const tabs = [
   { id: 'overview', label: 'نظرة عامة' },
   { id: 'products', label: 'المنتجات' },
   { id: 'users', label: 'المستخدمون' },
   { id: 'bookings', label: 'الحجوزات' },
+  { id: 'home', label: 'إعدادات الرئيسية' },
+  { id: 'footer', label: 'إعدادات الـ Footer' },
 ];
 
 export default function Dashboard() {
@@ -26,6 +47,8 @@ export default function Dashboard() {
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [footerForm, setFooterForm] = useState(emptyFooterForm);
+  const [homeSettingsForm, setHomeSettingsForm] = useState(emptyHomeSettingsForm);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,14 +76,18 @@ export default function Dashboard() {
     try {
       setLoading(true);
       setError('');
-      const [productsResponse, usersResponse, bookingsResponse] = await Promise.all([
+      const [productsResponse, usersResponse, bookingsResponse, footerResponse, homeSettingsResponse] = await Promise.all([
         adminService.getProducts(),
         adminService.getUsers(),
         adminService.getBookings(),
+        adminService.getFooter(),
+        adminService.getHomeSettings(),
       ]);
       setProducts(productsResponse.data?.products || []);
       setUsers(usersResponse.data?.users || []);
       setBookings(bookingsResponse.data?.bookings || []);
+      setFooterForm(normalizeFooterForm(footerResponse.data?.footer));
+      setHomeSettingsForm(normalizeHomeSettingsForm(homeSettingsResponse.data?.homeSettings));
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to load dashboard');
     } finally {
@@ -71,6 +98,52 @@ export default function Dashboard() {
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
+  };
+
+  const addFooterItem = (key, item) => {
+    setFooterForm((current) => ({
+      ...current,
+      [key]: [...current[key], item],
+    }));
+  };
+
+  const updateFooterItem = (key, index, field, value) => {
+    setFooterForm((current) => ({
+      ...current,
+      [key]: current[key].map((entry, entryIndex) => (
+        entryIndex === index ? { ...entry, [field]: value } : entry
+      )),
+    }));
+  };
+
+  const removeFooterItem = (key, index) => {
+    setFooterForm((current) => ({
+      ...current,
+      [key]: current[key].filter((_, entryIndex) => entryIndex !== index),
+    }));
+  };
+
+  const addHomeStat = () => {
+    setHomeSettingsForm((current) => ({
+      ...current,
+      stats: [...current.stats, { value: '', label: '' }],
+    }));
+  };
+
+  const updateHomeStat = (index, field, value) => {
+    setHomeSettingsForm((current) => ({
+      ...current,
+      stats: current.stats.map((entry, entryIndex) => (
+        entryIndex === index ? { ...entry, [field]: value } : entry
+      )),
+    }));
+  };
+
+  const removeHomeStat = (index) => {
+    setHomeSettingsForm((current) => ({
+      ...current,
+      stats: current.stats.filter((_, entryIndex) => entryIndex !== index),
+    }));
   };
 
   const onSubmit = async (event) => {
@@ -152,6 +225,40 @@ export default function Dashboard() {
       await loadDashboard();
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to update booking');
+    }
+  };
+
+  const saveFooter = async (event) => {
+    event.preventDefault();
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+      const response = await adminService.updateFooter(footerForm);
+      setFooterForm(normalizeFooterForm(response.data?.footer));
+      window.dispatchEvent(new Event('footer-settings-updated'));
+      setSuccess('تم تحديث بيانات الـ footer بنجاح');
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Failed to update footer');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveHomeSettings = async (event) => {
+    event.preventDefault();
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+      const response = await adminService.updateHomeSettings(homeSettingsForm);
+      setHomeSettingsForm(normalizeHomeSettingsForm(response.data?.homeSettings));
+      window.dispatchEvent(new Event('home-settings-updated'));
+      setSuccess('تم تحديث إعدادات الصفحة الرئيسية بنجاح');
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Failed to update home settings');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -351,6 +458,241 @@ export default function Dashboard() {
           ))}
         </div>
       ) : null}
+
+      {!loading && activeTab === 'home' ? (
+        <form className="detail-card footer-admin-form" onSubmit={saveHomeSettings}>
+          <div className="table-head">
+            <h3>إعدادات الصفحة الرئيسية</h3>
+            <p>عدّل نصوص الـ hero والأزرار والإحصائيات الظاهرة في أعلى الصفحة الرئيسية.</p>
+          </div>
+
+          <label>العنوان الصغير أعلى الـ Hero</label>
+          <input
+            className="input"
+            value={homeSettingsForm.heroKicker}
+            onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, heroKicker: e.target.value })}
+            required
+          />
+
+          <label>العنوان الرئيسي</label>
+          <input
+            className="input"
+            value={homeSettingsForm.heroTitle}
+            onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, heroTitle: e.target.value })}
+            required
+          />
+
+          <label>النص الفرعي</label>
+          <textarea
+            className="input textarea"
+            value={homeSettingsForm.heroSubtitle}
+            onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, heroSubtitle: e.target.value })}
+            required
+          />
+
+          <div className="dashboard-grid-2">
+            <div>
+              <label>نص الزر الأساسي</label>
+              <input
+                className="input"
+                value={homeSettingsForm.primaryButtonText}
+                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, primaryButtonText: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label>رابط الزر الأساسي</label>
+              <input
+                className="input"
+                value={homeSettingsForm.primaryButtonUrl}
+                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, primaryButtonUrl: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="dashboard-grid-2">
+            <div>
+              <label>نص الزر الثانوي</label>
+              <input
+                className="input"
+                value={homeSettingsForm.secondaryButtonText}
+                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, secondaryButtonText: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label>رابط الزر الثانوي</label>
+              <input
+                className="input"
+                value={homeSettingsForm.secondaryButtonUrl}
+                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, secondaryButtonUrl: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="footer-editor-section">
+            <div className="footer-editor-head">
+              <h4>الإحصائيات</h4>
+              <button className="btn-light" type="button" onClick={addHomeStat}>إضافة إحصائية</button>
+            </div>
+
+            {homeSettingsForm.stats.length === 0 ? <p className="muted">لا توجد إحصائيات مضافة بعد.</p> : null}
+
+            {homeSettingsForm.stats.map((item, index) => (
+              <div key={`stat-${index}`} className="footer-editor-row">
+                <input
+                  className="input"
+                  value={item.value || ''}
+                  onChange={(e) => updateHomeStat(index, 'value', e.target.value)}
+                  placeholder="القيمة مثل 10K+"
+                  required
+                />
+                <input
+                  className="input"
+                  value={item.label || ''}
+                  onChange={(e) => updateHomeStat(index, 'label', e.target.value)}
+                  placeholder="الوصف مثل Trusted Users"
+                  required
+                />
+                <button className="btn-danger" type="button" onClick={() => removeHomeStat(index)}>حذف</button>
+              </div>
+            ))}
+          </div>
+
+          <div className="dashboard-actions">
+            <button className="btn-primary" type="submit" disabled={saving}>
+              {saving ? 'جارٍ الحفظ...' : 'حفظ إعدادات الرئيسية'}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {!loading && activeTab === 'footer' ? (
+        <form className="detail-card footer-admin-form" onSubmit={saveFooter}>
+          <div className="table-head">
+            <h3>إدارة الـ Footer</h3>
+            <p>يمكنك تعديل النبذة وروابط الأقسام وروابط التواصل والحقوق من هنا.</p>
+          </div>
+
+          <label>نبذة قصيرة عن Rent It</label>
+          <textarea
+            className="input textarea"
+            value={footerForm.aboutText}
+            onChange={(e) => setFooterForm({ ...footerForm, aboutText: e.target.value })}
+            required
+          />
+
+          <FooterEditorSection
+            title="روابط تهمك"
+            items={footerForm.usefulLinks}
+            labelKey="label"
+            labelPlaceholder="اسم الرابط"
+            onAdd={() => addFooterItem('usefulLinks', { label: '', url: '' })}
+            onChange={(index, field, value) => updateFooterItem('usefulLinks', index, field, value)}
+            onRemove={(index) => removeFooterItem('usefulLinks', index)}
+          />
+
+          <FooterEditorSection
+            title="خدمة العملاء"
+            items={footerForm.customerServiceLinks}
+            labelKey="label"
+            labelPlaceholder="اسم الخدمة"
+            onAdd={() => addFooterItem('customerServiceLinks', { label: '', url: '' })}
+            onChange={(index, field, value) => updateFooterItem('customerServiceLinks', index, field, value)}
+            onRemove={(index) => removeFooterItem('customerServiceLinks', index)}
+          />
+
+          <FooterEditorSection
+            title="أيقونات التواصل"
+            items={footerForm.socialLinks}
+            labelKey="platform"
+            labelPlaceholder="اسم المنصة"
+            onAdd={() => addFooterItem('socialLinks', { platform: '', url: '' })}
+            onChange={(index, field, value) => updateFooterItem('socialLinks', index, field, value)}
+            onRemove={(index) => removeFooterItem('socialLinks', index)}
+          />
+
+          <label>نص الحقوق</label>
+          <input
+            className="input"
+            value={footerForm.copyrightText}
+            onChange={(e) => setFooterForm({ ...footerForm, copyrightText: e.target.value })}
+            required
+          />
+
+          <div className="dashboard-actions">
+            <button className="btn-primary" type="submit" disabled={saving}>
+              {saving ? 'جارٍ الحفظ...' : 'حفظ إعدادات الـ Footer'}
+            </button>
+          </div>
+        </form>
+      ) : null}
     </section>
+  );
+}
+
+function normalizeFooterForm(footer) {
+  return {
+    aboutText: footer?.aboutText || '',
+    usefulLinks: Array.isArray(footer?.usefulLinks) ? footer.usefulLinks : [],
+    customerServiceLinks: Array.isArray(footer?.customerServiceLinks) ? footer.customerServiceLinks : [],
+    socialLinks: Array.isArray(footer?.socialLinks) ? footer.socialLinks : [],
+    copyrightText: footer?.copyrightText || '',
+  };
+}
+
+function normalizeHomeSettingsForm(homeSettings) {
+  return {
+    heroKicker: homeSettings?.heroKicker || '',
+    heroTitle: homeSettings?.heroTitle || '',
+    heroSubtitle: homeSettings?.heroSubtitle || '',
+    primaryButtonText: homeSettings?.primaryButtonText || '',
+    primaryButtonUrl: homeSettings?.primaryButtonUrl || '',
+    secondaryButtonText: homeSettings?.secondaryButtonText || '',
+    secondaryButtonUrl: homeSettings?.secondaryButtonUrl || '',
+    stats: Array.isArray(homeSettings?.stats) ? homeSettings.stats : [],
+  };
+}
+
+function FooterEditorSection({
+  title,
+  items,
+  labelKey,
+  labelPlaceholder,
+  onAdd,
+  onChange,
+  onRemove,
+}) {
+  return (
+    <div className="footer-editor-section">
+      <div className="footer-editor-head">
+        <h4>{title}</h4>
+        <button className="btn-light" type="button" onClick={onAdd}>إضافة</button>
+      </div>
+
+      {items.length === 0 ? <p className="muted">لا توجد عناصر مضافة بعد.</p> : null}
+
+      {items.map((item, index) => (
+        <div key={`${title}-${index}`} className="footer-editor-row">
+          <input
+            className="input"
+            value={item[labelKey] || ''}
+            onChange={(e) => onChange(index, labelKey, e.target.value)}
+            placeholder={labelPlaceholder}
+            required
+          />
+          <input
+            className="input"
+            value={item.url || ''}
+            onChange={(e) => onChange(index, 'url', e.target.value)}
+            placeholder="الرابط"
+            required
+          />
+          <button className="btn-danger" type="button" onClick={() => onRemove(index)}>حذف</button>
+        </div>
+      ))}
+    </div>
   );
 }
