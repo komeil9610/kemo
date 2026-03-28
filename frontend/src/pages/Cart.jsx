@@ -22,6 +22,12 @@ export default function Cart() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [message, setMessage] = useState('');
+  const hasUnavailableItems = items.some((item) => Number(item.availableQuantity ?? 0) <= 0);
+  const hasInvalidQuantities = items.some((item) => {
+    const availableQuantity = Number(item.availableQuantity ?? 0);
+    const quantity = Number(item.quantity ?? 0);
+    return availableQuantity > 0 && quantity > availableQuantity;
+  });
 
   const total = useMemo(
     () =>
@@ -74,6 +80,11 @@ export default function Cart() {
   const checkout = async () => {
     if (!items.length) {
       setMessage('السلة فارغة');
+      return;
+    }
+
+    if (hasUnavailableItems || hasInvalidQuantities) {
+      setMessage('يوجد منتج غير متوفر أو كمية أعلى من المخزون المتاح. حدّث السلة أولًا.');
       return;
     }
 
@@ -168,12 +179,18 @@ export default function Cart() {
                           <input
                             className="input table-input"
                             type="number"
-                            min="1"
-                            max={item.availableQuantity || 1}
+                            min={Number(item.availableQuantity || 0) > 0 ? '1' : '0'}
+                            max={Math.max(Number(item.availableQuantity || 0), 0)}
                             value={item.quantity}
                             onChange={(e) => updateItem(item.id, { quantity: Number(e.target.value) })}
+                            disabled={Number(item.availableQuantity || 0) <= 0}
                           />
                         </div>
+                        <span className={`inventory-chip ${Number(item.availableQuantity || 0) > 0 ? 'inventory-chip-neutral' : 'inventory-chip-out'}`}>
+                          {Number(item.availableQuantity || 0) > 0
+                            ? `المتوفر الآن: ${item.availableQuantity}`
+                            : 'نفد المخزون'}
+                        </span>
                         <button className="btn-danger" type="button" onClick={() => removeItem(item.id)}>
                           حذف
                         </button>
@@ -190,10 +207,17 @@ export default function Cart() {
           <h3>ملخص الطلب</h3>
           <p>عدد العناصر: {items.length}</p>
           <p>الإجمالي المتوقع: <strong>{total} ريال</strong></p>
+          {hasUnavailableItems ? <p className="error-text">يوجد عنصر في السلة غير متوفر حاليًا.</p> : null}
+          {hasInvalidQuantities ? <p className="error-text">بعض الكميات في السلة أعلى من المخزون الحالي.</p> : null}
           {!token ? <p className="muted">سجّل الدخول أولًا ثم أكمل الطلب من هذه الصفحة.</p> : null}
           {message ? <p className={message.includes('تم') ? 'success-text' : 'error-text'}>{message}</p> : null}
           <div className="dashboard-actions">
-            <button className="btn-primary" type="button" onClick={checkout} disabled={!token || !items.length || checkingOut}>
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={checkout}
+              disabled={!token || !items.length || checkingOut || hasUnavailableItems || hasInvalidQuantities}
+            >
               {checkingOut ? 'جارٍ الإتمام...' : 'إتمام الشراء'}
             </button>
             <button className="btn-secondary" type="button" onClick={() => syncCart(cartStorage.clear())} disabled={!items.length}>

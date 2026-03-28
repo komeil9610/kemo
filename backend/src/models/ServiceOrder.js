@@ -10,6 +10,33 @@ const photoSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const serviceItemSchema = new mongoose.Schema(
+  {
+    id: String,
+    description: {
+      type: String,
+      trim: true,
+    },
+    price: {
+      type: Number,
+      default: 0,
+    },
+    unit: {
+      type: String,
+      default: '',
+    },
+    quantity: {
+      type: Number,
+      default: 1,
+    },
+    totalPrice: {
+      type: Number,
+      default: 0,
+    },
+  },
+  { _id: false }
+);
+
 const serviceOrderSchema = new mongoose.Schema(
   {
     orderNumber: {
@@ -55,7 +82,7 @@ const serviceOrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'en_route', 'in_progress', 'completed'],
+      enum: ['pending', 'en_route', 'in_progress', 'completed', 'canceled'],
       default: 'pending',
     },
     extras: {
@@ -71,6 +98,10 @@ const serviceOrderSchema = new mongoose.Schema(
         type: Number,
         default: 0,
       },
+    },
+    serviceItems: {
+      type: [serviceItemSchema],
+      default: [],
     },
     photos: {
       type: [photoSchema],

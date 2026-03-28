@@ -20,6 +20,8 @@ export default function ProductDetail() {
       try {
         const response = await productService.getById(id);
         setProduct(response.data?.product || null);
+      } catch {
+        setProduct(null);
       } finally {
         setLoading(false);
       }
@@ -46,9 +48,20 @@ export default function ProductDetail() {
   const addToCart = (event) => {
     event.preventDefault();
     const quantity = Number(booking.quantity);
+    const availableQuantity = Number(product.availableQuantity ?? product.quantity ?? 0);
 
     if (quantity <= 0) {
       setMessage('الكمية يجب أن تكون 1 على الأقل');
+      return;
+    }
+
+    if (availableQuantity <= 0) {
+      setMessage('هذا المنتج غير متوفر حاليًا');
+      return;
+    }
+
+    if (quantity > availableQuantity) {
+      setMessage(`الكمية المتاحة حاليًا هي ${availableQuantity} فقط`);
       return;
     }
 
@@ -62,11 +75,14 @@ export default function ProductDetail() {
       startDate: booking.startDate,
       endDate: booking.endDate,
       quantity,
-      availableQuantity: Number(product.quantity || 0),
+      availableQuantity,
     });
 
     setMessage('تمت إضافة المنتج إلى السلة بنجاح');
   };
+
+  const availableQuantity = Number(product.availableQuantity ?? product.quantity ?? 0);
+  const isAvailable = availableQuantity > 0;
 
   return (
     <section className="section">
@@ -78,7 +94,14 @@ export default function ProductDetail() {
           <p><strong>الفئة:</strong> {product.category}</p>
           <p><strong>المدينة:</strong> {product.city}</p>
           <p><strong>السعر:</strong> {product.pricePerDay} ريال/يوم</p>
-          <p><strong>الكمية المتاحة:</strong> {product.quantity}</p>
+          <div className="product-badges">
+            <span className={`inventory-chip ${isAvailable ? '' : 'inventory-chip-out'}`}>
+              {product.availabilityLabel || (isAvailable ? 'متوفر' : 'غير متوفر')}
+            </span>
+            <span className="inventory-chip inventory-chip-neutral">
+              الكمية المتاحة: {availableQuantity}
+            </span>
+          </div>
           <p><strong>التقييم:</strong> {product.rating}</p>
 
           {token ? (
@@ -95,9 +118,19 @@ export default function ProductDetail() {
                 </div>
               </div>
               <label>الكمية</label>
-              <input className="input" type="number" min="1" max={product.quantity || 1} value={booking.quantity} onChange={(e) => setBooking({ ...booking, quantity: Number(e.target.value) })} required />
+              <input
+                className="input"
+                type="number"
+                min={isAvailable ? '1' : '0'}
+                max={Math.max(availableQuantity, 0)}
+                value={isAvailable ? booking.quantity : 0}
+                onChange={(e) => setBooking({ ...booking, quantity: Number(e.target.value) })}
+                disabled={!isAvailable}
+                required
+              />
               {message ? <p className={message.includes('بنجاح') ? 'success-text' : 'error-text'}>{message}</p> : null}
-              <button className="btn-primary" type="submit">إضافة إلى السلة</button>
+              {!isAvailable ? <p className="muted">المنتج نافد حاليًا، ويمكنك العودة لاحقًا عند تحديث المخزون.</p> : null}
+              <button className="btn-primary" type="submit" disabled={!isAvailable}>إضافة إلى السلة</button>
               <Link className="btn-secondary" to="/cart">فتح السلة</Link>
             </form>
           ) : (

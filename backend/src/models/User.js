@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: [true, 'رقم الهاتف مطلوب'],
-      match: [/^\+?[0-9]{9,15}$/, 'رقم هاتف غير صحيح'],
+      match: [/^05\d{8}$/, 'رقم هاتف غير صحيح'],
     },
     password: {
       type: String,

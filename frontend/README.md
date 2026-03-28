@@ -1,4 +1,4 @@
-# RentIT Frontend Application
+# Tarkeeb Pro Frontend Application
 
 ## 🚀 البدء السريع | Quick Start
 
@@ -147,6 +147,14 @@ npm run cf:deploy
 - المتصفح يطلب `/api/...`
 - Worker يمرر الطلب إلى `API_ORIGIN`
 - لا تحتاج إعداد `CORS` في المتصفح بين الـ frontend والـ backend
+
+### Variables and Secrets
+
+- `API_ORIGIN`: عنوان الـ edge-api المنشور أو دومين `api` الخاص بك
+- `EDGE_API`: Service Binding داخل `frontend/wrangler.toml`
+
+ملاحظة:
+- لا يوجد secret داخل الواجهة نفسها، السر الوحيد المطلوب هو `JWT_SECRET` داخل `edge-api`
 
 ---
 

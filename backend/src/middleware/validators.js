@@ -1,5 +1,6 @@
 // التحقق من صحة الإدخالات | Input Validation Middleware
 const { body, validationResult } = require('express-validator');
+const { isSaudiPhoneNumber, normalizeSaudiPhoneNumber } = require('../utils/phone');
 
 const validateEmail = body('email')
   .isEmail()
@@ -10,7 +11,7 @@ const validatePassword = body('password')
   .withMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
 
 const validatePhone = body('phone')
-  .matches(/^\+?[0-9]{9,15}$/)
+  .custom((value) => isSaudiPhoneNumber(value))
   .withMessage('رقم الهاتف غير صحيح');
 
 const handleValidationErrors = (req, res, next) => {
@@ -30,4 +31,5 @@ module.exports = {
   validatePassword,
   validatePhone,
   handleValidationErrors,
+  normalizeSaudiPhoneNumber,
 };

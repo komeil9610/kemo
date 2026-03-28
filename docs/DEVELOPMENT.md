@@ -16,7 +16,7 @@ mongod --version # v5 أو أعلى
 ```bash
 # 1. استنساخ المشروع
 git clone <repository-url>
-cd rentit
+cd tarkeeb-pro
 
 # 2. تثبيت الحزم
 npm install

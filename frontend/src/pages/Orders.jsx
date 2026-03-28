@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { operationsService } from '../services/api';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
+import { formatSaudiPhoneDisplay, notificationsService, operationsService } from '../services/api';
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -11,13 +12,64 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
+const isValidDate = (value) => {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime());
+};
+
+const startOfToday = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+};
+
+const resolveRegion = (order, technician) => {
+  return order?.region || order?.zone || technician?.region || technician?.zone || 'Saudi Arabia';
+};
+
+const isOverdueOrder = (order) => {
+  if (!order?.scheduledDate || order.status === 'completed') {
+    return false;
+  }
+
+  const scheduled = new Date(`${order.scheduledDate}T12:00:00`);
+  if (!isValidDate(scheduled)) {
+    return false;
+  }
+
+  return scheduled < startOfToday();
+};
+
+const formatDate = (value, lang) => {
+  if (!value || !isValidDate(new Date(value))) {
+    return value || '—';
+  }
+
+  return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-SA' : 'en-US', {
+    dateStyle: 'medium',
+  }).format(new Date(`${value}T12:00:00`));
+};
+
+const formatOrderNumber = (value) => String(value || '').replace(/^ORD-/, '');
+
 const copy = {
   en: {
     eyebrow: 'Technician app',
-    title: 'Field technician workspace',
-    titleLine: 'Work orders, update status, and upload proof of work from one place.',
+    title: 'Technician operations hub',
+    titleLine: 'Today’s jobs, alerts, pricing, and proof-of-work tools built for field execution.',
     languageButton: 'العربية',
+    quickNav: 'Quick navigation',
+    overview: 'Overview',
     pricingTitle: 'Pricing snapshot',
+    filtersTitle: 'Task filters',
+    alertsTitle: 'Live alerts',
+    checklistTitle: 'Daily checklist',
+    allStatuses: 'All statuses',
+    allRegions: 'All regions',
+    searchPlaceholder: 'Search order number, customer, phone, or address',
+    orderNumber: 'Order #',
+    summaryLabel: 'Today summary',
+    attentionLabel: 'Needs attention',
     meter: 'Extra copper meter',
     base: 'Base unit',
     included: 'Included copper meters',
@@ -28,11 +80,24 @@ const copy = {
     notesPrefix: 'Note:',
     empty: 'No assigned tasks yet.',
     loading: 'Loading technician tasks...',
+    showing: 'Showing',
+    of: 'of',
+    tasks: 'tasks',
+    newTasks: 'New tasks',
+    overdueTasks: 'Overdue tasks',
+    noAlerts: 'No live alerts right now.',
+    navigationLinks: [
+      { label: 'Summary', href: '#technician-summary' },
+      { label: 'Tasks', href: '#technician-tasks' },
+      { label: 'Pricing', href: '#technician-pricing' },
+      { label: 'Checklist', href: '#technician-checklist' },
+    ],
     statusLabels: {
       pending: 'Pending',
       en_route: 'On the way',
       in_progress: 'Installing',
       completed: 'Completed',
+      canceled: 'Canceled',
     },
     actions: [
       { value: 'en_route', label: 'I am on site' },
@@ -46,10 +111,21 @@ const copy = {
   },
   ar: {
     eyebrow: 'تطبيق الفني',
-    title: 'واجهة الفني الميداني',
-    titleLine: 'تنفيذ الطلبات، تحديث الحالة، ورفع صور التوثيق من مكان واحد.',
+    title: 'مركز عمليات الفني',
+    titleLine: 'مهام اليوم والتنبيهات والتسعير والتوثيق في مساحة مخصصة للفني فقط.',
     languageButton: 'English',
+    quickNav: 'تنقل سريع',
+    overview: 'نظرة عامة',
     pricingTitle: 'ملخص التسعير',
+    filtersTitle: 'تصفية المهام',
+    alertsTitle: 'تنبيهات فورية',
+    checklistTitle: 'قائمة المراجعة اليومية',
+    allStatuses: 'كل الحالات',
+    allRegions: 'كل المناطق',
+    searchPlaceholder: 'ابحث برقم الطلب أو اسم العميل أو الجوال أو العنوان',
+    orderNumber: 'رقم الطلب',
+    summaryLabel: 'ملخص اليوم',
+    attentionLabel: 'يحتاج متابعة',
     meter: 'متر نحاس إضافي',
     base: 'قاعدة إضافية',
     included: 'الأمتار المشمولة',
@@ -60,11 +136,24 @@ const copy = {
     notesPrefix: 'ملاحظة:',
     empty: 'لا توجد مهام مخصصة حتى الآن.',
     loading: 'جارٍ تحميل مهام الفني...',
+    showing: 'عرض',
+    of: 'من',
+    tasks: 'مهام',
+    newTasks: 'مهام جديدة',
+    overdueTasks: 'مهام متأخرة',
+    noAlerts: 'لا توجد تنبيهات حية الآن.',
+    navigationLinks: [
+      { label: 'الملخص', href: '#technician-summary' },
+      { label: 'المهام', href: '#technician-tasks' },
+      { label: 'التسعير', href: '#technician-pricing' },
+      { label: 'المراجعة', href: '#technician-checklist' },
+    ],
     statusLabels: {
       pending: 'قيد الانتظار',
       en_route: 'في الطريق',
       in_progress: 'جاري التركيب',
       completed: 'مكتمل',
+      canceled: 'ملغى',
     },
     actions: [
       { value: 'en_route', label: 'وصلت للموقع' },
@@ -134,25 +223,108 @@ export default function Orders() {
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [notifications, setNotifications] = useState([]);
+  const [filters, setFilters] = useState({ search: '', status: 'all', region: 'all' });
+
+  const seenOrderIdsRef = useRef(new Set());
+  const seenOverdueIdsRef = useRef(new Set());
+  const seenNotificationIdsRef = useRef(new Set());
+  const bootstrappedOrdersRef = useRef(false);
+  const bootstrappedNotificationsRef = useRef(false);
 
   const t = useMemo(() => copy[lang] || copy.en, [lang]);
   const checklist = useMemo(() => workflowChecklist[lang] || workflowChecklist.en, [lang]);
   const catalog = useMemo(() => servicesCatalog[lang] || servicesCatalog.en, [lang]);
 
-  const loadOrders = useCallback(async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+  const loadOrders = useCallback(
+    async (silent = false) => {
+      if (!user) {
+        if (!silent) {
+          setLoading(false);
+        }
+        return;
+      }
 
-    try {
-      setLoading(true);
-      const response = await operationsService.getTechnicianOrders(user?.technicianId);
-      setPayload(response.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+      try {
+        if (!silent) {
+          setLoading(true);
+        }
+
+        const response = await operationsService.getTechnicianOrders(user?.technicianId);
+        const nextPayload = response.data || {};
+        setPayload(nextPayload);
+
+        const nextOrders = nextPayload.orders || [];
+        const nextOrderIds = new Set();
+        const nextOverdueIds = new Set();
+        const overdueAlerts = [];
+
+        nextOrders.forEach((order) => {
+          const orderId = String(order.id);
+          nextOrderIds.add(orderId);
+
+          const overdue = isOverdueOrder(order);
+          if (overdue) {
+            nextOverdueIds.add(orderId);
+          }
+
+          if (bootstrappedOrdersRef.current && overdue && !seenOverdueIdsRef.current.has(orderId) && overdueAlerts.length < 6) {
+            overdueAlerts.push({
+              id: `overdue-${orderId}`,
+              title: lang === 'ar' ? 'مهمة متأخرة' : 'Overdue task',
+              body:
+                lang === 'ar'
+                  ? `${order.customerName} - ${formatDate(order.scheduledDate, lang)}`
+                  : `${order.customerName} - ${formatDate(order.scheduledDate, lang)}`,
+            });
+          }
+        });
+
+        seenOrderIdsRef.current = nextOrderIds;
+        seenOverdueIdsRef.current = nextOverdueIds;
+        bootstrappedOrdersRef.current = true;
+
+        if (overdueAlerts.length) {
+          overdueAlerts.forEach((alert) => toast(alert.title, { duration: 4500 }));
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [lang, user]
+  );
+
+  const loadNotifications = useCallback(
+    async (silent = false) => {
+      if (!user) {
+        return;
+      }
+
+      try {
+        const response = await notificationsService.list();
+        const items = response.data?.notifications || [];
+        const nextNotifications = items.slice(0, 5);
+        setNotifications(nextNotifications);
+
+        const nextIds = new Set(nextNotifications.map((item) => String(item.id)));
+        const freshItems = nextNotifications.filter((item) => !seenNotificationIdsRef.current.has(String(item.id)));
+
+        if (bootstrappedNotificationsRef.current && freshItems.length) {
+          freshItems.forEach((item) => toast(item.title, { duration: 4500 }));
+        }
+
+        seenNotificationIdsRef.current = nextIds;
+        bootstrappedNotificationsRef.current = true;
+      } catch {
+        if (!silent) {
+          return;
+        }
+      }
+    },
+    [user]
+  );
 
   useEffect(() => {
     if (user?.role !== 'technician' && !user?.technicianId) {
@@ -160,21 +332,27 @@ export default function Orders() {
       return;
     }
 
-    loadOrders();
-    window.addEventListener('operations-updated', loadOrders);
-    return () => window.removeEventListener('operations-updated', loadOrders);
-  }, [loadOrders, user?.role, user?.technicianId]);
+    loadOrders(false);
+    loadNotifications(false);
+
+    const refresh = () => {
+      loadOrders(true);
+      loadNotifications(true);
+    };
+
+    window.addEventListener('operations-updated', refresh);
+    const intervalId = window.setInterval(refresh, 15000);
+
+    return () => {
+      window.removeEventListener('operations-updated', refresh);
+      window.clearInterval(intervalId);
+    };
+  }, [loadNotifications, loadOrders, user?.role, user?.technicianId]);
 
   const updateStatus = async (orderId, status) => {
     setMessage('');
     await operationsService.updateTechnicianStatus(orderId, status);
     setMessage(t.messages.statusUpdated);
-    await loadOrders();
-  };
-
-  const updateExtras = async (orderId, currentExtras, changes) => {
-    const nextExtras = { ...currentExtras, ...changes };
-    await operationsService.updateExtras(orderId, nextExtras);
     await loadOrders();
   };
 
@@ -189,10 +367,104 @@ export default function Orders() {
     await loadOrders();
   };
 
-  const orders = payload?.orders || [];
-  const activeCount = orders.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length;
-  const completedCount = orders.filter((order) => order.status === 'completed').length;
-  const pendingCount = orders.filter((order) => order.status === 'pending').length;
+  const cancelOrder = async (orderId) => {
+    setMessage('');
+    await operationsService.cancelOrder(orderId, lang === 'ar' ? 'تم رفض الطلب من العميل' : 'Customer rejected the order');
+    setMessage(lang === 'ar' ? 'تم إلغاء الطلب.' : 'Order canceled.');
+    await loadOrders();
+  };
+
+  const orders = useMemo(() => payload?.orders || [], [payload]);
+  const technician = useMemo(() => payload?.technician || null, [payload]);
+
+  const ordersWithMeta = useMemo(
+    () =>
+      orders.map((order) => ({
+        ...order,
+        region: resolveRegion(order, technician),
+        overdue: isOverdueOrder(order),
+      })),
+    [orders, technician]
+  );
+
+  const filteredOrders = useMemo(() => {
+    const searchTerm = filters.search.trim().toLowerCase();
+
+    return ordersWithMeta
+      .filter((order) => {
+        const matchesStatus = filters.status === 'all' || order.status === filters.status;
+        const matchesRegion = filters.region === 'all' || order.region === filters.region;
+
+        if (!searchTerm) {
+          return matchesStatus && matchesRegion;
+        }
+
+        const haystack = [
+          order.id,
+          order.numericId,
+          order.customerName,
+          order.phone,
+          formatSaudiPhoneDisplay(order.phone),
+          order.address,
+          order.acType,
+          order.technicianName,
+          order.region,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        return matchesStatus && matchesRegion && haystack.includes(searchTerm);
+      })
+      .sort((a, b) => {
+        if (a.overdue !== b.overdue) {
+          return a.overdue ? -1 : 1;
+        }
+
+        const rank = {
+          pending: 0,
+          en_route: 1,
+          in_progress: 2,
+          completed: 3,
+        };
+
+        if ((rank[a.status] || 9) !== (rank[b.status] || 9)) {
+          return (rank[a.status] || 9) - (rank[b.status] || 9);
+        }
+
+        return String(a.scheduledDate || '').localeCompare(String(b.scheduledDate || ''));
+      });
+  }, [filters.region, filters.search, filters.status, ordersWithMeta]);
+
+  const regionOptions = useMemo(() => {
+    const options = new Set();
+    ordersWithMeta.forEach((order) => {
+      if (order.region) {
+        options.add(order.region);
+      }
+    });
+    if (technician?.region) {
+      options.add(technician.region);
+    }
+    if (technician?.zone) {
+      options.add(technician.zone);
+    }
+    return Array.from(options);
+  }, [ordersWithMeta, technician]);
+
+  const activeCount = ordersWithMeta.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length;
+  const completedCount = ordersWithMeta.filter((order) => order.status === 'completed').length;
+  const pendingCount = ordersWithMeta.filter((order) => order.status === 'pending').length;
+  const overdueCount = ordersWithMeta.filter((order) => order.overdue).length;
+  const attentionCount = pendingCount + overdueCount;
+  const liveNotifications = notifications.slice(0, 4);
+  const newTaskAlerts = ordersWithMeta.filter((order) => order.status === 'pending').slice(0, 3);
+  const overdueAlerts = ordersWithMeta.filter((order) => order.overdue).slice(0, 3);
+  const alertCards = [...overdueAlerts, ...newTaskAlerts];
+
+  const resetFilters = () => {
+    setFilters({ search: '', status: 'all', region: 'all' });
+  };
 
   if (loading) {
     return <section className="page-shell">{t.loading}</section>;
@@ -200,13 +472,13 @@ export default function Orders() {
 
   return (
     <section className="page-shell technician-page" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="technician-hero">
+      <div className="technician-hero" id="technician-summary">
         <div className="section-heading technician-heading">
           <div>
             <p className="eyebrow">{t.eyebrow}</p>
             <h1>{t.title}</h1>
             <p className="section-subtitle">
-              {payload?.technician?.name} - {payload?.technician?.region || payload?.technician?.zone}
+              {technician?.name} - {technician?.region || technician?.zone}
             </p>
             <p className="section-subtitle">{t.titleLine}</p>
           </div>
@@ -241,11 +513,70 @@ export default function Orders() {
         <span>{t.meter}: {payload?.pricing?.copperPricePerMeter || 0} SAR</span>
         <span>{t.base}: {payload?.pricing?.basePrice || 0} SAR</span>
         <span>{t.included}: {payload?.pricing?.includedCopperMeters || 0} m</span>
+        <span>{t.overdueTasks}: {overdueCount}</span>
       </div>
 
       <div className="technician-layout">
         <div className="technician-main">
-          <div className="panel">
+          <div className="panel" id="technician-tasks">
+            <div className="panel-header">
+              <h2>{t.filtersTitle}</h2>
+              <p>
+                {t.showing} {filteredOrders.length} {t.of} {ordersWithMeta.length} {t.tasks}
+              </p>
+            </div>
+
+            <div className="filter-bar">
+              <label className="filter-field">
+                <span>{lang === 'ar' ? 'البحث' : 'Search'}</span>
+                <input
+                  className="input"
+                  type="search"
+                  value={filters.search}
+                  onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+                  placeholder={t.searchPlaceholder}
+                />
+              </label>
+
+              <label className="filter-field">
+                <span>{lang === 'ar' ? 'الحالة' : 'Status'}</span>
+                <select
+                  className="input"
+                  value={filters.status}
+                  onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+                >
+                  <option value="all">{t.allStatuses}</option>
+                  {Object.entries(t.statusLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="filter-field">
+                <span>{lang === 'ar' ? 'المنطقة' : 'Region'}</span>
+                <select
+                  className="input"
+                  value={filters.region}
+                  onChange={(event) => setFilters((current) => ({ ...current, region: event.target.value }))}
+                >
+                  <option value="all">{t.allRegions}</option>
+                  {regionOptions.map((region) => (
+                    <option key={region} value={region}>
+                      {region}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button className="btn-light filter-reset" type="button" onClick={resetFilters}>
+                {lang === 'ar' ? 'إعادة الضبط' : 'Reset'}
+              </button>
+            </div>
+          </div>
+
+          <div className="panel" id="technician-pricing">
             <div className="panel-header">
               <h2>{lang === 'ar' ? 'قائمة الخدمات والأسعار' : 'Service pricing list'}</h2>
               <p>{lang === 'ar' ? 'الأسعار الرسمية المعتمدة للفنيين داخل النظام.' : 'Official service pricing used by technicians inside the system.'}</p>
@@ -267,23 +598,32 @@ export default function Orders() {
           </div>
 
           <div className="order-list">
-            {orders.length ? (
-              orders.map((order) => (
+            {filteredOrders.length ? (
+              filteredOrders.map((order) => (
                 <article className="task-card technician-task" key={order.id}>
                   <div className="task-head">
                     <div>
+                      <p className="task-region">{order.region}</p>
                       <strong>{order.customerName}</strong>
-                      <p>{order.phone}</p>
+                      <p>{formatSaudiPhoneDisplay(order.phone)}</p>
+                      <p className="task-order-number">{t.orderNumber} {formatOrderNumber(order.id)}</p>
                       <p>{order.address}</p>
-                      <p>{order.acType}</p>
+                      <p className="task-ac-type">{order.acType}</p>
                     </div>
-                    <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
+                    <div className="task-badges">
+                      {order.overdue ? <span className="alert-pill">{lang === 'ar' ? 'متأخرة' : 'Overdue'}</span> : null}
+                      <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
+                    </div>
                   </div>
 
                   <div className="task-meta-grid">
                     <div className="task-meta-item">
                       <span>{lang === 'ar' ? 'الموعد' : 'Scheduled'}</span>
-                      <strong>{order.scheduledDate}</strong>
+                      <strong>{formatDate(order.scheduledDate, lang)}</strong>
+                    </div>
+                    <div className="task-meta-item">
+                      <span>{lang === 'ar' ? 'المنطقة' : 'Region'}</span>
+                      <strong>{order.region}</strong>
                     </div>
                     <div className="task-meta-item">
                       <span>{lang === 'ar' ? 'الإضافات' : 'Extras'}</span>
@@ -301,42 +641,33 @@ export default function Orders() {
                         key={action.value}
                         className="btn-light"
                         type="button"
+                        disabled={['completed', 'canceled'].includes(order.status)}
                         onClick={() => updateStatus(order.id, action.value)}
                       >
                         {action.label}
                       </button>
                     ))}
+                    {['completed', 'canceled'].includes(order.status) ? null : (
+                      <button className="btn-danger" type="button" onClick={() => cancelOrder(order.id)}>
+                        {lang === 'ar' ? 'إلغاء الطلب' : 'Cancel order'}
+                      </button>
+                    )}
                   </div>
 
                   <div className="task-grid">
                     <div className="panel inset-panel">
                       <h3>{t.calcTitle}</h3>
-                      <label>{t.meter}</label>
-                      <input
-                        className="input"
-                        type="number"
-                        min="0"
-                        value={order.extras?.copperMeters || 0}
-                        onChange={(event) =>
-                          updateExtras(order.id, order.extras, { copperMeters: Number(event.target.value) || 0 })
-                        }
-                      />
-
-                      <label className="checkbox-row">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(order.extras?.baseIncluded)}
-                          onChange={(event) =>
-                            updateExtras(order.id, order.extras, { baseIncluded: event.target.checked })
-                          }
-                        />
-                        <span>{t.base}</span>
-                      </label>
-
                       <div className="quote-box">
-                        <span>{t.finalPrice}</span>
+                        <span>{lang === 'ar' ? 'تفاصيل الإضافات' : 'Add-on details'}</span>
                         <strong>{order.extras?.totalPrice || 0} SAR</strong>
                       </div>
+                      <p className="muted">
+                        {t.meter}: {order.extras?.copperMeters || 0}
+                      </p>
+                      <p className="muted">
+                        {t.base}: {order.extras?.baseIncluded ? (lang === 'ar' ? 'نعم' : 'Yes') : (lang === 'ar' ? 'لا' : 'No')}
+                      </p>
+                      <p className="muted">{lang === 'ar' ? 'تعديل الإضافات للمسؤول فقط.' : 'Add-ons are editable by the admin only.'}</p>
                     </div>
 
                     <div className="panel inset-panel">
@@ -370,9 +701,48 @@ export default function Orders() {
         </div>
 
         <aside className="technician-sidebar">
-          <div className="panel sticky-panel">
+          <div className="panel sticky-panel technician-side-panel">
+            <div className="sidebar-counter">
+              <span>{t.summaryLabel}</span>
+              <strong>{attentionCount}</strong>
+              <small>{t.attentionLabel}</small>
+            </div>
             <div className="panel-header">
-              <h2>{lang === 'ar' ? 'قائمة العمل اليومية' : 'Daily work checklist'}</h2>
+              <h2>{t.quickNav}</h2>
+              <p>{lang === 'ar' ? 'شريط تنقل سريع للفني، مع متابعة التنبيهات والمهام المتأخرة.' : 'A fast technician-only side rail for navigation, alerts, and overdue jobs.'}</p>
+            </div>
+            <div className="side-nav">
+              {t.navigationLinks.map((item) => (
+                <a key={item.href} className="side-nav-link" href={item.href}>
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel sticky-panel technician-side-panel">
+            <div className="panel-header">
+              <h2>{t.alertsTitle}</h2>
+              <p>{lang === 'ar' ? 'التنبيهات الأحدث من النظام والمهام التي تحتاج متابعة اليوم.' : 'The newest alerts from the system and the jobs that need attention today.'}</p>
+            </div>
+            <div className="alert-stack">
+              {alertCards.length ? (
+                alertCards.map((order) => (
+                  <article className="alert-card" key={`${order.id}-${order.status}`}>
+                    <strong>{order.customerName}</strong>
+                    <p>{order.address}</p>
+                    <span>{order.overdue ? (lang === 'ar' ? 'متأخرة' : 'Overdue') : (lang === 'ar' ? 'جديدة' : 'New')}</span>
+                  </article>
+                ))
+              ) : (
+                <p className="muted">{t.noAlerts}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="panel sticky-panel technician-side-panel" id="technician-checklist">
+            <div className="panel-header">
+              <h2>{t.checklistTitle}</h2>
               <p>{lang === 'ar' ? 'اتباع هذه النقاط يحافظ على جودة التنفيذ والتوثيق.' : 'Following these steps keeps execution and documentation consistent.'}</p>
             </div>
             <div className="checklist-list">
@@ -382,6 +752,25 @@ export default function Orders() {
                   <p>{item}</p>
                 </article>
               ))}
+            </div>
+          </div>
+
+          <div className="panel sticky-panel technician-side-panel">
+            <div className="panel-header">
+              <h2>{lang === 'ar' ? 'تنبيهات النظام' : 'System notifications'}</h2>
+              <p>{lang === 'ar' ? 'الرسائل الأخيرة المرتبطة بالحساب والمهام.' : 'The latest messages linked to the account and assigned jobs.'}</p>
+            </div>
+            <div className="notification-stack">
+              {liveNotifications.length ? (
+                liveNotifications.map((item) => (
+                  <article className={`notification-tile ${item.isRead ? 'read' : 'unread'}`} key={item.id}>
+                    <strong>{item.title}</strong>
+                    <p>{item.body}</p>
+                  </article>
+                ))
+              ) : (
+                <p className="muted">{t.noAlerts}</p>
+              )}
             </div>
           </div>
         </aside>

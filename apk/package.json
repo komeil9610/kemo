@@ -1,0 +1,27 @@
+{
+  "name": "rentit-apk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Android APK wrapper for RentIT using Capacitor",
+  "scripts": {
+    "build:web": "cross-env REACT_APP_API_URL=https://rentit-edge-api.bobkumeel.workers.dev/api npm --prefix ../frontend run build",
+    "use:admin": "node scripts/use-capacitor-config.mjs admin",
+    "use:technician": "node scripts/use-capacitor-config.mjs technician",
+    "prepare:assets": "node scripts/prepare-web-assets.mjs",
+    "sync": "npm run build:web && npm run use:admin && npm run prepare:assets && npx cap sync android",
+    "sync:admin": "npm run build:web && npm run use:admin && npm run prepare:assets && npx cap sync android",
+    "sync:technician": "npm run build:web && npm run use:technician && npm run prepare:assets && npx cap sync android",
+    "open:android": "npx cap open android",
+    "build:apk": "npm run sync:admin && cd android && ./gradlew assembleDebug",
+    "build:apk:admin": "npm run sync:admin && cd android && ./gradlew assembleDebug",
+    "build:apk:technician": "npm run sync:technician && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.2.0",
+    "@capacitor/cli": "^7.2.0",
+    "@capacitor/core": "^7.2.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

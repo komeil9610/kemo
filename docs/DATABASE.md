@@ -191,10 +191,10 @@ Bookings (1) ──────────→ (1) Payments
 
 ```bash
 # نسخ احتياطي يومي | Daily Backup
-mongodump --uri="mongodb://localhost:27017/rentit_db" --archive=rentit_$(date +%Y%m%d).archive
+mongodump --uri="mongodb://localhost:27017/tarkeeb_pro_db" --archive=tarkeeb_pro_$(date +%Y%m%d).archive
 
 # استعادة | Restore
-mongorestore --uri="mongodb://localhost:27017" --archive=rentit_20240308.archive
+mongorestore --uri="mongodb://localhost:27017" --archive=tarkeeb_pro_20240308.archive
 ```
 
 ---

@@ -1,12 +1,12 @@
 CREATE TABLE IF NOT EXISTS home_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
-  hero_kicker TEXT NOT NULL DEFAULT 'RentIT Marketplace',
-  hero_title TEXT NOT NULL DEFAULT 'Rent smarter. Own less. Do more.',
-  hero_subtitle TEXT NOT NULL DEFAULT 'Discover verified rentals for devices, costumes, and services across Saudi Arabia.',
-  primary_button_text TEXT NOT NULL DEFAULT 'Browse Products',
-  primary_button_url TEXT NOT NULL DEFAULT '/products',
-  secondary_button_text TEXT NOT NULL DEFAULT 'Get Started',
-  secondary_button_url TEXT NOT NULL DEFAULT '/register',
+  hero_kicker TEXT NOT NULL DEFAULT 'Tarkeeb Pro Operations',
+  hero_title TEXT NOT NULL DEFAULT 'Manage installation orders with a clean official workflow.',
+  hero_subtitle TEXT NOT NULL DEFAULT 'Capture, assign, and complete AC installation jobs across Saudi Arabia in one place.',
+  primary_button_text TEXT NOT NULL DEFAULT 'Open Dashboard',
+  primary_button_url TEXT NOT NULL DEFAULT '/dashboard',
+  secondary_button_text TEXT NOT NULL DEFAULT 'Open Technician View',
+  secondary_button_url TEXT NOT NULL DEFAULT '/tasks',
   stats_json TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -24,13 +24,13 @@ INSERT INTO home_settings (
 )
 VALUES (
   1,
-  'RentIT Marketplace',
-  'Rent smarter. Own less. Do more.',
-  'Discover verified rentals for devices, costumes, and services across Saudi Arabia.',
-  'Browse Products',
-  '/products',
-  'Get Started',
-  '/register',
-  '[{"value":"10K+","label":"Trusted Users"},{"value":"4.9/5","label":"Average Rating"},{"value":"35+","label":"Cities Covered"}]'
+  'Tarkeeb Pro Operations',
+  'Manage installation orders with a clean official workflow.',
+  'Capture, assign, and complete AC installation jobs across Saudi Arabia in one place.',
+  'Open Dashboard',
+  '/dashboard',
+  'Open Technician View',
+  '/tasks',
+  '[{"value":"1","label":"Admin console"},{"value":"4","label":"Live order states"},{"value":"24/7","label":"Team readiness"}]'
 )
 ON CONFLICT(id) DO NOTHING;

@@ -24,40 +24,9 @@ export const ProductList = () => {
       const apiProducts = response.data?.products || response.data || [];
       setProducts(Array.isArray(apiProducts) ? apiProducts : []);
     } catch (err) {
-      console.warn('Using local product fallback because API call failed.', err);
-      setError(null);
-      setProducts([
-        {
-          _id: '1',
-          name: 'PlayStation 5',
-          description: '4K console with two controllers and FIFA.',
-          pricePerDay: 80,
-          rating: 4.9,
-          quantity: 3,
-          city: 'الرياض',
-          images: [{ url: 'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?auto=format&fit=crop&w=900&q=80' }]
-        },
-        {
-          _id: '2',
-          name: 'DSLR Camera Kit',
-          description: 'Canon DSLR with lens set and tripod.',
-          pricePerDay: 120,
-          rating: 4.7,
-          quantity: 2,
-          city: 'جدة',
-          images: [{ url: 'https://images.unsplash.com/photo-1510127034890-ba27508e9f1c?auto=format&fit=crop&w=900&q=80' }]
-        },
-        {
-          _id: '3',
-          name: 'Party Costume Bundle',
-          description: 'Premium costume set for events and theme nights.',
-          pricePerDay: 60,
-          rating: 4.6,
-          quantity: 5,
-          city: 'الدمام',
-          images: [{ url: 'https://images.unsplash.com/photo-1519340241574-2cec6aef0c01?auto=format&fit=crop&w=900&q=80' }]
-        }
-      ]);
+      console.warn('Failed to fetch products.', err);
+      setError(err?.response?.data?.message || 'تعذر تحميل المنتجات');
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -111,13 +80,20 @@ export const ProductList = () => {
             <div className="product-content">
               <h3>{product.name}</h3>
               <p>{product.description}</p>
+              <div className="product-badges">
+                <span className={`inventory-chip ${product.isAvailable ? '' : 'inventory-chip-out'}`}>
+                  {product.availabilityLabel || ((product.quantity || 0) > 0 ? 'متوفر' : 'غير متوفر')}
+                </span>
+                <span className="inventory-chip inventory-chip-neutral">
+                  الكمية المتاحة: {product.availableQuantity ?? product.quantity ?? 0}
+                </span>
+              </div>
               <div className="product-meta">
                 <span className="price">
                   {product.pricePerDay} ريال/يوم
                 </span>
                 <span>⭐ {product.rating}</span>
               </div>
-              <div className="inventory-chip">المتوفر: {product.quantity ?? 1}</div>
               <Link className="btn-secondary" to={`/products/${product._id}`}>عرض التفاصيل</Link>
             </div>
           </article>

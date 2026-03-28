@@ -1,13 +1,14 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const ServiceOrder = require('../models/ServiceOrder');
+const { normalizeSaudiPhoneNumber } = require('./phone');
 
 const seedUsers = [
   {
     firstName: 'Bob',
     lastName: 'Kumeel',
     email: 'bobkumeel@gmail.com',
-    phone: '966500000001',
+    phone: '0500000001',
     password: 'Kom123asd@',
     role: 'admin',
   },
@@ -15,7 +16,7 @@ const seedUsers = [
     firstName: 'Kumeel',
     lastName: 'Alnahab',
     email: 'kumeelalnahab@gmail.com',
-    phone: '966500000002',
+    phone: '0500000002',
     password: 'Komeil@123',
     role: 'technician',
     technicianId: 'tech-1',
@@ -28,7 +29,7 @@ const seedOrders = [
   {
     orderNumber: 'ORD-1001',
     customerName: 'Abu Khaled',
-    phone: '966555000111',
+    phone: '0555000111',
     address: 'Al Yasmin District - Riyadh',
     acType: 'Split AC 24,000 BTU',
     notes: 'Second floor - elevator available',
@@ -53,6 +54,7 @@ async function seedDemoData() {
     const hashedUsers = await Promise.all(
       seedUsers.map(async (item) => ({
         ...item,
+        phone: normalizeSaudiPhoneNumber(item.phone),
         password: await bcrypt.hash(item.password, 10),
       }))
     );

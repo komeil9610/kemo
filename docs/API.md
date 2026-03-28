@@ -3,7 +3,7 @@
 ## الأساسيات | Base URL
 
 ```
-http://localhost:5000/api
+https://tarkeeb-pro-edge-api.bobkumeel.workers.dev/api
 ```
 
 ---

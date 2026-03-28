@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLang } from '../context/LangContext';
-import { authService, formatSaudiPhoneDisplay, normalizeSaudiPhoneNumber } from '../services/api';
+import { formatSaudiPhoneDisplay, normalizeSaudiPhoneNumber, operationsService } from '../services/api';
 
 const initialForm = {
   firstName: '',
@@ -9,6 +9,8 @@ const initialForm = {
   email: '',
   phone: '',
   password: '',
+  region: 'Eastern Province',
+  notes: '',
 };
 
 export default function Register() {
@@ -21,42 +23,46 @@ export default function Register() {
 
   const copy = {
     ar: {
-      eyebrow: 'بوابة التسجيل الرسمية',
-      title: 'أنشئ حسابًا جديدًا للوصول إلى تركيب برو',
-      subtitle: 'هذا النموذج متصل بالخلفية الرسمية ويُنشئ حساب عميل حقيقي مباشرة.',
-      formTitle: 'تسجيل حساب جديد',
+      eyebrow: 'توظيف فني جديد',
+      title: 'سجّل الفني الجديد الذي ستوظفه داخل النظام',
+      subtitle: 'هذا النموذج يرسل بيانات الفني مباشرة إلى الخلفية الرسمية لإنشاء حساب فني حقيقي.',
+      formTitle: 'بيانات الفني الجديد',
       firstName: 'الاسم الأول',
       lastName: 'الاسم الأخير',
       email: 'البريد الإلكتروني',
       phone: 'رقم الجوال',
       password: 'كلمة المرور',
-      submit: 'إنشاء الحساب',
-      loading: 'جارٍ إنشاء الحساب...',
-      success: 'تم إنشاء الحساب بنجاح. يمكنك الآن تسجيل الدخول.',
-      officialTitle: 'بوابة تسجيل رسمية',
-      officialHint: 'هذا القسم مخصص للعملاء الجدد، بينما تبقى حسابات المسؤول والفني محمية وغير معروضة.',
+      region: 'المنطقة',
+      notes: 'معلومات الفني',
+      submit: 'توظيف الفني',
+      loading: 'جارٍ حفظ الفني...',
+      success: 'تم حفظ الفني بنجاح ويمكنه الآن تسجيل الدخول.',
+      officialTitle: 'بوابة التوظيف الرسمية',
+      officialHint: 'هذه الصفحة مخصصة لتسجيل الفنيين الجدد الذين ستوظفهم فقط.',
       officialLogin: 'الانتقال إلى تسجيل الدخول',
       phonePlaceholder: '05xxxxxxxx',
-      footerText: 'إذا كنت مسؤولًا أو فنيًا، استخدم صفحة الدخول الرسمية فقط.',
+      footerText: 'يمكنك إضافة الفنيين الجدد من هنا ثم الدخول لهم من صفحة تسجيل الدخول الرسمية.',
     },
     en: {
-      eyebrow: 'Official registration portal',
-      title: 'Create a new account for Tarkeeb Pro',
-      subtitle: 'This form connects to the official backend and creates a real customer account.',
-      formTitle: 'Register new account',
+      eyebrow: 'Technician hiring',
+      title: 'Register a new technician you are hiring',
+      subtitle: 'This form sends the technician data directly to the official backend and creates a real technician account.',
+      formTitle: 'New technician details',
       firstName: 'First name',
       lastName: 'Last name',
       email: 'Email address',
       phone: 'Mobile number',
       password: 'Password',
-      submit: 'Create account',
-      loading: 'Creating account...',
-      success: 'Account created successfully. You can now sign in.',
-      officialTitle: 'Official registration portal',
-      officialHint: 'This section is for new customers only. Admin and technician accounts stay protected and hidden.',
+      region: 'Region',
+      notes: 'Technician info',
+      submit: 'Create technician',
+      loading: 'Saving technician...',
+      success: 'Technician saved successfully and can sign in now.',
+      officialTitle: 'Official hiring portal',
+      officialHint: 'This page is dedicated to the technicians you are hiring.',
       officialLogin: 'Go to sign in',
       phonePlaceholder: '05xxxxxxxx',
-      footerText: 'If you are an admin or technician, use the official sign-in page only.',
+      footerText: 'Add new technicians here, then sign them in from the official login page.',
     },
   }[lang || 'en'];
 
@@ -67,12 +73,12 @@ export default function Register() {
 
     try {
       setLoading(true);
-      await authService.register({
+      await operationsService.createTechnician({
         ...form,
         phone: normalizeSaudiPhoneNumber(form.phone),
       });
       setMessage(copy.success);
-      setTimeout(() => navigate('/login', { replace: true }), 900);
+      setTimeout(() => navigate('/dashboard', { replace: true }), 900);
     } catch (err) {
       setError(err?.response?.data?.message || err.message || 'Unable to create account');
     } finally {
@@ -142,6 +148,28 @@ export default function Register() {
             required
           />
 
+          <label>{copy.region}</label>
+          <select
+            className="input"
+            value={form.region}
+            onChange={(event) => setForm({ ...form, region: event.target.value })}
+            required
+          >
+            <option value="Eastern Province">{lang === 'ar' ? 'المنطقة الشرقية' : 'Eastern Province'}</option>
+            <option value="Riyadh Region">{lang === 'ar' ? 'منطقة الرياض' : 'Riyadh Region'}</option>
+            <option value="Makkah Region">{lang === 'ar' ? 'منطقة مكة المكرمة' : 'Makkah Region'}</option>
+            <option value="Madinah Region">{lang === 'ar' ? 'منطقة المدينة المنورة' : 'Madinah Region'}</option>
+          </select>
+
+          <label>{copy.notes}</label>
+          <textarea
+            className="input textarea"
+            value={form.notes}
+            onChange={(event) => setForm({ ...form, notes: event.target.value })}
+            placeholder={lang === 'ar' ? 'التخصص، الخبرة، أو أي ملاحظات تشغيلية' : 'Specialization, experience, or operational notes'}
+            rows={4}
+          />
+
           {error ? <p className="error-text">{error}</p> : null}
           {message ? <p className="success-text">{message}</p> : null}
 
@@ -151,7 +179,7 @@ export default function Register() {
 
           <p className="muted">
             {copy.footerText}{' '}
-            <Link to="/login">{copy.officialLogin}</Link>
+            <Link to="/mobile/technician/login">{copy.officialLogin}</Link>
           </p>
         </form>
       </div>

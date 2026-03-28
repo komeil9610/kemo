@@ -4,7 +4,13 @@ const { body, param } = require('express-validator');
 const ServiceOrder = require('../models/ServiceOrder');
 const User = require('../models/User');
 const { authenticate, authorize } = require('../middleware/auth');
-const { validateEmail, validatePassword, validatePhone, handleValidationErrors } = require('../middleware/validators');
+const {
+  validateEmail,
+  validatePassword,
+  validatePhone,
+  handleValidationErrors,
+  normalizeSaudiPhoneNumber,
+} = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -14,6 +20,51 @@ const calculateExtrasTotal = (copperMeters, baseIncluded, pricing = {}) => {
   const basePrice = pricing.basePrice || 180;
   return meters * copperPrice + (baseIncluded ? basePrice : 0);
 };
+
+const catalogById = {
+  rubber_pads: { description: 'توريد وتركيب قواعد مطاطية للوحدات الخارجية', price: 45, unit: 'لكل مجموعة' },
+  drain_pipes: { description: 'توريد وتركيب أنابيب تصريف المياه', price: 30, unit: 'لكل متر' },
+  electric_socket: { description: 'توريد وتركيب مقبس كهربائي', price: 40, unit: 'لكل قطعة' },
+  electric_cable: { description: 'توريد وتركيب كابل كهربائي مع غلاف واق', price: 25, unit: 'لكل متر' },
+  copper_asian: { description: 'توريد وتركيب أنابيب نحاسية - نحاس (اسيوي)', price: 70, unit: 'لكل متر' },
+  copper_american: { description: 'توريد وتركيب أنابيب نحاسية - نحاس (امريكي)', price: 100, unit: 'لكل متر' },
+  copper_welding: { description: 'لحام أنابيب نحاسية جديدة مع الأنابيب القديمة (بمقاسات مختلفة)', price: 30, unit: 'لكل متر' },
+  window_frame: { description: 'توريد وتركيب إطار خشبي لوحدة تكييف الشباك', price: 30, unit: 'لكل إطار' },
+  split_removal: { description: 'رسوم إزالة وحدة تكييف سبليت قديمة', price: 100, unit: 'لكل وحدة' },
+  window_removal: { description: 'رسوم إزالة وحدة تكييف شباك قديمة', price: 50, unit: 'لكل وحدة' },
+  bracket_u24: { description: 'توريد وتركيب حامل جداري لوحدات تكييف بسعات 12K / 18K / 24K BTU', price: 60, unit: 'لكل حامل' },
+  bracket_gt24: { description: 'توريد وتركيب حامل جداري للوحدات التي تزيد سعتها عن 24K BTU', price: 80, unit: 'لكل حامل' },
+  scaffold_one: { description: 'سقالة دور واحد', price: 100, unit: 'ثابت' },
+  scaffold_two: { description: 'سقالة دورين', price: 200, unit: 'ثابت' },
+};
+
+const normalizeServiceItems = (items = []) =>
+  (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const catalogItem = catalogById[item?.id] || null;
+      const description = String(item?.description || catalogItem?.description || '').trim();
+      const price = Number(item?.price ?? catalogItem?.price ?? 0) || 0;
+      const unit = String(item?.unit || catalogItem?.unit || '').trim();
+      const quantity = Math.max(0, Number(item?.quantity) || 1);
+      const totalPrice = Number(item?.totalPrice ?? price * quantity) || 0;
+
+      if (!description || !price) {
+        return null;
+      }
+
+      return {
+        id: String(item?.id || ''),
+        description,
+        price,
+        unit,
+        quantity,
+        totalPrice,
+      };
+    })
+    .filter(Boolean);
+
+const calculateServiceItemsTotal = (items = []) =>
+  normalizeServiceItems(items).reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0);
 
 const buildTechnicianView = (user, activeOrders = []) => {
   const technicianId = user.technicianId || user._id.toString();
@@ -68,6 +119,7 @@ const serializeOrder = (order) => ({
   technicianName: order.technicianName || 'Unassigned',
   createdAt: order.createdAt,
   extras: order.extras || { copperMeters: 0, baseIncluded: false, totalPrice: 0 },
+  serviceItems: normalizeServiceItems(order.serviceItems || []),
   photos: order.photos || [],
 });
 
@@ -85,6 +137,15 @@ const findOrderByIdentifier = async (identifier) => {
     ],
   });
 };
+
+const isFinalizedOrder = (order) => ['completed', 'canceled'].includes(order?.status);
+
+const technicianOwnsOrder = (order, user) => {
+  const technicianId = String(user?.technicianId || user?.userId || '');
+  return String(order?.technicianId || '') === technicianId;
+};
+
+const canTechnicianChangeOrder = (order, user) => technicianOwnsOrder(order, user) && !isFinalizedOrder(order);
 
 router.get('/dashboard', authenticate, authorize(['admin']), async (req, res, next) => {
   try {
@@ -153,7 +214,7 @@ router.post(
         firstName: String(firstName).trim(),
         lastName: String(lastName).trim(),
         email: normalizedEmail,
-        phone: String(phone).trim(),
+        phone: normalizeSaudiPhoneNumber(phone),
         password: hashedPassword,
         role: 'technician',
         region: String(region).trim(),
@@ -186,7 +247,7 @@ router.post(
 
 router.post('/orders', authenticate, authorize(['admin']), async (req, res, next) => {
   try {
-    const { customerName, phone, address, acType, scheduledDate, technicianId, notes } = req.body;
+    const { customerName, phone, address, acType, scheduledDate, technicianId, notes, serviceItems } = req.body;
     const assignedTechnician = technicianId
       ? await User.findOne({
           $or: [
@@ -200,14 +261,15 @@ router.post('/orders', authenticate, authorize(['admin']), async (req, res, next
     const order = await ServiceOrder.create({
       orderNumber: `ORD-${Date.now()}`,
       customerName,
-      phone,
+      phone: normalizeSaudiPhoneNumber(phone),
       address,
       acType,
       scheduledDate,
       notes,
       technicianId: assignedTechnician ? (assignedTechnician.technicianId || assignedTechnician._id.toString()) : '',
       technicianName: assignedTechnician ? `${assignedTechnician.firstName} ${assignedTechnician.lastName}`.trim() : 'Unassigned',
-      extras: { copperMeters: 0, baseIncluded: false, totalPrice: 0 },
+      extras: { copperMeters: 0, baseIncluded: false, totalPrice: calculateServiceItemsTotal(serviceItems) },
+      serviceItems: normalizeServiceItems(serviceItems),
       photos: [],
     });
 
@@ -251,6 +313,13 @@ router.put(
         order.notes = String(req.body.notes || '');
       }
 
+      if (req.body.serviceItems !== undefined) {
+        order.serviceItems = normalizeServiceItems(req.body.serviceItems);
+        order.extras.totalPrice =
+          calculateExtrasTotal(order.extras?.copperMeters || 0, Boolean(order.extras?.baseIncluded)) +
+          calculateServiceItemsTotal(order.serviceItems);
+      }
+
       await order.save();
       return res.status(200).json({ order: serializeOrder(order) });
     } catch (error) {
@@ -258,6 +327,34 @@ router.put(
     }
   }
 );
+
+router.post('/orders/:orderId/cancel', authenticate, authorize(['technician', 'admin']), async (req, res, next) => {
+  try {
+    const order = await findOrderByIdentifier(req.params.orderId);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (req.user.role === 'technician' && !canTechnicianChangeOrder(order, req.user)) {
+      return res.status(403).json({ message: 'ليس لديك صلاحية لإلغاء هذا الطلب' });
+    }
+
+    if (isFinalizedOrder(order)) {
+      return res.status(409).json({ message: 'لا يمكن إلغاء الطلب بعد اكتماله أو إلغائه' });
+    }
+
+    const reason = String(req.body?.reason || '').trim();
+    order.status = 'canceled';
+    if (reason) {
+      order.notes = order.notes ? `${order.notes}\n\nإلغاء الطلب: ${reason}` : `إلغاء الطلب: ${reason}`;
+    }
+
+    await order.save();
+    return res.status(200).json({ order: serializeOrder(order) });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get('/technician/orders', authenticate, authorize(['technician', 'admin']), async (req, res, next) => {
   try {
@@ -291,6 +388,14 @@ router.put('/orders/:orderId/status', authenticate, authorize(['technician', 'ad
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    if (req.user.role === 'technician' && !canTechnicianChangeOrder(order, req.user)) {
+      return res.status(403).json({ message: 'ليس لديك صلاحية لتعديل هذا الطلب' });
+    }
+
+    if (req.user.role === 'technician' && isFinalizedOrder(order)) {
+      return res.status(409).json({ message: 'لا يمكن تعديل الطلب بعد اكتماله أو إلغائه' });
+    }
+
     order.status = req.body.status || order.status;
     await order.save();
     return res.status(200).json({ order: serializeOrder(order) });
@@ -299,7 +404,7 @@ router.put('/orders/:orderId/status', authenticate, authorize(['technician', 'ad
   }
 });
 
-router.put('/orders/:orderId/extras', authenticate, authorize(['technician', 'admin']), async (req, res, next) => {
+router.put('/orders/:orderId/extras', authenticate, authorize(['admin']), async (req, res, next) => {
   try {
     const order = await findOrderByIdentifier(req.params.orderId);
     if (!order) {
@@ -314,6 +419,10 @@ router.put('/orders/:orderId/extras', authenticate, authorize(['technician', 'ad
       baseIncluded,
       totalPrice: calculateExtrasTotal(copperMeters, baseIncluded),
     };
+    if (req.body.serviceItems !== undefined) {
+      order.serviceItems = normalizeServiceItems(req.body.serviceItems);
+    }
+    order.extras.totalPrice += calculateServiceItemsTotal(order.serviceItems || []);
     await order.save();
 
     return res.status(200).json({ order: serializeOrder(order) });
@@ -324,9 +433,13 @@ router.put('/orders/:orderId/extras', authenticate, authorize(['technician', 'ad
 
 router.post('/orders/:orderId/photos', authenticate, authorize(['technician', 'admin']), async (req, res, next) => {
   try {
-    const order = await ServiceOrder.findOne({ orderNumber: req.params.orderId });
+    const order = await findOrderByIdentifier(req.params.orderId);
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (req.user.role === 'technician' && !canTechnicianChangeOrder(order, req.user)) {
+      return res.status(403).json({ message: 'لا يمكن رفع صور على طلب مكتمل أو غير تابع لك' });
     }
 
     order.photos.push({

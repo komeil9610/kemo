@@ -23,7 +23,19 @@ Backend API for Tarkeeb Pro running on Cloudflare Workers with D1 as the main da
 
 - `DB`: D1 database binding
 - `JWT_SECRET`: Worker secret for auth tokens
-- `CORS_ALLOWED_ORIGINS`: comma-separated local/dev origins
+- `CORS_ALLOWED_ORIGINS`: comma-separated local/dev origins and the frontend Worker domain
+
+## Variables and Secrets
+
+- Secret: `JWT_SECRET`
+- Vars: `CORS_ALLOWED_ORIGINS`
+- Binding: `DB`
+
+Set the secret with:
+
+```bash
+npx wrangler secret put JWT_SECRET
+```
 
 ## Setup
 

@@ -7,6 +7,7 @@ import { notificationsService } from '../services/api';
 
 function NotificationMenu() {
   const { token } = useAuth();
+  const { lang } = useLang();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -79,14 +80,14 @@ function NotificationMenu() {
   return (
     <div className="notification-wrap">
       <button className="notification-button" onClick={toggleOpen} type="button">
-        Notifications
+        {lang === 'ar' ? 'التنبيهات' : 'Notifications'}
         {unreadCount ? <span className="notification-count">{unreadCount}</span> : null}
       </button>
 
       {open ? (
         <div className="notification-panel">
           {!items.length ? (
-            <p className="muted">No notifications right now.</p>
+            <p className="muted">{lang === 'ar' ? 'لا توجد تنبيهات حاليًا.' : 'No notifications right now.'}</p>
           ) : (
             items.map((item) => (
               <article className={`notification-item ${item.isRead ? 'read' : 'unread'}`} key={item.id}>
@@ -133,7 +134,7 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <span className="user-chip">{isAdmin ? 'Administrator' : user?.name}</span>
+              <span className="user-chip">{isAdmin ? (lang === 'ar' ? 'المسؤول' : 'Administrator') : user?.name}</span>
               <button className="btn-danger" onClick={logout} type="button">{t('logout')}</button>
             </>
           )}

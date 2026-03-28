@@ -3,7 +3,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body } = require('express-validator');
 const User = require('../models/User');
-const { validateEmail, validatePassword, validatePhone, handleValidationErrors } = require('../middleware/validators');
+const {
+  validateEmail,
+  validatePassword,
+  validatePhone,
+  handleValidationErrors,
+  normalizeSaudiPhoneNumber,
+} = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -107,7 +113,7 @@ router.post(
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: String(email).trim().toLowerCase(),
-        phone: String(phone).trim(),
+        phone: normalizeSaudiPhoneNumber(phone),
         password: hashedPassword,
         role: 'user',
       });

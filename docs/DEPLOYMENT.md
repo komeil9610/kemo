@@ -18,7 +18,7 @@
 
 ```bash
 cd edge-api
-npx wrangler d1 create rentit_db
+npx wrangler d1 create tarkeeb_pro_db
 ```
 
 انسخ `database_id` الناتج إلى [edge-api/wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml).
@@ -40,19 +40,37 @@ npx wrangler secret put JWT_SECRET
 
 استخدم قيمة قوية وطويلة.
 
+## 3.1 Variables and Secrets
+
+### Secrets
+
+- `JWT_SECRET`: secret داخل `edge-api` لتوقيع JWT
+
+### Variables
+
+- `CORS_ALLOWED_ORIGINS`: موجود في [edge-api/wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml)
+- `API_ORIGIN`: موجود في [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml)
+- `DB`: binding قاعدة D1 داخل [edge-api/wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml)
+
+### القيم الحالية المقترحة
+
+- `JWT_SECRET`: اتركه Secret داخل Cloudflare ولا تضعه في الملف
+- `CORS_ALLOWED_ORIGINS`: أضف دومين الواجهة النهائي بعد النشر إذا كان مخصصًا
+- `API_ORIGIN`: استخدم رابط الـ edge-api المنشور أو دومين `api` المخصص
+
 ## 4. إنشاء أول حساب Admin
 
 ولّد SQL آمنًا من نفس منطق التشفير المستخدم داخل الـ Worker:
 
 ```bash
 cd edge-api
-npm run admin:sql -- "RentIT Admin" "admin@rentit.com" "your-strong-password"
+npm run admin:sql -- "مسؤول تركيب برو" "admin@tarkeebpro.sa" "your-strong-password"
 ```
 
 انسخ ناتج SQL ثم نفّذه على D1:
 
 ```bash
-npx wrangler d1 execute rentit_db --remote --command "<PASTE_SQL_HERE>"
+npx wrangler d1 execute tarkeeb_pro_db --remote --command "<PASTE_SQL_HERE>"
 ```
 
 بديل يدوي:
