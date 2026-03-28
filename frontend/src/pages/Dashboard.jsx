@@ -1,730 +1,406 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { adminService, productService } from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { operationsService } from '../services/api';
 
-const emptyForm = {
-  name: '',
-  description: '',
-  category: 'device',
-  city: 'الرياض',
-  pricePerDay: 0,
-  quantity: 1,
-  rating: 4.5,
-  imageUrl: '',
+const emptyOrderForm = {
+  customerName: '',
+  phone: '',
+  address: '',
+  acType: '',
+  scheduledDate: '',
+  technicianId: '',
+  notes: '',
 };
 
-const emptyFooterForm = {
-  aboutText: '',
-  usefulLinks: [],
-  customerServiceLinks: [],
-  socialLinks: [],
-  copyrightText: '',
+const emptyTechnicianForm = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  password: '',
+  region: 'Eastern Province',
+  notes: '',
 };
 
-const emptyHomeSettingsForm = {
-  heroKicker: '',
-  heroTitle: '',
-  heroSubtitle: '',
-  primaryButtonText: '',
-  primaryButtonUrl: '',
-  secondaryButtonText: '',
-  secondaryButtonUrl: '',
-  stats: [],
-};
+const regionOptions = [
+  'Riyadh Region',
+  'Makkah Region',
+  'Madinah Region',
+  'Eastern Province',
+  'Qassim Region',
+  'Asir Region',
+  'Tabuk Region',
+  'Hail Region',
+  'Northern Borders',
+  'Jazan Region',
+  'Najran Region',
+  'Al Bahah Region',
+  'Al Jawf Region',
+];
 
-const tabs = [
-  { id: 'overview', label: 'نظرة عامة' },
-  { id: 'products', label: 'المنتجات' },
-  { id: 'users', label: 'المستخدمون' },
-  { id: 'bookings', label: 'الحجوزات' },
-  { id: 'home', label: 'إعدادات الرئيسية' },
-  { id: 'footer', label: 'إعدادات الـ Footer' },
+const statusOptions = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'en_route', label: 'En route' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'completed', label: 'Completed' },
 ];
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview');
-  const [products, setProducts] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [footerForm, setFooterForm] = useState(emptyFooterForm);
-  const [homeSettingsForm, setHomeSettingsForm] = useState(emptyHomeSettingsForm);
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
+  const [orderForm, setOrderForm] = useState(emptyOrderForm);
+  const [technicianForm, setTechnicianForm] = useState(emptyTechnicianForm);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  const stats = useMemo(() => {
-    const totalStock = products.reduce((sum, product) => sum + (product.quantity || 0), 0);
-    const activeUsers = users.filter((entry) => entry.status === 'active').length;
-    const pendingBookings = bookings.filter((entry) => entry.status === 'pending').length;
-    return [
-      { label: 'المنتجات', value: products.length, accent: 'blue' },
-      { label: 'المخزون', value: totalStock, accent: 'green' },
-      { label: 'المستخدمون النشطون', value: activeUsers, accent: 'gold' },
-      { label: 'حجوزات معلقة', value: pendingBookings, accent: 'rose' },
-    ];
-  }, [products, users, bookings]);
-
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [savingTechnician, setSavingTechnician] = useState(false);
+  const [message, setMessage] = useState('');
 
   const loadDashboard = async () => {
     try {
       setLoading(true);
-      setError('');
-      const [productsResponse, usersResponse, bookingsResponse, footerResponse, homeSettingsResponse] = await Promise.all([
-        adminService.getProducts(),
-        adminService.getUsers(),
-        adminService.getBookings(),
-        adminService.getFooter(),
-        adminService.getHomeSettings(),
-      ]);
-      setProducts(productsResponse.data?.products || []);
-      setUsers(usersResponse.data?.users || []);
-      setBookings(bookingsResponse.data?.bookings || []);
-      setFooterForm(normalizeFooterForm(footerResponse.data?.footer));
-      setHomeSettingsForm(normalizeHomeSettingsForm(homeSettingsResponse.data?.homeSettings));
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to load dashboard');
+      const response = await operationsService.getDashboard();
+      setDashboard(response.data);
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setForm(emptyForm);
-    setEditingId(null);
-  };
+  useEffect(() => {
+    loadDashboard();
+    window.addEventListener('operations-updated', loadDashboard);
+    return () => window.removeEventListener('operations-updated', loadDashboard);
+  }, []);
 
-  const addFooterItem = (key, item) => {
-    setFooterForm((current) => ({
-      ...current,
-      [key]: [...current[key], item],
-    }));
-  };
+  const stats = useMemo(() => {
+    if (!dashboard?.summary) {
+      return [];
+    }
 
-  const updateFooterItem = (key, index, field, value) => {
-    setFooterForm((current) => ({
-      ...current,
-      [key]: current[key].map((entry, entryIndex) => (
-        entryIndex === index ? { ...entry, [field]: value } : entry
-      )),
-    }));
-  };
+    return [
+      { label: 'Total orders', value: dashboard.summary.totalOrders },
+      { label: 'Pending orders', value: dashboard.summary.pendingOrders },
+      { label: 'Active orders', value: dashboard.summary.activeOrders },
+      { label: 'Available technicians', value: dashboard.summary.availableTechnicians },
+    ];
+  }, [dashboard]);
 
-  const removeFooterItem = (key, index) => {
-    setFooterForm((current) => ({
-      ...current,
-      [key]: current[key].filter((_, entryIndex) => entryIndex !== index),
-    }));
-  };
-
-  const addHomeStat = () => {
-    setHomeSettingsForm((current) => ({
-      ...current,
-      stats: [...current.stats, { value: '', label: '' }],
-    }));
-  };
-
-  const updateHomeStat = (index, field, value) => {
-    setHomeSettingsForm((current) => ({
-      ...current,
-      stats: current.stats.map((entry, entryIndex) => (
-        entryIndex === index ? { ...entry, [field]: value } : entry
-      )),
-    }));
-  };
-
-  const removeHomeStat = (index) => {
-    setHomeSettingsForm((current) => ({
-      ...current,
-      stats: current.stats.filter((_, entryIndex) => entryIndex !== index),
-    }));
-  };
-
-  const onSubmit = async (event) => {
+  const submitOrder = async (event) => {
     event.preventDefault();
     try {
-      setSaving(true);
-      setError('');
-      setSuccess('');
-      if (editingId) {
-        await productService.update(editingId, form);
-        setSuccess('تم تحديث المنتج بنجاح');
-      } else {
-        await productService.create(form);
-        setSuccess('تمت إضافة المنتج بنجاح');
-      }
-      resetForm();
+      setSavingOrder(true);
+      setMessage('');
+      await operationsService.createOrder(orderForm);
+      setOrderForm(emptyOrderForm);
+      setMessage('Order created and assigned successfully.');
       await loadDashboard();
-      setActiveTab('products');
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to save product');
+    } catch (error) {
+      setMessage(error?.response?.data?.message || error.message || 'Unable to create the order.');
     } finally {
-      setSaving(false);
+      setSavingOrder(false);
     }
   };
 
-  const onEdit = (product) => {
-    setEditingId(product._id);
-    setForm({
-      name: product.name || '',
-      description: product.description || '',
-      category: product.category || 'device',
-      city: product.city || 'الرياض',
-      pricePerDay: product.pricePerDay || 0,
-      quantity: product.quantity ?? 1,
-      rating: product.rating || 0,
-      imageUrl: product.images?.[0]?.url || '',
-    });
-    setActiveTab('products');
-    setSuccess('');
-    setError('');
-  };
-
-  const onDelete = async (productId) => {
-    const confirmed = window.confirm('هل تريد حذف هذا المنتج؟');
-    if (!confirmed) return;
-
-    try {
-      setError('');
-      setSuccess('');
-      await productService.delete(productId);
-      if (editingId === productId) {
-        resetForm();
-      }
-      setSuccess('تم حذف المنتج');
-      await loadDashboard();
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to delete product');
-    }
-  };
-
-  const updateUser = async (userId, nextValues) => {
-    try {
-      setError('');
-      setSuccess('');
-      await adminService.updateUser(userId, nextValues);
-      setSuccess('تم تحديث المستخدم');
-      await loadDashboard();
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to update user');
-    }
-  };
-
-  const updateBooking = async (bookingId, status) => {
-    try {
-      setError('');
-      setSuccess('');
-      await adminService.updateBooking(bookingId, { status });
-      setSuccess('تم تحديث الحجز');
-      await loadDashboard();
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to update booking');
-    }
-  };
-
-  const saveFooter = async (event) => {
+  const submitTechnician = async (event) => {
     event.preventDefault();
     try {
-      setSaving(true);
-      setError('');
-      setSuccess('');
-      const response = await adminService.updateFooter(footerForm);
-      setFooterForm(normalizeFooterForm(response.data?.footer));
-      window.dispatchEvent(new Event('footer-settings-updated'));
-      setSuccess('تم تحديث بيانات الـ footer بنجاح');
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to update footer');
+      setSavingTechnician(true);
+      setMessage('');
+      await operationsService.createTechnician(technicianForm);
+      setTechnicianForm(emptyTechnicianForm);
+      setMessage('Technician account created successfully.');
+      await loadDashboard();
+    } catch (error) {
+      setMessage(error?.response?.data?.message || error.message || 'Unable to create the technician account.');
     } finally {
-      setSaving(false);
+      setSavingTechnician(false);
     }
   };
 
-  const saveHomeSettings = async (event) => {
-    event.preventDefault();
-    try {
-      setSaving(true);
-      setError('');
-      setSuccess('');
-      const response = await adminService.updateHomeSettings(homeSettingsForm);
-      setHomeSettingsForm(normalizeHomeSettingsForm(response.data?.homeSettings));
-      window.dispatchEvent(new Event('home-settings-updated'));
-      setSuccess('تم تحديث إعدادات الصفحة الرئيسية بنجاح');
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to update home settings');
-    } finally {
-      setSaving(false);
-    }
+  const updateOrder = async (orderId, changes, successText) => {
+    setMessage('');
+    await operationsService.updateOrder(orderId, changes);
+    setMessage(successText);
+    await loadDashboard();
   };
+
+  if (loading) {
+    return <section className="page-shell">Loading the admin dashboard...</section>;
+  }
 
   return (
-    <section className="section dashboard">
-      <div className="dashboard-hero-pro">
-        <div className="dashboard-hero-copy">
-          <p className="hero-kicker dashboard-kicker">Admin Console</p>
-          <h2 className="section-title">لوحة تحكم احترافية لـ RentIT</h2>
-          <p>مرحبًا {user?.name || 'Admin'}، من هنا تدير المنتجات والمستخدمين والحجوزات من مكان واحد.</p>
-          <div className="dashboard-quick-actions">
-            <button className="btn-primary" type="button" onClick={() => setActiveTab('home')}>
-              تعديل الصفحة الرئيسية
-            </button>
-            <button className="btn-light" type="button" onClick={() => setActiveTab('footer')}>
-              تعديل الـ Footer
-            </button>
-          </div>
-        </div>
-        <div className="dashboard-hero-side">
-          <div className="dashboard-badge">الصلاحية: {user?.role || 'member'}</div>
-          <div className="dashboard-badge muted-badge">الحالة: {user?.status || 'active'}</div>
-        </div>
+    <section className="page-shell" dir="ltr">
+      <div className="section-heading">
+        <p className="eyebrow">Admin dashboard</p>
+        <h1>Customer operations control room</h1>
+        <p className="section-subtitle">
+          Manage installation jobs, assign technicians, and create technician accounts from one place.
+        </p>
       </div>
 
-      <div className="dashboard-stat-grid">
-        {stats.map((stat) => (
-          <article key={stat.label} className={`stat-card stat-${stat.accent}`}>
-            <span>{stat.label}</span>
-            <strong>{stat.value}</strong>
+      {message ? <div className="flash-message">{message}</div> : null}
+
+      <div className="stats-grid">
+        {stats.map((item) => (
+          <article className="stat-card" key={item.label}>
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
           </article>
         ))}
       </div>
 
-      <div className="dashboard-tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`dashboard-tab ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
+      <div className="dashboard-grid">
+        <form className="panel form-panel" onSubmit={submitOrder}>
+          <div className="panel-header">
+            <h2>Create a new order</h2>
+            <p>Log the customer details first, then assign the correct technician for the region.</p>
+          </div>
+
+          <label>Customer name</label>
+          <input
+            className="input"
+            value={orderForm.customerName}
+            onChange={(event) => setOrderForm({ ...orderForm, customerName: event.target.value })}
+            required
+          />
+
+          <label>Phone number</label>
+          <input
+            className="input"
+            value={orderForm.phone}
+            onChange={(event) => setOrderForm({ ...orderForm, phone: event.target.value })}
+            required
+          />
+
+          <label>Location</label>
+          <input
+            className="input"
+            value={orderForm.address}
+            onChange={(event) => setOrderForm({ ...orderForm, address: event.target.value })}
+            required
+          />
+
+          <label>AC type</label>
+          <input
+            className="input"
+            value={orderForm.acType}
+            onChange={(event) => setOrderForm({ ...orderForm, acType: event.target.value })}
+            placeholder="Example: Split AC 24,000 BTU"
+            required
+          />
+
+          <label>Scheduled date</label>
+          <input
+            className="input"
+            type="date"
+            value={orderForm.scheduledDate}
+            onChange={(event) => setOrderForm({ ...orderForm, scheduledDate: event.target.value })}
+            required
+          />
+
+          <label>Assign technician</label>
+          <select
+            className="input"
+            value={orderForm.technicianId}
+            onChange={(event) => setOrderForm({ ...orderForm, technicianId: event.target.value })}
+            required
           >
-            {tab.label}
+            <option value="">Choose a technician</option>
+            {dashboard?.technicians?.map((technician) => (
+              <option key={technician.id} value={technician.id}>
+                {technician.name} - {technician.region || technician.zone} - {technician.status === 'available' ? 'Available' : 'Busy'}
+              </option>
+            ))}
+          </select>
+
+          <label>Notes</label>
+          <textarea
+            className="input textarea"
+            value={orderForm.notes}
+            onChange={(event) => setOrderForm({ ...orderForm, notes: event.target.value })}
+            placeholder="Access instructions or customer notes"
+          />
+
+          <button className="btn-primary" disabled={savingOrder} type="submit">
+            {savingOrder ? 'Saving...' : 'Create order'}
           </button>
-        ))}
-      </div>
+        </form>
 
-      {error ? <p className="error-text">{error}</p> : null}
-      {success ? <p className="success-text">{success}</p> : null}
-      {loading ? <div className="loading">جارٍ تحميل لوحة التحكم...</div> : null}
+        <div className="panel dashboard-sidebar">
+          <form className="nested-form" onSubmit={submitTechnician}>
+            <div className="panel-header">
+              <h2>Create a technician account</h2>
+              <p>Add a technician profile, login account, and Saudi region in one step.</p>
+            </div>
 
-      {!loading && activeTab === 'overview' ? (
-        <div className="dashboard-overview-wrapper">
-          <div className="dashboard-admin-links">
-            <article className="detail-card admin-link-card">
+            <div className="grid-two">
               <div>
-                <h3>إعدادات الصفحة الرئيسية</h3>
-                <p>عدّل عنوان الـ hero والأزرار والإحصائيات الظاهرة للزوار.</p>
+                <label>First name</label>
+                <input
+                  className="input"
+                  value={technicianForm.firstName}
+                  onChange={(event) => setTechnicianForm({ ...technicianForm, firstName: event.target.value })}
+                  required
+                />
               </div>
-              <button className="btn-primary" type="button" onClick={() => setActiveTab('home')}>
-                فتح الإعدادات
-              </button>
-            </article>
-
-            <article className="detail-card admin-link-card">
               <div>
-                <h3>إعدادات الـ Footer</h3>
-                <p>حدّث الروابط، خدمة العملاء، النبذة المختصرة وأيقونات التواصل.</p>
+                <label>Last name</label>
+                <input
+                  className="input"
+                  value={technicianForm.lastName}
+                  onChange={(event) => setTechnicianForm({ ...technicianForm, lastName: event.target.value })}
+                  required
+                />
               </div>
-              <button className="btn-secondary" type="button" onClick={() => setActiveTab('footer')}>
-                فتح الإعدادات
-              </button>
-            </article>
-          </div>
+            </div>
 
-          <div className="dashboard-overview-grid">
-          <div className="detail-card insight-card">
-            <h3>آخر المنتجات</h3>
-            {products.slice(0, 4).map((product) => (
-              <div className="overview-row" key={product._id}>
-                <span>{product.name}</span>
-                <strong>{product.quantity} متوفر</strong>
-              </div>
-            ))}
-          </div>
-          <div className="detail-card insight-card">
-            <h3>آخر المستخدمين</h3>
-            {users.slice(0, 4).map((entry) => (
-              <div className="overview-row" key={entry.id}>
-                <span>{entry.name}</span>
-                <strong>{entry.role} / {entry.status}</strong>
-              </div>
-            ))}
-          </div>
-          <div className="detail-card insight-card">
-            <h3>الحجوزات الأخيرة</h3>
-            {bookings.slice(0, 4).map((booking) => (
-              <div className="overview-row" key={booking.id}>
-                <span>{booking.product.name}</span>
-                <strong>{booking.status}</strong>
-              </div>
-            ))}
-          </div>
-          </div>
-        </div>
-      ) : null}
+            <label>Email</label>
+            <input
+              className="input"
+              type="email"
+              value={technicianForm.email}
+              onChange={(event) => setTechnicianForm({ ...technicianForm, email: event.target.value })}
+              required
+            />
 
-      {!loading && activeTab === 'products' ? (
-        <div className="dashboard-layout">
-          <form className="dashboard-form detail-card" onSubmit={onSubmit}>
-            <h3>{editingId ? 'تعديل منتج' : 'إضافة منتج جديد'}</h3>
-            <label>اسم المنتج</label>
-            <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-            <label>الوصف</label>
-            <textarea className="input textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
-            <label>الفئة</label>
-            <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              <option value="device">أجهزة</option>
-              <option value="costume">ملابس تنكرية</option>
-              <option value="service">خدمات</option>
+            <label>Phone</label>
+            <input
+              className="input"
+              value={technicianForm.phone}
+              onChange={(event) => setTechnicianForm({ ...technicianForm, phone: event.target.value })}
+              required
+            />
+
+            <label>Password</label>
+            <input
+              className="input"
+              type="password"
+              value={technicianForm.password}
+              onChange={(event) => setTechnicianForm({ ...technicianForm, password: event.target.value })}
+              required
+            />
+
+            <label>Saudi region</label>
+            <select
+              className="input"
+              value={technicianForm.region}
+              onChange={(event) => setTechnicianForm({ ...technicianForm, region: event.target.value })}
+              required
+            >
+              {regionOptions.map((region) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
+              ))}
             </select>
-            <label>المدينة</label>
-            <input className="input" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} required />
-            <div className="dashboard-grid-2">
-              <div>
-                <label>السعر اليومي</label>
-                <input className="input" type="number" min="0" step="1" value={form.pricePerDay} onChange={(e) => setForm({ ...form, pricePerDay: Number(e.target.value) })} required />
-              </div>
-              <div>
-                <label>الكمية</label>
-                <input className="input" type="number" min="0" step="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} required />
-              </div>
-            </div>
-            <div className="dashboard-grid-2">
-              <div>
-                <label>التقييم</label>
-                <input className="input" type="number" min="0" max="5" step="0.1" value={form.rating} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })} />
-              </div>
-              <div>
-                <label>رابط الصورة</label>
-                <input className="input" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
-              </div>
-            </div>
-            <div className="dashboard-actions">
-              <button className="btn-primary" type="submit" disabled={saving}>
-                {saving ? 'جارٍ الحفظ...' : editingId ? 'حفظ التعديلات' : 'إضافة المنتج'}
-              </button>
-              {editingId ? <button className="btn-light" type="button" onClick={resetForm}>إلغاء التعديل</button> : null}
-            </div>
+
+            <label>Technician info</label>
+            <textarea
+              className="input textarea"
+              value={technicianForm.notes}
+              onChange={(event) => setTechnicianForm({ ...technicianForm, notes: event.target.value })}
+              placeholder="Coverage notes, specialization, or any extra information"
+            />
+
+            <button className="btn-secondary" disabled={savingTechnician} type="submit">
+              {savingTechnician ? 'Creating...' : 'Create technician'}
+            </button>
           </form>
 
-          <div className="dashboard-list section">
-            <h3>كل المنتجات</h3>
-            {products.map((product) => (
-              <article key={product._id} className="product-card admin-product-card">
-                <img src={product.images?.[0]?.url} alt={product.name} className="product-image" />
-                <div className="product-content">
-                  <h3>{product.name}</h3>
-                  <p>{product.description}</p>
-                  <div className="admin-meta">
-                    <span>{product.category}</span>
-                    <span>{product.city}</span>
-                    <span>{product.pricePerDay} ريال/يوم</span>
-                    <span>الكمية: {product.quantity}</span>
+          <div className="finance-grid">
+            <article className="finance-card">
+              <span>Revenue from copper and bases</span>
+              <strong>{dashboard?.summary?.extrasRevenue || 0} SAR</strong>
+            </article>
+            <article className="finance-card">
+              <span>Total copper meters</span>
+              <strong>{dashboard?.summary?.copperMeters || 0} m</strong>
+            </article>
+            <article className="finance-card">
+              <span>Bases sold</span>
+              <strong>{dashboard?.summary?.basesCount || 0}</strong>
+            </article>
+          </div>
+
+          <div className="tech-list">
+            <h3>Technicians</h3>
+            {dashboard?.technicians?.length ? (
+              dashboard.technicians.map((technician) => (
+                <article className="tech-card" key={technician.id}>
+                  <div>
+                    <strong>{technician.name}</strong>
+                    <p>{technician.region || technician.zone}</p>
+                    <p>{technician.phone}</p>
+                    <p>{technician.email}</p>
+                    {technician.notes ? <p className="muted">{technician.notes}</p> : null}
                   </div>
-                  <div className="dashboard-actions">
-                    <button className="btn-secondary" type="button" onClick={() => onEdit(product)}>تعديل</button>
-                    <button className="btn-danger" type="button" onClick={() => onDelete(product._id)}>حذف</button>
-                  </div>
-                </div>
-              </article>
-            ))}
+                  <span className={`status-badge ${technician.status}`}>
+                    {technician.status === 'available' ? 'Available' : 'Busy'}
+                  </span>
+                </article>
+              ))
+            ) : (
+              <p className="muted">No technicians have been added yet.</p>
+            )}
           </div>
         </div>
-      ) : null}
-
-      {!loading && activeTab === 'users' ? (
-        <div className="admin-table detail-card">
-          <div className="table-head">
-            <h3>إدارة المستخدمين</h3>
-            <p>يمكنك تعديل الدور أو إيقاف الحسابات غير المرغوبة.</p>
-          </div>
-          {users.map((entry) => (
-            <div key={entry.id} className="table-row">
-              <div>
-                <strong>{entry.name}</strong>
-                <p>{entry.email}</p>
-              </div>
-              <div className="table-controls">
-                <select className="input table-input" value={entry.role} onChange={(e) => updateUser(entry.id, { role: e.target.value, status: entry.status })}>
-                  <option value="member">member</option>
-                  <option value="admin">admin</option>
-                </select>
-                <select className="input table-input" value={entry.status} onChange={(e) => updateUser(entry.id, { role: entry.role, status: e.target.value })}>
-                  <option value="active">active</option>
-                  <option value="inactive">inactive</option>
-                </select>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {!loading && activeTab === 'bookings' ? (
-        <div className="admin-table detail-card">
-          <div className="table-head">
-            <h3>إدارة الحجوزات</h3>
-            <p>راجع الطلبات وغير حالتها مباشرة من لوحة الإدارة.</p>
-          </div>
-          {bookings.length === 0 ? <p className="muted">لا توجد حجوزات بعد.</p> : null}
-          {bookings.map((booking) => (
-            <div key={booking.id} className="table-row booking-row">
-              <div>
-                <strong>{booking.product.name}</strong>
-                <p>{booking.user.name} - {booking.user.email}</p>
-                <p>{booking.startDate} إلى {booking.endDate}</p>
-              </div>
-              <div className="table-controls">
-                <span className="inventory-chip">الكمية: {booking.quantity}</span>
-                <span className="inventory-chip">الإجمالي: {booking.totalPrice} ريال</span>
-                <select className="input table-input" value={booking.status} onChange={(e) => updateBooking(booking.id, e.target.value)}>
-                  <option value="pending">pending</option>
-                  <option value="confirmed">confirmed</option>
-                  <option value="cancelled">cancelled</option>
-                  <option value="completed">completed</option>
-                </select>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {!loading && activeTab === 'home' ? (
-        <form className="detail-card footer-admin-form" onSubmit={saveHomeSettings}>
-          <div className="table-head">
-            <h3>إعدادات الصفحة الرئيسية</h3>
-            <p>عدّل نصوص الـ hero والأزرار والإحصائيات الظاهرة في أعلى الصفحة الرئيسية.</p>
-          </div>
-
-          <label>العنوان الصغير أعلى الـ Hero</label>
-          <input
-            className="input"
-            value={homeSettingsForm.heroKicker}
-            onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, heroKicker: e.target.value })}
-            required
-          />
-
-          <label>العنوان الرئيسي</label>
-          <input
-            className="input"
-            value={homeSettingsForm.heroTitle}
-            onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, heroTitle: e.target.value })}
-            required
-          />
-
-          <label>النص الفرعي</label>
-          <textarea
-            className="input textarea"
-            value={homeSettingsForm.heroSubtitle}
-            onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, heroSubtitle: e.target.value })}
-            required
-          />
-
-          <div className="dashboard-grid-2">
-            <div>
-              <label>نص الزر الأساسي</label>
-              <input
-                className="input"
-                value={homeSettingsForm.primaryButtonText}
-                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, primaryButtonText: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label>رابط الزر الأساسي</label>
-              <input
-                className="input"
-                value={homeSettingsForm.primaryButtonUrl}
-                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, primaryButtonUrl: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="dashboard-grid-2">
-            <div>
-              <label>نص الزر الثانوي</label>
-              <input
-                className="input"
-                value={homeSettingsForm.secondaryButtonText}
-                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, secondaryButtonText: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label>رابط الزر الثانوي</label>
-              <input
-                className="input"
-                value={homeSettingsForm.secondaryButtonUrl}
-                onChange={(e) => setHomeSettingsForm({ ...homeSettingsForm, secondaryButtonUrl: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="footer-editor-section">
-            <div className="footer-editor-head">
-              <h4>الإحصائيات</h4>
-              <button className="btn-light" type="button" onClick={addHomeStat}>إضافة إحصائية</button>
-            </div>
-
-            {homeSettingsForm.stats.length === 0 ? <p className="muted">لا توجد إحصائيات مضافة بعد.</p> : null}
-
-            {homeSettingsForm.stats.map((item, index) => (
-              <div key={`stat-${index}`} className="footer-editor-row">
-                <input
-                  className="input"
-                  value={item.value || ''}
-                  onChange={(e) => updateHomeStat(index, 'value', e.target.value)}
-                  placeholder="القيمة مثل 10K+"
-                  required
-                />
-                <input
-                  className="input"
-                  value={item.label || ''}
-                  onChange={(e) => updateHomeStat(index, 'label', e.target.value)}
-                  placeholder="الوصف مثل Trusted Users"
-                  required
-                />
-                <button className="btn-danger" type="button" onClick={() => removeHomeStat(index)}>حذف</button>
-              </div>
-            ))}
-          </div>
-
-          <div className="dashboard-actions">
-            <button className="btn-primary" type="submit" disabled={saving}>
-              {saving ? 'جارٍ الحفظ...' : 'حفظ إعدادات الرئيسية'}
-            </button>
-          </div>
-        </form>
-      ) : null}
-
-      {!loading && activeTab === 'footer' ? (
-        <form className="detail-card footer-admin-form" onSubmit={saveFooter}>
-          <div className="table-head">
-            <h3>إدارة الـ Footer</h3>
-            <p>يمكنك تعديل النبذة وروابط الأقسام وروابط التواصل والحقوق من هنا.</p>
-          </div>
-
-          <label>نبذة قصيرة عن Rent It</label>
-          <textarea
-            className="input textarea"
-            value={footerForm.aboutText}
-            onChange={(e) => setFooterForm({ ...footerForm, aboutText: e.target.value })}
-            required
-          />
-
-          <FooterEditorSection
-            title="روابط تهمك"
-            items={footerForm.usefulLinks}
-            labelKey="label"
-            labelPlaceholder="اسم الرابط"
-            onAdd={() => addFooterItem('usefulLinks', { label: '', url: '' })}
-            onChange={(index, field, value) => updateFooterItem('usefulLinks', index, field, value)}
-            onRemove={(index) => removeFooterItem('usefulLinks', index)}
-          />
-
-          <FooterEditorSection
-            title="خدمة العملاء"
-            items={footerForm.customerServiceLinks}
-            labelKey="label"
-            labelPlaceholder="اسم الخدمة"
-            onAdd={() => addFooterItem('customerServiceLinks', { label: '', url: '' })}
-            onChange={(index, field, value) => updateFooterItem('customerServiceLinks', index, field, value)}
-            onRemove={(index) => removeFooterItem('customerServiceLinks', index)}
-          />
-
-          <FooterEditorSection
-            title="أيقونات التواصل"
-            items={footerForm.socialLinks}
-            labelKey="platform"
-            labelPlaceholder="اسم المنصة"
-            onAdd={() => addFooterItem('socialLinks', { platform: '', url: '' })}
-            onChange={(index, field, value) => updateFooterItem('socialLinks', index, field, value)}
-            onRemove={(index) => removeFooterItem('socialLinks', index)}
-          />
-
-          <label>نص الحقوق</label>
-          <input
-            className="input"
-            value={footerForm.copyrightText}
-            onChange={(e) => setFooterForm({ ...footerForm, copyrightText: e.target.value })}
-            required
-          />
-
-          <div className="dashboard-actions">
-            <button className="btn-primary" type="submit" disabled={saving}>
-              {saving ? 'جارٍ الحفظ...' : 'حفظ إعدادات الـ Footer'}
-            </button>
-          </div>
-        </form>
-      ) : null}
-    </section>
-  );
-}
-
-function normalizeFooterForm(footer) {
-  return {
-    aboutText: footer?.aboutText || '',
-    usefulLinks: Array.isArray(footer?.usefulLinks) ? footer.usefulLinks : [],
-    customerServiceLinks: Array.isArray(footer?.customerServiceLinks) ? footer.customerServiceLinks : [],
-    socialLinks: Array.isArray(footer?.socialLinks) ? footer.socialLinks : [],
-    copyrightText: footer?.copyrightText || '',
-  };
-}
-
-function normalizeHomeSettingsForm(homeSettings) {
-  return {
-    heroKicker: homeSettings?.heroKicker || '',
-    heroTitle: homeSettings?.heroTitle || '',
-    heroSubtitle: homeSettings?.heroSubtitle || '',
-    primaryButtonText: homeSettings?.primaryButtonText || '',
-    primaryButtonUrl: homeSettings?.primaryButtonUrl || '',
-    secondaryButtonText: homeSettings?.secondaryButtonText || '',
-    secondaryButtonUrl: homeSettings?.secondaryButtonUrl || '',
-    stats: Array.isArray(homeSettings?.stats) ? homeSettings.stats : [],
-  };
-}
-
-function FooterEditorSection({
-  title,
-  items,
-  labelKey,
-  labelPlaceholder,
-  onAdd,
-  onChange,
-  onRemove,
-}) {
-  return (
-    <div className="footer-editor-section">
-      <div className="footer-editor-head">
-        <h4>{title}</h4>
-        <button className="btn-light" type="button" onClick={onAdd}>إضافة</button>
       </div>
 
-      {items.length === 0 ? <p className="muted">لا توجد عناصر مضافة بعد.</p> : null}
-
-      {items.map((item, index) => (
-        <div key={`${title}-${index}`} className="footer-editor-row">
-          <input
-            className="input"
-            value={item[labelKey] || ''}
-            onChange={(e) => onChange(index, labelKey, e.target.value)}
-            placeholder={labelPlaceholder}
-            required
-          />
-          <input
-            className="input"
-            value={item.url || ''}
-            onChange={(e) => onChange(index, 'url', e.target.value)}
-            placeholder="الرابط"
-            required
-          />
-          <button className="btn-danger" type="button" onClick={() => onRemove(index)}>حذف</button>
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Order tracking</h2>
+          <p>Change the technician or update the status from the same screen.</p>
         </div>
-      ))}
-    </div>
+
+        <div className="order-list">
+          {dashboard?.orders?.map((order) => (
+            <article className="order-card" key={order.id}>
+              <div className="order-main">
+                <div>
+                  <div className="order-topline">
+                    <strong>{order.customerName}</strong>
+                    <span className={`status-badge ${order.status}`}>
+                      {operationsService.getStatusLabel(order.status)}
+                    </span>
+                  </div>
+                  <p>{order.address}</p>
+                  <p>{order.acType}</p>
+                  <p>Technician: {order.technicianName}</p>
+                  <p>Scheduled date: {order.scheduledDate}</p>
+                  <p>Collected extras: {order.extras?.totalPrice || 0} SAR</p>
+                </div>
+
+                <div className="order-actions">
+                  <select
+                    className="input compact-input"
+                    value={order.technicianId}
+                    onChange={(event) =>
+                      updateOrder(order.id, { technicianId: event.target.value }, 'Technician updated successfully.')
+                    }
+                  >
+                    {dashboard?.technicians?.map((technician) => (
+                      <option key={technician.id} value={technician.id}>
+                        {technician.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="input compact-input"
+                    value={order.status}
+                    onChange={(event) =>
+                      updateOrder(order.id, { status: event.target.value }, 'Order status updated.')
+                    }
+                  >
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }

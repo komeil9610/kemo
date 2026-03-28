@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: [true, 'رقم الهاتف مطلوب'],
-      match: [/^[0-9]{10,15}$/, 'رقم هاتف غير صحيح'],
+      match: [/^\+?[0-9]{9,15}$/, 'رقم هاتف غير صحيح'],
     },
     password: {
       type: String,
@@ -36,8 +36,20 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'admin', 'vendor'],
+      enum: ['user', 'admin', 'vendor', 'technician'],
       default: 'user',
+    },
+    technicianId: {
+      type: String,
+      default: null,
+    },
+    region: {
+      type: String,
+      default: null,
+    },
+    notes: {
+      type: String,
+      default: null,
     },
     address: {
       street: String,

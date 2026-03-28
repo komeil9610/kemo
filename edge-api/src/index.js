@@ -1,7 +1,15 @@
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "http://localhost",
+  "http://127.0.0.1",
+  "https://localhost",
+  "https://127.0.0.1",
+  "capacitor://localhost",
 ];
+
+const DEFAULT_PRODUCT_IMAGE =
+  "https://images.unsplash.com/photo-1581093458791-9d15482442f0?auto=format&fit=crop&w=900&q=80";
 
 export default {
   async fetch(request, env) {
@@ -19,7 +27,7 @@ export default {
         return json(
           {
             message: "ok",
-            service: "rentit-edge-api",
+            service: "tarkeeb-pro-edge-api",
             date: new Date().toISOString(),
           },
           200,
@@ -34,6 +42,59 @@ export default {
 
       if (path === "/api/auth/login" && request.method === "POST") {
         return login(request, env);
+      }
+
+      if (path === "/api/operations/dashboard" && request.method === "GET") {
+        return getOperationsDashboard(request, env);
+      }
+
+      if (path === "/api/operations/orders" && request.method === "POST") {
+        return createServiceOrder(request, env);
+      }
+
+      if (path === "/api/operations/technician/orders" && request.method === "GET") {
+        return getTechnicianOrders(request, env);
+      }
+
+      if (path === "/api/notifications" && request.method === "GET") {
+        return listNotifications(request, env);
+      }
+
+      if (path === "/api/notifications/read-all" && request.method === "PUT") {
+        return markAllNotificationsRead(request, env);
+      }
+
+      if (path.startsWith("/api/notifications/") && path.endsWith("/read") && request.method === "PUT") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return markNotificationRead(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && path.endsWith("/status") && request.method === "PUT") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return updateServiceOrderStatus(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && path.endsWith("/extras") && request.method === "PUT") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return updateServiceOrderExtras(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && path.endsWith("/photos") && request.method === "POST") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return uploadServiceOrderPhoto(request, id, env);
+      }
+
+      if (path === "/api/notifications/push" && request.method === "POST") {
+        return pushNotification(request, env);
+      }
+
+      if (path === "/api/notifications/subscribe" && request.method === "POST") {
+        return subscribe(request, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && request.method === "PUT") {
+        const id = path.split("/").pop();
+        return updateServiceOrder(request, id, env);
       }
 
       if (path === "/api/products" && request.method === "GET") {
@@ -141,6 +202,61 @@ export default {
     }
   },
 };
+
+import webpush from "web-push";
+
+const vapidPublicKey = 'BJDe1im_oVNRMdPrjtBjE7qwlb-CJUDIxxc_Dp-mhPwuiuSgTHcFxWgS3MX-gyVyy3YPMS8nGQ6YaJIb1rrGgyo';
+const vapidPrivateKey = 'lsoE_8aTNecmeyMys5PdzKcCKnzJFcfI0YjVDYIaD3I';
+
+webpush.setVapidDetails(
+  'mailto:your-email@example.com',
+  vapidPublicKey,
+  vapidPrivateKey
+);
+
+async function subscribe(request, env) {
+  const body = await readJson(request);
+  const { endpoint, keys } = body;
+  const user = await readActiveUser(request, env);
+
+  if (!endpoint || !keys || !keys.p256dh || !keys.auth) {
+    return json({ message: "Invalid subscription" }, 400, request, env);
+  }
+
+  await env.DB.prepare(
+    "INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_id) VALUES (?, ?, ?, ?)"
+  )
+    .bind(endpoint, keys.p256dh, keys.auth, user ? user.sub : null)
+    .run();
+
+  return json({ message: "Subscription saved" }, 201, request, env);
+}
+
+async function pushNotification(request, env) {
+  const body = await readJson(request);
+  const { message } = body;
+
+  if (!message) {
+    return json({ message: "Message is required" }, 400, request, env);
+  }
+
+  const { results } = await env.DB.prepare("SELECT * FROM push_subscriptions").all();
+
+  const notificationPromises = results.map((subscription) => {
+    const pushConfig = {
+      endpoint: subscription.endpoint,
+      keys: {
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+      },
+    };
+    return webpush.sendNotification(pushConfig, message);
+  });
+
+  await Promise.all(notificationPromises);
+
+  return json({ message: "Push notifications sent" }, 200, request, env);
+}
 
 async function register(request, env) {
   const body = await readJson(request);
@@ -937,6 +1053,576 @@ async function checkoutCart(request, env) {
   );
 }
 
+const OPERATIONS_PRICING = {
+  includedCopperMeters: 3,
+  copperPricePerMeter: 85,
+  basePrice: 180,
+};
+
+async function getOperationsDashboard(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const technicians = await readTechnicians(env);
+  const orders = await readServiceOrders(env);
+  const summary = buildOperationsSummary(orders, technicians);
+
+  return json(
+    {
+      pricing: OPERATIONS_PRICING,
+      technicians,
+      orders,
+      summary,
+    },
+    200,
+    request,
+    env
+  );
+}
+
+async function createServiceOrder(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const normalized = normalizeServiceOrderInput(body);
+  if (normalized.error) {
+    return json({ message: normalized.error }, 400, request, env);
+  }
+
+  const technician = await env.DB.prepare(
+    "SELECT t.id, t.user_id, t.name, t.zone FROM technicians t WHERE t.id = ?"
+  )
+    .bind(Number(normalized.technicianId))
+    .first();
+
+  if (!technician) {
+    return json({ message: "Technician not found" }, 404, request, env);
+  }
+
+  const created = await env.DB.prepare(
+    `INSERT INTO service_orders (
+      customer_name, phone, address, ac_type, status, scheduled_date, notes, technician_id,
+      copper_meters, base_included, extras_total, created_by_user_id, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+  )
+    .bind(
+      normalized.customerName,
+      normalized.phone,
+      normalized.address,
+      normalized.acType,
+      "pending",
+      normalized.scheduledDate,
+      normalized.notes,
+      Number(normalized.technicianId),
+      0,
+      0,
+      0,
+      Number(admin.sub)
+    )
+    .run();
+
+  await createNotification(
+    env,
+    technician.user_id,
+    "طلب جديد مسند لك",
+    `تم إسناد طلب ${normalized.customerName} في ${technician.zone} إليك.`,
+    "new_order",
+    created.meta.last_row_id
+  );
+
+  const order = await readServiceOrderById(env, created.meta.last_row_id);
+  return json({ order }, 201, request, env);
+}
+
+async function updateServiceOrder(request, id, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const existing = await env.DB.prepare(
+    "SELECT id, technician_id, status FROM service_orders WHERE id = ?"
+  )
+    .bind(orderId)
+    .first();
+
+  if (!existing) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  const body = await readJson(request);
+  const status = body.status ? String(body.status).trim() : existing.status;
+  const notes = body.notes !== undefined ? String(body.notes || "").trim() : null;
+  const technicianId = body.technicianId ? Number(body.technicianId) : existing.technician_id;
+
+  if (!["pending", "en_route", "in_progress", "completed"].includes(status)) {
+    return json({ message: "Invalid order status" }, 400, request, env);
+  }
+
+  const technician = await env.DB.prepare(
+    "SELECT id, user_id, name FROM technicians WHERE id = ?"
+  )
+    .bind(Number(technicianId))
+    .first();
+
+  if (!technician) {
+    return json({ message: "Technician not found" }, 404, request, env);
+  }
+
+  await env.DB.prepare(
+    `UPDATE service_orders
+     SET status = ?, technician_id = ?, notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(status, technician.id, notes, orderId)
+    .run();
+
+  if (Number(existing.technician_id) !== technician.id) {
+    await createNotification(
+      env,
+      technician.user_id,
+      "تم إسناد الطلب لك",
+      `لديك الآن مهمة جديدة برقم #${orderId}.`,
+      "assignment",
+      orderId
+    );
+  }
+
+  const order = await readServiceOrderById(env, orderId);
+  return json({ order }, 200, request, env);
+}
+
+async function getTechnicianOrders(request, env) {
+  const user = await requireRoles(request, env, ["technician"]);
+  if (!user) {
+    return json({ message: "Technician access required" }, 403, request, env);
+  }
+
+  const technician = await env.DB.prepare(
+    "SELECT id, user_id, name, phone, zone, status FROM technicians WHERE user_id = ?"
+  )
+    .bind(Number(user.sub))
+    .first();
+
+  if (!technician) {
+    return json({ message: "Technician profile not found" }, 404, request, env);
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.phone, o.address, o.ac_type, o.status, o.scheduled_date, o.notes,
+      o.copper_meters, o.base_included, o.extras_total, o.created_at, o.updated_at,
+      t.id AS technician_id, t.name AS technician_name
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     WHERE o.technician_id = ?
+     ORDER BY o.id DESC`
+  )
+    .bind(Number(technician.id))
+    .all();
+
+  const orders = await Promise.all((results || []).map((row) => mapServiceOrderRow(env, row)));
+
+  return json(
+    {
+      technician: mapTechnician(technician),
+      pricing: OPERATIONS_PRICING,
+      orders,
+    },
+    200,
+    request,
+    env
+  );
+}
+
+async function updateServiceOrderStatus(request, id, env) {
+  const user = await requireRoles(request, env, ["admin", "technician"]);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const body = await readJson(request);
+  const status = String(body.status || "").trim();
+
+  if (!["pending", "en_route", "in_progress", "completed"].includes(status)) {
+    return json({ message: "Invalid order status" }, 400, request, env);
+  }
+
+  const order = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.technician_id,
+      t.user_id AS technician_user_id, t.name AS technician_name
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     WHERE o.id = ?`
+  )
+    .bind(orderId)
+    .first();
+
+  if (!order) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  if (user.role === "technician" && Number(order.technician_user_id) !== Number(user.sub)) {
+    return json({ message: "This order is not assigned to you" }, 403, request, env);
+  }
+
+  await env.DB.prepare(
+    "UPDATE service_orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+  )
+    .bind(status, orderId)
+    .run();
+
+  await notifyAdmins(
+    env,
+    "تحديث من الفني",
+    `الطلب #${orderId} للعميل ${order.customer_name} أصبح بحالة ${mapOrderStatusLabel(status)}.`,
+    orderId
+  );
+
+  const updated = await readServiceOrderById(env, orderId);
+  return json({ order: updated }, 200, request, env);
+}
+
+async function updateServiceOrderExtras(request, id, env) {
+  const user = await requireRoles(request, env, ["admin", "technician"]);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const body = await readJson(request);
+  const copperMeters = Math.max(0, Number(body.copperMeters) || 0);
+  const baseIncluded = body.baseIncluded ? 1 : 0;
+  const extrasTotal = calculateExtrasTotal(copperMeters, Boolean(baseIncluded));
+
+  await env.DB.prepare(
+    `UPDATE service_orders
+     SET copper_meters = ?, base_included = ?, extras_total = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(copperMeters, baseIncluded, extrasTotal, orderId)
+    .run();
+
+  await notifyAdmins(
+    env,
+    "تحديث تكلفة إضافية",
+    `تم تحديث إضافات الطلب #${orderId} إلى ${extrasTotal} ر.س.`,
+    orderId
+  );
+
+  const order = await readServiceOrderById(env, orderId);
+  return json({ order }, 200, request, env);
+}
+
+async function uploadServiceOrderPhoto(request, id, env) {
+  const user = await requireRoles(request, env, ["admin", "technician"]);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const body = await readJson(request);
+  const name = String(body.name || "").trim();
+  const url = String(body.url || "").trim();
+
+  if (!name || !url) {
+    return json({ message: "Photo name and url are required" }, 400, request, env);
+  }
+
+  await env.DB.prepare(
+    "INSERT INTO service_order_photos (order_id, image_name, image_url, uploaded_by_user_id) VALUES (?, ?, ?, ?)"
+  )
+    .bind(orderId, name, url, Number(user.sub))
+    .run();
+
+  await notifyAdmins(
+    env,
+    "تم رفع صورة توثيق",
+    `تم رفع صورة جديدة للطلب #${orderId}.`,
+    orderId
+  );
+
+  const order = await readServiceOrderById(env, orderId);
+  return json({ order }, 201, request, env);
+}
+
+async function listNotifications(request, env) {
+  const user = await readActiveUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const sinceId = Number(new URL(request.url).searchParams.get("sinceId") || 0);
+
+  const statement =
+    sinceId > 0
+      ? env.DB.prepare(
+          `SELECT id, title, body, kind, related_order_id, is_read, created_at
+           FROM notifications
+           WHERE user_id = ? AND id > ?
+           ORDER BY id DESC
+           LIMIT 40`
+        ).bind(Number(user.sub), sinceId)
+      : env.DB.prepare(
+          `SELECT id, title, body, kind, related_order_id, is_read, created_at
+           FROM notifications
+           WHERE user_id = ?
+           ORDER BY id DESC
+           LIMIT 40`
+        ).bind(Number(user.sub));
+
+  const { results } = await statement.all();
+  const items = (results || []).map((row) => ({
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    kind: row.kind,
+    relatedOrderId: row.related_order_id,
+    isRead: Boolean(row.is_read),
+    createdAt: row.created_at,
+  }));
+
+  return json(
+    {
+      notifications: items,
+      unreadCount: items.filter((item) => !item.isRead).length,
+    },
+    200,
+    request,
+    env
+  );
+}
+
+async function markNotificationRead(request, id, env) {
+  const user = await readActiveUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  await env.DB.prepare(
+    "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?"
+  )
+    .bind(Number(id), Number(user.sub))
+    .run();
+
+  return json({ ok: true }, 200, request, env);
+}
+
+async function markAllNotificationsRead(request, env) {
+  const user = await readActiveUser(request, env);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  await env.DB.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?")
+    .bind(Number(user.sub))
+    .run();
+
+  return json({ ok: true }, 200, request, env);
+}
+
+async function readTechnicians(env) {
+  const { results } = await env.DB.prepare(
+    "SELECT id, user_id, name, phone, zone, status FROM technicians ORDER BY id ASC"
+  ).all();
+
+  return (results || []).map(mapTechnician);
+}
+
+function mapTechnician(row) {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    name: row.name,
+    phone: row.phone,
+    zone: row.zone,
+    status: row.status,
+  };
+}
+
+async function readServiceOrders(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.phone, o.address, o.ac_type, o.status, o.scheduled_date, o.notes,
+      o.copper_meters, o.base_included, o.extras_total, o.created_at, o.updated_at,
+      t.id AS technician_id, t.name AS technician_name, t.user_id AS technician_user_id
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     ORDER BY o.id DESC`
+  ).all();
+
+  return Promise.all((results || []).map((row) => mapServiceOrderRow(env, row)));
+}
+
+async function readServiceOrderById(env, orderId) {
+  const row = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.phone, o.address, o.ac_type, o.status, o.scheduled_date, o.notes,
+      o.copper_meters, o.base_included, o.extras_total, o.created_at, o.updated_at,
+      t.id AS technician_id, t.name AS technician_name, t.user_id AS technician_user_id
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     WHERE o.id = ?`
+  )
+    .bind(Number(orderId))
+    .first();
+
+  if (!row) {
+    return null;
+  }
+
+  return mapServiceOrderRow(env, row);
+}
+
+async function mapServiceOrderRow(env, row) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, image_name, image_url, created_at
+     FROM service_order_photos
+     WHERE order_id = ?
+     ORDER BY id DESC`
+  )
+    .bind(Number(row.id))
+    .all();
+
+  return {
+    id: `ORD-${row.id}`,
+    numericId: row.id,
+    customerName: row.customer_name,
+    phone: row.phone,
+    address: row.address,
+    acType: row.ac_type,
+    status: row.status,
+    scheduledDate: row.scheduled_date,
+    notes: row.notes,
+    technicianId: row.technician_id ? String(row.technician_id) : "",
+    technicianName: row.technician_name || "غير معين",
+    createdAt: row.created_at,
+    extras: {
+      copperMeters: Number(row.copper_meters || 0),
+      baseIncluded: Boolean(row.base_included),
+      totalPrice: Number(row.extras_total || 0),
+    },
+    photos: (results || []).map((photo) => ({
+      id: `photo-${photo.id}`,
+      name: photo.image_name,
+      url: photo.image_url,
+      uploadedAt: photo.created_at,
+    })),
+  };
+}
+
+function buildOperationsSummary(orders, technicians) {
+  return orders.reduce(
+    (summary, order) => ({
+      totalOrders: summary.totalOrders + 1,
+      pendingOrders: summary.pendingOrders + (order.status === "pending" ? 1 : 0),
+      activeOrders: summary.activeOrders + (["en_route", "in_progress"].includes(order.status) ? 1 : 0),
+      completedOrders: summary.completedOrders + (order.status === "completed" ? 1 : 0),
+      availableTechnicians: technicians.filter((entry) => entry.status === "available").length,
+      extrasRevenue: summary.extrasRevenue + (order.extras?.totalPrice || 0),
+      copperMeters: summary.copperMeters + (order.extras?.copperMeters || 0),
+      basesCount: summary.basesCount + (order.extras?.baseIncluded ? 1 : 0),
+    }),
+    {
+      totalOrders: 0,
+      pendingOrders: 0,
+      activeOrders: 0,
+      completedOrders: 0,
+      availableTechnicians: technicians.filter((entry) => entry.status === "available").length,
+      extrasRevenue: 0,
+      copperMeters: 0,
+      basesCount: 0,
+    }
+  );
+}
+
+function normalizeServiceOrderInput(body) {
+  const customerName = String(body.customerName || "").trim();
+  const phone = String(body.phone || "").trim();
+  const address = String(body.address || "").trim();
+  const acType = String(body.acType || "").trim();
+  const scheduledDate = String(body.scheduledDate || "").trim();
+  const technicianId = Number(body.technicianId);
+  const notes = String(body.notes || "").trim();
+
+  if (!customerName || !phone || !address || !acType || !scheduledDate) {
+    return { error: "All order fields are required" };
+  }
+
+  if (!Number.isInteger(technicianId) || technicianId <= 0) {
+    return { error: "Valid technician is required" };
+  }
+
+  return {
+    customerName,
+    phone,
+    address,
+    acType,
+    scheduledDate,
+    technicianId,
+    notes,
+  };
+}
+
+function calculateExtrasTotal(copperMeters, baseIncluded) {
+  const copperTotal = Math.max(0, Number(copperMeters) || 0) * OPERATIONS_PRICING.copperPricePerMeter;
+  return copperTotal + (baseIncluded ? OPERATIONS_PRICING.basePrice : 0);
+}
+
+function mapOrderStatusLabel(status) {
+  return (
+    {
+      pending: "قيد الانتظار",
+      en_route: "في الطريق",
+      in_progress: "جاري التركيب",
+      completed: "مكتمل",
+    }[status] || status
+  );
+}
+
+async function createNotification(env, userId, title, body, kind = "info", relatedOrderId = null) {
+  await env.DB.prepare(
+    `INSERT INTO notifications (user_id, title, body, kind, related_order_id, is_read)
+     VALUES (?, ?, ?, ?, ?, 0)`
+  )
+    .bind(Number(userId), title, body, kind, relatedOrderId ? Number(relatedOrderId) : null)
+    .run();
+}
+
+async function notifyAdmins(env, title, body, relatedOrderId = null) {
+  const { results } = await env.DB.prepare(
+    "SELECT id FROM users WHERE role = 'admin' AND status = 'active'"
+  ).all();
+
+  for (const admin of results || []) {
+    await createNotification(env, admin.id, title, body, "status_update", relatedOrderId);
+  }
+}
+
 function normalizeProductInput(body) {
   const name = (body.name || "").trim();
   const description = (body.description || "").trim();
@@ -1080,6 +1766,9 @@ function normalizeFooterLinkList(value, titleKey) {
 }
 
 function mapProduct(row) {
+  const quantity = Number(row.quantity ?? 0);
+  const availableQuantity = Number.isFinite(quantity) ? Math.max(0, quantity) : 0;
+
   return {
     _id: String(row.id),
     ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
@@ -1089,12 +1778,13 @@ function mapProduct(row) {
     city: row.city,
     pricePerDay: row.price_per_day,
     rating: row.rating,
-    quantity: row.quantity ?? 1,
+    quantity: availableQuantity,
+    availableQuantity,
+    isAvailable: availableQuantity > 0,
+    availabilityLabel: availableQuantity > 0 ? "متوفر" : "غير متوفر",
     images: [
       {
-        url:
-          row.image_url ||
-          "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
+        url: row.image_url || DEFAULT_PRODUCT_IMAGE,
       },
     ],
   };
@@ -1147,21 +1837,21 @@ function mapFooterSettings(row) {
 function getDefaultFooterSettings() {
   return {
     aboutText:
-      "Rent It منصة موثوقة لتأجير المنتجات والخدمات بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.",
+      "Tarkeeb Pro منصة موثوقة لإدارة طلبات التركيب والفنيين بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.",
     usefulLinks: [
       { label: "الرئيسية", url: "/" },
-      { label: "المنتجات", url: "/products" },
-      { label: "طلباتي", url: "/orders" },
+      { label: "لوحة الإدارة", url: "/dashboard" },
+      { label: "مهام الفني", url: "/tasks" },
     ],
     customerServiceLinks: [
-      { label: "الدعم الفني", url: "mailto:support@rentit.app" },
+      { label: "الدعم الفني", url: "mailto:ops@tarkeebpro.sa" },
       { label: "واتساب", url: "https://wa.me/966500000000" },
-      { label: "الأسئلة الشائعة", url: "/products" },
+      { label: "الأسئلة الشائعة", url: "/" },
     ],
     socialLinks: [
-      { platform: "instagram", url: "https://instagram.com/rentit.app" },
-      { platform: "x", url: "https://x.com/rentitapp" },
-      { platform: "linkedin", url: "https://linkedin.com/company/rentit" },
+      { platform: "instagram", url: "https://instagram.com/tarkeebpro" },
+      { platform: "x", url: "https://x.com/tarkeebpro" },
+      { platform: "linkedin", url: "https://linkedin.com/company/tarkeebpro" },
     ],
     copyrightText: "جميع الحقوق محفوظة لكميل",
   };
@@ -1200,17 +1890,17 @@ async function readHomeSettings(env) {
 
 function getDefaultHomeSettings() {
   return {
-    heroKicker: "RentIT Marketplace",
-    heroTitle: "Rent smarter. Own less. Do more.",
-    heroSubtitle: "Discover verified rentals for devices, costumes, and services across Saudi Arabia.",
-    primaryButtonText: "Browse Products",
-    primaryButtonUrl: "/products",
-    secondaryButtonText: "Get Started",
-    secondaryButtonUrl: "/register",
+    heroKicker: "Tarkeeb Pro Operations",
+    heroTitle: "Manage installation jobs and technicians in one place.",
+    heroSubtitle: "Assign field technicians, track execution, and manage service orders across Saudi Arabia.",
+    primaryButtonText: "Open Dashboard",
+    primaryButtonUrl: "/dashboard",
+    secondaryButtonText: "Technician View",
+    secondaryButtonUrl: "/tasks",
     stats: [
-      { value: "10K+", label: "Trusted Users" },
-      { value: "4.9/5", label: "Average Rating" },
-      { value: "35+", label: "Cities Covered" },
+      { value: "1", label: "Admin account" },
+      { value: "1", label: "Seeded technician" },
+      { value: "85 SAR", label: "Copper meter price" },
     ],
   };
 }
@@ -1352,6 +2042,15 @@ async function readActiveUser(request, env) {
 async function requireAdmin(request, env) {
   const payload = await readActiveUser(request, env);
   if (!payload || payload.role !== "admin") {
+    return null;
+  }
+
+  return payload;
+}
+
+async function requireRoles(request, env, roles = []) {
+  const payload = await readActiveUser(request, env);
+  if (!payload || !roles.includes(payload.role)) {
     return null;
   }
 

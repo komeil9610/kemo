@@ -1,6 +1,6 @@
-# RentIT Edge API (Cloudflare Worker + D1)
+# Tarkeeb Pro Edge API (Cloudflare Worker + D1)
 
-Backend API for RentIT running on Cloudflare Workers with D1 as the main database.
+Backend API for Tarkeeb Pro running on Cloudflare Workers with D1 as the main database.
 
 ## Supported features
 
@@ -29,8 +29,8 @@ Backend API for RentIT running on Cloudflare Workers with D1 as the main databas
 
 1. `cd edge-api && npm install`
 2. Create D1:
-   - `npx wrangler d1 create rentit_db`
-3. Put the returned `database_id` into [wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml)
+   - `npx wrangler d1 create tarkeeb_pro_db`
+3. Put the returned `database_id` into `wrangler.toml`
 4. Apply the full schema:
    - Local: `npm run db:migrate:local`
    - Remote: `npm run db:migrate:remote`

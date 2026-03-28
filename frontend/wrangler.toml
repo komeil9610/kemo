@@ -1,4 +1,4 @@
-name = "rentit-frontend"
+name = "tarkeeb-pro-frontend"
 main = "cloudflare/worker.js"
 compatibility_date = "2026-03-26"
 
@@ -8,7 +8,7 @@ directory = "./build"
 
 [[services]]
 binding = "EDGE_API"
-service = "rentit-edge-api"
+service = "tarkeeb-pro-edge-api"
 
 [vars]
-API_ORIGIN = "https://rentit-edge-api.bobkumeel.workers.dev"
+API_ORIGIN = "https://tarkeeb-pro-edge-api.bobkumeel.workers.dev"

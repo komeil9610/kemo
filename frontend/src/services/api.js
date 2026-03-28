@@ -1,7 +1,6 @@
-// Frontend API Service
 import axios from 'axios';
 
-const CART_STORAGE_KEY = 'rentitCart';
+const STORAGE_KEY = 'tarkeeb-pro-db';
 
 const isLocalhost =
   typeof window !== 'undefined' &&
@@ -9,9 +8,7 @@ const isLocalhost =
 
 const API_BASE_URL =
   process.env.REACT_APP_API_URL ||
-  (isLocalhost
-    ? 'http://127.0.0.1:8787/api'
-    : '/api');
+  (isLocalhost ? 'http://127.0.0.1:5000/api' : '/api');
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -20,142 +17,563 @@ const apiClient = axios.create({
   },
 });
 
-// Add token to requests
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+const defaultState = {
+  users: [
+    {
+      id: 'admin-1',
+      firstName: 'Bob',
+      lastName: 'Kumeel',
+      name: 'Bob Kumeel',
+      email: 'bobkumeel@gmail.com',
+      phone: '+966500000001',
+      password: 'Kom123asd@',
+      role: 'admin',
+    },
+    {
+      id: 'tech-user-1',
+      firstName: 'Kumeel',
+      lastName: 'Alnahab',
+      name: 'Eastern Technician',
+      email: 'kumeelalnahab@gmail.com',
+      phone: '+966500000002',
+      password: 'Komeil@123',
+      role: 'technician',
+      technicianId: 'tech-1',
+    },
+  ],
+  pricing: {
+    includedCopperMeters: 3,
+    copperPricePerMeter: 85,
+    basePrice: 180,
   },
-  (error) => Promise.reject(error)
-);
-
-// Auth Service
-export const authService = {
-  register: (userData) => apiClient.post('/auth/register', userData),
-  login: (email, password) => apiClient.post('/auth/login', { email, password }),
-  logout: () => localStorage.removeItem('authToken'),
+  technicians: [
+    {
+      id: 'tech-1',
+      userId: 'tech-user-1',
+      name: 'Eastern Technician',
+      firstName: 'Kumeel',
+      lastName: 'Alnahab',
+      email: 'kumeelalnahab@gmail.com',
+      phone: '+966500000002',
+      region: 'Eastern Province',
+      zone: 'Eastern Province',
+      status: 'available',
+      notes: 'Eastern region coverage across Saudi Arabia.',
+    },
+  ],
+  orders: [
+    {
+      id: 'ORD-1001',
+      numericId: 1001,
+      customerName: 'Abu Khaled',
+      phone: '+966555000111',
+      address: 'Al Yasmin District - Riyadh',
+      acType: 'Split AC 24,000 BTU',
+      status: 'pending',
+      scheduledDate: '2026-03-29',
+      notes: 'Second floor - elevator available',
+      technicianId: 'tech-1',
+      technicianName: 'Eastern Technician',
+      createdAt: '2026-03-28T08:15:00.000Z',
+      extras: {
+        copperMeters: 2,
+        baseIncluded: true,
+        totalPrice: 350,
+      },
+      photos: [],
+    },
+  ],
 };
 
-// Products Service
-export const productService = {
-  getAll: (filters) => apiClient.get('/products', { params: filters }),
-  getById: (id) => apiClient.get(`/products/${id}`),
-  create: (data) => apiClient.post('/products', data),
-  update: (id, data) => apiClient.put(`/products/${id}`, data),
-  delete: (id) => apiClient.delete(`/products/${id}`),
+const defaultHomeSettings = {
+  heroKicker: 'PWA + Admin + Technician Workflow',
+  heroTitle: 'Manage AC installation orders from your office to the customer site.',
+  heroSubtitle:
+    'One dashboard to log orders, assign technicians, track execution, and calculate copper and base extras instantly.',
+  primaryButtonText: 'Open Admin Dashboard',
+  primaryButtonUrl: '/dashboard',
+  secondaryButtonText: 'Open Technician View',
+  secondaryButtonUrl: '/tasks',
+  stats: [
+    { value: '1', label: 'Active technicians' },
+    { value: '4', label: 'Live order states' },
+    { value: '85 SAR', label: 'Copper meter price' },
+  ],
 };
 
-export const adminService = {
-  getProducts: () => apiClient.get('/admin/products'),
-  getUsers: () => apiClient.get('/admin/users'),
-  updateUser: (id, data) => apiClient.put(`/admin/users/${id}`, data),
-  getBookings: () => apiClient.get('/admin/bookings'),
-  updateBooking: (id, data) => apiClient.put(`/admin/bookings/${id}`, data),
-  getFooter: () => apiClient.get('/admin/footer'),
-  updateFooter: (data) => apiClient.put('/admin/footer', data),
-  getHomeSettings: () => apiClient.get('/admin/home-settings'),
-  updateHomeSettings: (data) => apiClient.put('/admin/home-settings', data),
+const defaultFooter = {
+  aboutText: 'Tarkeeb Pro keeps orders and field operations organized from one clear screen.',
+  usefulLinks: [
+    { label: 'Home', url: '/' },
+    { label: 'Admin Dashboard', url: '/dashboard' },
+    { label: 'Technician Tasks', url: '/tasks' },
+  ],
+  customerServiceLinks: [
+    { label: 'Support', url: 'mailto:ops@tarkeebpro.sa' },
+    { label: 'WhatsApp', url: 'https://wa.me/966500000000' },
+    { label: 'Call us', url: 'tel:+966500000000' },
+  ],
+  socialLinks: [
+    { platform: 'instagram', url: 'https://instagram.com/tarkeebpro' },
+    { platform: 'x', url: 'https://x.com/tarkeebpro' },
+    { platform: 'linkedin', url: 'https://linkedin.com/company/tarkeebpro' },
+  ],
+  copyrightText: 'Tarkeeb Pro - MVP release',
 };
 
-export const footerService = {
-  get: () => apiClient.get('/footer'),
+const delay = (value) =>
+  new Promise((resolve) => {
+    window.setTimeout(() => resolve(value), 120);
+  });
+
+const clone = (value) => JSON.parse(JSON.stringify(value));
+
+const mergeSeedData = (primaryItems = [], fallbackItems = [], key) => {
+  const seen = new Set();
+  const merged = [];
+
+  [...primaryItems, ...fallbackItems].forEach((item) => {
+    const identifier = String(item?.[key] ?? '').toLowerCase();
+    if (!identifier || seen.has(identifier)) {
+      return;
+    }
+
+    seen.add(identifier);
+    merged.push(item);
+  });
+
+  return merged;
 };
 
-export const homeService = {
-  get: () => apiClient.get('/home-settings'),
-};
+const normalizeState = (state = {}) => ({
+  ...clone(defaultState),
+  ...state,
+  users: mergeSeedData(defaultState.users, state.users, 'email'),
+  technicians: mergeSeedData(defaultState.technicians, state.technicians, 'id'),
+});
 
-// Bookings Service
-export const bookingService = {
-  getAll: () => apiClient.get('/orders'),
-  getById: (id) => apiClient.get(`/orders/${id}`),
-  create: (data) => apiClient.post('/bookings', data),
-  cancel: (id) => apiClient.put(`/bookings/${id}/cancel`),
-};
+const buildToken = (user) => btoa(`${user.role}:${user.email}:${Date.now()}`);
 
-export const orderService = {
-  getAll: () => apiClient.get('/orders'),
-  getById: (id) => apiClient.get(`/orders/${id}`),
-  cancel: (id) => apiClient.put(`/bookings/${id}/cancel`),
-};
-
-export const cartService = {
-  checkout: (items) => apiClient.post('/cart/checkout', { items }),
-};
-
-const readCart = () => {
+const safeJson = (value, fallback) => {
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    return value ? JSON.parse(value) : fallback;
   } catch {
-    return [];
+    return fallback;
   }
 };
 
-const writeCart = (items) => {
-  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
-  return items;
+const readState = () => {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
+    return clone(defaultState);
+  }
+
+  try {
+    return normalizeState(JSON.parse(raw));
+  } catch {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
+    return clone(defaultState);
+  }
 };
 
-const clampCartQuantity = (quantity, maxQuantity) =>
-  Math.max(1, Math.min(Number(quantity || 1), Number(maxQuantity || quantity || 1)));
+const writeState = (nextState) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+  window.dispatchEvent(new CustomEvent('operations-updated'));
+  return clone(nextState);
+};
 
-export const cartStorage = {
-  getItems: () => readCart(),
-  addItem: (item) => {
-    const items = readCart();
-    const existingIndex = items.findIndex(
-      (entry) =>
-        String(entry.productId) === String(item.productId) &&
-        entry.startDate === item.startDate &&
-        entry.endDate === item.endDate
-    );
+const getState = () => clone(readState());
 
-    if (existingIndex >= 0) {
-      const current = items[existingIndex];
-      items[existingIndex] = {
-        ...current,
-        quantity: clampCartQuantity(
-          Number(current.quantity || 0) + Number(item.quantity || 1),
-          current.availableQuantity || item.availableQuantity
-        ),
-      };
-    } else {
-      items.push({
-        ...item,
-        quantity: clampCartQuantity(item.quantity, item.availableQuantity),
-      });
+const calculateExtrasTotal = (copperMeters, baseIncluded) => {
+  const state = readState();
+  const meters = Math.max(0, Number(copperMeters) || 0);
+  return meters * state.pricing.copperPricePerMeter + (baseIncluded ? state.pricing.basePrice : 0);
+};
+
+const statusLabelMap = {
+  pending: 'Pending',
+  en_route: 'En route',
+  in_progress: 'In progress',
+  completed: 'Completed',
+};
+
+const normalizeOrderId = (orderId) => {
+  const value = String(orderId || '');
+  return value.startsWith('ORD-') ? value.replace('ORD-', '') : value;
+};
+
+const withFallback = async (remoteAction, localAction) => {
+  try {
+    return await remoteAction();
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status && status < 500 && status !== 404) {
+      throw error;
     }
 
-    return writeCart(items);
-  },
-  updateItem: (cartItemId, nextValues) => {
-    const items = readCart().map((item) =>
-      item.id === cartItemId
-        ? {
-            ...item,
-            ...nextValues,
-            quantity: clampCartQuantity(
-              nextValues.quantity ?? item.quantity,
-              item.availableQuantity
-            ),
-          }
-        : item
-    );
-    return writeCart(items);
-  },
-  removeItem: (cartItemId) => writeCart(readCart().filter((item) => item.id !== cartItemId)),
-  clear: () => writeCart([]),
+    return localAction();
+  }
 };
 
-// Payments Service
-export const paymentService = {
-  createPayment: (data) => apiClient.post('/payments', data),
-  getPaymentStatus: (id) => apiClient.get(`/payments/${id}`),
+const computeSummary = (orders, technicians) => {
+  const financialTotals = orders.reduce(
+    (totals, order) => ({
+      extrasRevenue: totals.extrasRevenue + (order.extras?.totalPrice || 0),
+      copperMeters: totals.copperMeters + (Number(order.extras?.copperMeters) || 0),
+      basesCount: totals.basesCount + (order.extras?.baseIncluded ? 1 : 0),
+    }),
+    { extrasRevenue: 0, copperMeters: 0, basesCount: 0 }
+  );
+
+  return {
+    totalOrders: orders.length,
+    pendingOrders: orders.filter((order) => order.status === 'pending').length,
+    activeOrders: orders.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length,
+    completedOrders: orders.filter((order) => order.status === 'completed').length,
+    availableTechnicians: technicians.filter((tech) => tech.status === 'available').length,
+    ...financialTotals,
+  };
+};
+
+const localAuthService = {
+  async login(email, password) {
+    const state = readState();
+    const matchedUser = state.users.find(
+      (user) => user.email.toLowerCase() === String(email).trim().toLowerCase() && user.password === password
+    );
+
+    if (!matchedUser) {
+      throw new Error('Invalid login details');
+    }
+
+    const technician = matchedUser.technicianId
+      ? state.technicians.find((entry) => entry.id === matchedUser.technicianId)
+      : null;
+
+    const safeUser = {
+      ...matchedUser,
+      technicianId: matchedUser.technicianId || technician?.id || null,
+      region: technician?.region || matchedUser.region || null,
+      zone: technician?.zone || matchedUser.zone || null,
+      technicianName: technician?.name || matchedUser.name || null,
+    };
+    delete safeUser.password;
+
+    if (technician) {
+      safeUser.technician = technician;
+    }
+    return delay({ data: { token: buildToken(safeUser), user: safeUser } });
+  },
+
+  async register(userData) {
+    const name = userData?.name?.trim();
+    const email = userData?.email?.trim();
+
+    if (!name || !email) {
+      throw new Error('Name and email are required');
+    }
+
+    const user = { id: `temp-${Date.now()}`, name, email, role: 'viewer' };
+    return delay({ data: { token: buildToken(user), user } });
+  },
+};
+
+const localOperationsService = {
+  async getDashboard() {
+    const state = getState();
+    const users = state.users.map(({ password: _password, ...user }) => user);
+    return delay({
+      data: {
+        ...state,
+        users,
+        summary: computeSummary(state.orders, state.technicians),
+      },
+    });
+  },
+
+  async createOrder(payload) {
+    const state = readState();
+    const selectedTechnician = state.technicians.find((tech) => tech.id === payload.technicianId) || null;
+    const numericId = Date.now();
+    const order = {
+      id: `ORD-${numericId}`,
+      numericId,
+      customerName: payload.customerName,
+      phone: payload.phone,
+      address: payload.address,
+      acType: payload.acType,
+      status: 'pending',
+      scheduledDate: payload.scheduledDate,
+      notes: payload.notes || '',
+      technicianId: selectedTechnician?.id || '',
+      technicianName: selectedTechnician?.name || 'Unassigned',
+      createdAt: new Date().toISOString(),
+      extras: { copperMeters: 0, baseIncluded: false, totalPrice: 0 },
+      photos: [],
+    };
+
+    writeState({ ...state, orders: [order, ...state.orders] });
+    return delay({ data: { order } });
+  },
+
+  async updateOrder(orderId, changes) {
+    const state = readState();
+    const nextOrders = state.orders.map((order) => {
+      if (String(order.id) !== String(orderId)) {
+        return order;
+      }
+
+      const nextOrder = { ...order, ...changes };
+      if (changes.technicianId) {
+        const technician = state.technicians.find((entry) => entry.id === changes.technicianId);
+        nextOrder.technicianName = technician?.name || 'Unassigned';
+      }
+
+      return nextOrder;
+    });
+
+    const nextState = writeState({ ...state, orders: nextOrders });
+    return delay({ data: { order: nextState.orders.find((entry) => String(entry.id) === String(orderId)) } });
+  },
+
+  async getTechnicianOrders(technicianId) {
+    const state = getState();
+    return delay({
+      data: {
+        technician: state.technicians.find((entry) => entry.id === technicianId) || null,
+        pricing: state.pricing,
+        orders: state.orders.filter((order) => order.technicianId === technicianId),
+      },
+    });
+  },
+
+  async createTechnician(payload) {
+    const state = readState();
+    const firstName = String(payload?.firstName || '').trim();
+    const lastName = String(payload?.lastName || '').trim();
+    const email = String(payload?.email || '').trim().toLowerCase();
+    const phone = String(payload?.phone || '').trim();
+    const password = String(payload?.password || '').trim();
+    const region = String(payload?.region || '').trim();
+    const notes = String(payload?.notes || '').trim();
+
+    if (!firstName || !lastName || !email || !phone || !password || !region) {
+      throw new Error('All technician fields are required');
+    }
+
+    if (state.users.some((user) => user.email.toLowerCase() === email)) {
+      throw new Error('This email is already registered');
+    }
+
+    const technicianId = `tech-${Date.now()}`;
+    const userId = `tech-user-${Date.now()}`;
+    const name = `${firstName} ${lastName}`.trim();
+
+    const user = {
+      id: userId,
+      firstName,
+      lastName,
+      name,
+      email,
+      phone,
+      password,
+      role: 'technician',
+      technicianId,
+      region,
+    };
+
+    const technician = {
+      id: technicianId,
+      userId,
+      name,
+      firstName,
+      lastName,
+      email,
+      phone,
+      region,
+      zone: region,
+      status: 'available',
+      notes,
+    };
+
+    writeState({
+      ...state,
+      users: [user, ...state.users],
+      technicians: [technician, ...state.technicians],
+    });
+
+    const safeUser = { ...user };
+    delete safeUser.password;
+    return delay({ data: { user: safeUser, technician } });
+  },
+
+  async updateTechnicianStatus(orderId, status) {
+    return this.updateOrder(orderId, { status });
+  },
+
+  async updateExtras(orderId, { copperMeters, baseIncluded }) {
+    const state = readState();
+    const nextOrders = state.orders.map((order) =>
+      String(order.id) === String(orderId)
+        ? {
+            ...order,
+            extras: {
+              copperMeters: Number(copperMeters) || 0,
+              baseIncluded: Boolean(baseIncluded),
+              totalPrice: calculateExtrasTotal(copperMeters, Boolean(baseIncluded)),
+            },
+          }
+        : order
+    );
+    const nextState = writeState({ ...state, orders: nextOrders });
+    return delay({ data: { order: nextState.orders.find((entry) => String(entry.id) === String(orderId)) } });
+  },
+
+  async uploadPhoto(orderId, photo) {
+    const state = readState();
+    const nextOrders = state.orders.map((order) =>
+      String(order.id) === String(orderId)
+        ? {
+            ...order,
+            photos: [
+              ...(order.photos || []),
+              { id: `photo-${Date.now()}`, ...photo, uploadedAt: new Date().toISOString() },
+            ],
+          }
+        : order
+    );
+    const nextState = writeState({ ...state, orders: nextOrders });
+    return delay({ data: { order: nextState.orders.find((entry) => String(entry.id) === String(orderId)) } });
+  },
+
+  async resetDemoData() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
+    window.dispatchEvent(new CustomEvent('operations-updated'));
+    return delay({ data: { ok: true } });
+  },
+
+  calculateExtrasTotal,
+  getStatusLabel(status) {
+    return statusLabelMap[status] || status;
+  },
+};
+
+const remoteOperationsService = {
+  getDashboard: () => apiClient.get('/operations/dashboard'),
+  createOrder: (data) => apiClient.post('/operations/orders', data),
+  updateOrder: (orderId, data) => apiClient.put(`/operations/orders/${normalizeOrderId(orderId)}`, data),
+  getTechnicianOrders: () => apiClient.get('/operations/technician/orders'),
+  createTechnician: (data) => apiClient.post('/operations/technicians', data),
+  updateTechnicianStatus: (orderId, status) =>
+    apiClient.put(`/operations/orders/${normalizeOrderId(orderId)}/status`, { status }),
+  updateExtras: (orderId, data) =>
+    apiClient.put(`/operations/orders/${normalizeOrderId(orderId)}/extras`, data),
+  uploadPhoto: (orderId, data) =>
+    apiClient.post(`/operations/orders/${normalizeOrderId(orderId)}/photos`, data),
+};
+
+export const authService = {
+  login: (email, password) =>
+    withFallback(
+      () => apiClient.post('/auth/login', { email, password }),
+      () => localAuthService.login(email, password)
+    ),
+  register: (userData) =>
+    withFallback(
+      () => apiClient.post('/auth/register', userData),
+      () => localAuthService.register(userData)
+    ),
+  logout: () => localStorage.removeItem('authToken'),
+};
+
+export const operationsService = {
+  getDashboard: () =>
+    withFallback(
+      () => remoteOperationsService.getDashboard(),
+      () => localOperationsService.getDashboard()
+    ),
+  createTechnician: (data) =>
+    withFallback(
+      () => remoteOperationsService.createTechnician(data),
+      () => localOperationsService.createTechnician(data)
+    ),
+  createOrder: (data) =>
+    withFallback(
+      () => remoteOperationsService.createOrder(data),
+      () => localOperationsService.createOrder(data)
+    ),
+  updateOrder: (orderId, data) =>
+    withFallback(
+      () => remoteOperationsService.updateOrder(orderId, data),
+      () => localOperationsService.updateOrder(orderId, data)
+    ),
+  getTechnicianOrders: (technicianId) =>
+    withFallback(
+      () => remoteOperationsService.getTechnicianOrders(),
+      () => localOperationsService.getTechnicianOrders(technicianId)
+    ),
+  updateTechnicianStatus: (orderId, status) =>
+    withFallback(
+      () => remoteOperationsService.updateTechnicianStatus(orderId, status),
+      () => localOperationsService.updateTechnicianStatus(orderId, status)
+    ),
+  updateExtras: (orderId, data) =>
+    withFallback(
+      () => remoteOperationsService.updateExtras(orderId, data),
+      () => localOperationsService.updateExtras(orderId, data)
+    ),
+  uploadPhoto: (orderId, data) =>
+    withFallback(
+      () => remoteOperationsService.uploadPhoto(orderId, data),
+      () => localOperationsService.uploadPhoto(orderId, data)
+    ),
+  resetDemoData: () => localOperationsService.resetDemoData(),
+  calculateExtrasTotal,
+  getStatusLabel(status) {
+    return statusLabelMap[status] || status;
+  },
+};
+
+export const notificationsService = {
+  list: async () => {
+    try {
+      return await apiClient.get('/notifications');
+    } catch {
+      const items = safeJson(sessionStorage.getItem('localNotifications'), []);
+      return { data: { notifications: items, unreadCount: items.filter((item) => !item.isRead).length } };
+    }
+  },
+  markRead: async (id) => {
+    try {
+      return await apiClient.put(`/notifications/${id}/read`);
+    } catch {
+      return { data: { ok: true } };
+    }
+  },
+  markAllRead: async () => {
+    try {
+      return await apiClient.put('/notifications/read-all');
+    } catch {
+      return { data: { ok: true } };
+    }
+  },
+};
+
+export const footerService = {
+  get: () => delay({ data: { footer: defaultFooter } }),
+};
+
+export const homeService = {
+  get: () => delay({ data: { homeSettings: defaultHomeSettings } }),
 };
 
 export default apiClient;

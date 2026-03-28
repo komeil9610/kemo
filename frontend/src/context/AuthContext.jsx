@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('authUser', JSON.stringify(nextUser));
       return true;
     } catch (err) {
-      const message = err?.response?.data?.message || err.message || 'Login failed';
+      const message = err?.response?.data?.message || err.message || 'Sign in failed';
       setError(message);
       return false;
     } finally {
@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('authUser', JSON.stringify(nextUser));
       return true;
     } catch (err) {
-      const message = err?.response?.data?.message || err.message || 'Registration failed';
+      const message = err?.response?.data?.message || err.message || 'Account creation failed';
       setError(message);
       return false;
     } finally {

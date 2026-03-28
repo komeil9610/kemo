@@ -1,16 +1,17 @@
 {
-  "name": "rentit-edge-api",
+  "name": "tarkeeb-pro-edge-api",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:migrate:local": "wrangler d1 execute rentit_db --local --file=./migrations/schema.sql",
-    "db:migrate:remote": "wrangler d1 execute rentit_db --remote --file=./migrations/schema.sql",
+    "db:migrate:local": "wrangler d1 execute tarkeeb_pro_db --local --file=./migrations/schema.sql",
+    "db:migrate:remote": "wrangler d1 execute tarkeeb_pro_db --remote --file=./migrations/schema.sql",
     "admin:sql": "node ./scripts/generate-admin-sql.mjs"
   },
   "devDependencies": {
+    "web-push": "^3.6.7",
     "wrangler": "^4.8.0"
   }
 }

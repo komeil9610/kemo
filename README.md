@@ -1,17 +1,16 @@
-# تطبيق RentIT - نظام تأجير الأجهزة والملابس التنكرية والخدمات
-## RentIT Application - Device & Costume Rental System
+# تطبيق شركة تركيب برو - إدارة الطلبات والفنيين
+## Tarkeeb Pro - Installation Orders and Technician Management
 
-منصة موثوقة وآمنة لتأجير الأجهزة والملابس التنكرية والخدمات المختلفة في المنطقة الشرقية.
+منصة موثوقة وآمنة لإدارة طلبات تركيب المكيفات والفنيين والخدمات الميدانية في السعودية.
 
 ---
 
 ## 🎯 المميزات الرئيسية | Key Features
 
 - ✅ **نظام المستخدمين** - تسجيل وتحقق آمن
-- ✅ **سلة التسوق والحجوزات** - إدارة سهلة للطلبات
-- ✅ **نظام الدفع** - دفع آمن وموثوق
-- ✅ **إدارة المنتجات** - عرض وتصنيف المنتجات
-- ✅ **نظام التقييمات** - تقييمات المستخدمين
+- ✅ **إدارة الطلبات** - تنظيم وتعيين ومتابعة التنفيذ
+- ✅ **نظام التسعير** - حساب النحاس والقواعد الإضافية
+- ✅ **إدارة الفنيين** - إنشاء حسابات الفنيين وتحديد المناطق
 - ✅ **لوحة التحكم** - لإدارة المشروع
 - ✅ **تطبيق موبايل** - متوفر على iOS و Android
 
@@ -20,7 +19,7 @@
 ## 📁 بنية المشروع | Project Structure
 
 ```
-rentit/
+tarkeeb-pro/
 ├── backend/              # Legacy Node.js + Express API Server
 ├── edge-api/             # Cloudflare Worker API + D1
 ├── frontend/             # React app + Workers Static Assets frontend worker
@@ -45,7 +44,7 @@ rentit/
 #### 1. استنساخ المشروع | Clone the repository
 ```bash
 git clone <repository-url>
-cd rentit
+cd tarkeeb-pro
 ```
 
 #### 2. تثبيت البيئة | Install dependencies
@@ -85,7 +84,7 @@ cp .env.example .env
 **D1 Database**
 ```bash
 cd edge-api
-npx wrangler d1 create rentit_db
+npx wrangler d1 create tarkeeb_pro_db
 npm run db:migrate:remote
 ```
 
@@ -98,7 +97,7 @@ npx wrangler secret put JWT_SECRET
 **أول حساب أدمن**
 ```bash
 cd edge-api
-npm run admin:sql -- "RentIT Admin" "admin@rentit.com" "your-strong-password"
+npm run admin:sql -- "Tarkeeb Pro Admin" "admin@tarkeebpro.sa" "your-strong-password"
 # ثم نفّذ SQL الناتج على D1 عبر wrangler d1 execute
 ```
 
@@ -146,18 +145,17 @@ npm start
 
 **Admin**
 
-- إضافة وتعديل وحذف المنتجات
-- إدارة المستخدمين
+- إضافة وتعديل وحذف الفنيين
+- إدارة المستخدمين والطلبات
 - متابعة الطلبات وتحديث حالتها
 - لوحة تحكم كاملة
 
-**Customer**
+**Technician**
 
-- تسجيل جديد وتسجيل دخول
-- عرض المنتجات
-- إضافة منتجات إلى السلة
-- إتمام الطلب من السلة
-- الاطلاع على الطلبات وإلغاء المعلق منها
+- تسجيل الدخول بحساب مخصص
+- عرض المهام المخصصة حسب المنطقة
+- تحديث حالة المهمة
+- رفع صور التوثيق بعد التنفيذ
 
 ---
 

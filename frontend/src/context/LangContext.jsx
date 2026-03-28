@@ -1,10 +1,10 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const LangContext = createContext();
 
 const translations = {
   en: {
-    brand: 'RentIT',
+    brand: 'Tarkeeb Pro',
     home: 'Home',
     products: 'Products',
     cart: 'Cart',
@@ -13,14 +13,14 @@ const translations = {
     login: 'Login',
     register: 'Register',
     logout: 'Logout',
-    heroTitle: 'Rent smarter. Own less. Do more.',
-    heroSubtitle: 'Discover verified rentals for devices, costumes, and services across Saudi Arabia.',
-    browse: 'Browse Products',
-    getStarted: 'Get Started',
-    featured: 'Featured Rentals'
+    heroTitle: 'Build smarter installation operations.',
+    heroSubtitle: 'Manage technicians, jobs, and field execution across Saudi Arabia from one dashboard.',
+    browse: 'Open dashboard',
+    getStarted: 'Get started',
+    featured: 'Featured operations'
   },
   ar: {
-    brand: 'رنتت',
+    brand: 'تركيب برو',
     home: 'الرئيسية',
     products: 'المنتجات',
     cart: 'السلة',
@@ -29,16 +29,25 @@ const translations = {
     login: 'تسجيل الدخول',
     register: 'إنشاء حساب',
     logout: 'تسجيل الخروج',
-    heroTitle: 'استأجر بذكاء. امتلك أقل. أنجز أكثر.',
-    heroSubtitle: 'اكتشف منتجات وخدمات للإيجار بشكل موثوق في جميع أنحاء السعودية.',
-    browse: 'تصفح المنتجات',
+    heroTitle: 'أدر عمليات التركيب بذكاء.',
+    heroSubtitle: 'تابع الفنيين والطلبات والتنفيذ الميداني من لوحة واحدة داخل السعودية.',
+    browse: 'افتح اللوحة',
     getStarted: 'ابدأ الآن',
-    featured: 'منتجات مميزة'
+    featured: 'عمليات مميزة'
   }
 };
 
 export const LangProvider = ({ children }) => {
   const [lang, setLang] = useState(localStorage.getItem('lang') || 'en');
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  }, [lang]);
 
   const toggleLang = useCallback(() => {
     const next = lang === 'en' ? 'ar' : 'en';

@@ -34,7 +34,7 @@ function proxyApiRequest(request, env) {
   }
 
   const incomingUrl = new URL(request.url);
-  const apiOrigin = env.API_ORIGIN || "https://rentit-edge-api.bobkumeel.workers.dev";
+  const apiOrigin = env.API_ORIGIN || "https://tarkeeb-pro-edge-api.bobkumeel.workers.dev";
   const upstreamUrl = new URL(`${incomingUrl.pathname}${incomingUrl.search}`, apiOrigin);
 
   return fetch(new Request(upstreamUrl.toString(), request));

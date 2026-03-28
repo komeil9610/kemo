@@ -15,23 +15,23 @@ const socialIcons = {
 
 const isInternalLink = (url = '') => url.startsWith('/');
 const defaultFooter = {
-  aboutText: 'Rent It منصة موثوقة لتأجير المنتجات والخدمات بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
+  aboutText: 'Tarkeeb Pro keeps orders and field operations organized from one clear screen.',
   usefulLinks: [
-    { label: 'الرئيسية', url: '/' },
-    { label: 'المنتجات', url: '/products' },
-    { label: 'طلباتي', url: '/orders' },
+    { label: 'Home', url: '/' },
+    { label: 'Admin Dashboard', url: '/dashboard' },
+    { label: 'Technician Tasks', url: '/tasks' },
   ],
   customerServiceLinks: [
-    { label: 'الدعم الفني', url: 'mailto:support@rentit.app' },
-    { label: 'واتساب', url: 'https://wa.me/966500000000' },
-    { label: 'الأسئلة الشائعة', url: '/products' },
+    { label: 'Support', url: 'mailto:ops@tarkeebpro.sa' },
+    { label: 'WhatsApp', url: 'https://wa.me/966500000000' },
+    { label: 'Call us', url: 'tel:+966500000000' },
   ],
   socialLinks: [
-    { platform: 'instagram', url: 'https://instagram.com/rentit.app' },
-    { platform: 'x', url: 'https://x.com/rentitapp' },
-    { platform: 'linkedin', url: 'https://linkedin.com/company/rentit' },
+    { platform: 'instagram', url: 'https://instagram.com/tarkeebpro' },
+    { platform: 'x', url: 'https://x.com/tarkeebpro' },
+    { platform: 'linkedin', url: 'https://linkedin.com/company/tarkeebpro' },
   ],
-  copyrightText: 'جميع الحقوق محفوظة لكميل',
+  copyrightText: 'Tarkeeb Pro',
 };
 
 export default function Footer() {
@@ -69,8 +69,8 @@ export default function Footer() {
     <footer className="site-footer">
       <div className="site-footer-inner">
         <div className="footer-brand-card">
-          <span className="footer-eyebrow">Rent It</span>
-          <h3>تأجير أسهل، تجربة أوضح، وثقة أكبر.</h3>
+          <span className="footer-eyebrow">Tarkeeb Pro</span>
+          <h3>Faster operations, clearer tracking, cleaner handoffs.</h3>
           <p>{footer?.aboutText || defaultFooter.aboutText}</p>
           <div className="footer-socials">
             {socialLinks.map((item, index) => {
@@ -93,8 +93,8 @@ export default function Footer() {
         </div>
 
         <div className="footer-links-grid">
-          <FooterColumn title="روابط تهمك" links={usefulLinks} />
-          <FooterColumn title="خدمة العملاء" links={customerServiceLinks} />
+          <FooterColumn title="Useful links" links={usefulLinks} />
+          <FooterColumn title="Customer care" links={customerServiceLinks} />
         </div>
       </div>
 

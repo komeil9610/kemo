@@ -10,7 +10,7 @@ const validatePassword = body('password')
   .withMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
 
 const validatePhone = body('phone')
-  .matches(/^[0-9]{10,15}$/)
+  .matches(/^\+?[0-9]{9,15}$/)
   .withMessage('رقم الهاتف غير صحيح');
 
 const handleValidationErrors = (req, res, next) => {
