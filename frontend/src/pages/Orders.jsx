@@ -78,6 +78,41 @@ const copy = {
   },
 };
 
+const servicesCatalog = {
+  en: [
+    { description: 'Supply and install rubber pads for outdoor units', price: 45, unit: 'per set' },
+    { description: 'Supply and install water drain pipes', price: 30, unit: 'per meter' },
+    { description: 'Supply and install a power socket', price: 40, unit: 'per piece' },
+    { description: 'Supply and install electrical cable with protective sleeve', price: 25, unit: 'per meter' },
+    { description: 'Supply and install copper pipes - Asian copper', price: 70, unit: 'per meter' },
+    { description: 'Supply and install copper pipes - American copper', price: 100, unit: 'per meter' },
+    { description: 'Welding new copper pipes to old pipes with different sizes', price: 30, unit: 'per meter' },
+    { description: 'Supply and install wooden frame for window AC unit', price: 30, unit: 'per frame' },
+    { description: 'Removal fee for an old split AC unit', price: 100, unit: 'per unit' },
+    { description: 'Removal fee for an old window AC unit', price: 50, unit: 'per unit' },
+    { description: 'Supply and install wall bracket for 12K / 18K / 24K BTU units', price: 60, unit: 'per bracket' },
+    { description: 'Supply and install wall bracket for units above 24K BTU', price: 80, unit: 'per bracket' },
+    { description: 'One-floor scaffold', price: 100, unit: 'fixed' },
+    { description: 'Two-floor scaffold', price: 200, unit: 'fixed' },
+  ],
+  ar: [
+    { description: 'توريد وتركيب قواعد مطاطية للوحدات الخارجية', price: 45, unit: 'لكل مجموعة' },
+    { description: 'توريد وتركيب أنابيب تصريف المياه', price: 30, unit: 'لكل متر' },
+    { description: 'توريد وتركيب مقبس كهربائي', price: 40, unit: 'لكل قطعة' },
+    { description: 'توريد وتركيب كابل كهربائي مع غلاف واق', price: 25, unit: 'لكل متر' },
+    { description: 'توريد وتركيب أنابيب نحاسية - نحاس (اسيوي)', price: 70, unit: 'لكل متر' },
+    { description: 'توريد وتركيب أنابيب نحاسية - نحاس (امريكي)', price: 100, unit: 'لكل متر' },
+    { description: 'لحام أنابيب نحاسية جديدة مع الأنابيب القديمة (بمقاسات مختلفة)', price: 30, unit: 'لكل متر' },
+    { description: 'توريد وتركيب إطار خشبي لوحدة تكييف الشباك', price: 30, unit: 'لكل إطار' },
+    { description: 'رسوم إزالة وحدة تكييف سبليت قديمة', price: 100, unit: 'لكل وحدة' },
+    { description: 'رسوم إزالة وحدة تكييف شباك قديمة', price: 50, unit: 'لكل وحدة' },
+    { description: 'توريد وتركيب حامل جداري لوحدات تكييف بسعات 12K / 18K / 24K BTU', price: 60, unit: 'لكل حامل' },
+    { description: 'توريد وتركيب حامل جداري للوحدات التي تزيد سعتها عن 24K BTU', price: 80, unit: 'لكل حامل' },
+    { description: 'سقالة دور واحد', price: 100, unit: 'ثابت' },
+    { description: 'سقالة دورين', price: 200, unit: 'ثابت' },
+  ],
+};
+
 export default function Orders() {
   const { user } = useAuth();
   const { lang, isRTL, toggleLang } = useLang();
@@ -163,6 +198,27 @@ export default function Orders() {
         <span>{t.meter}: {payload?.pricing?.copperPricePerMeter || 0} SAR</span>
         <span>{t.base}: {payload?.pricing?.basePrice || 0} SAR</span>
         <span>{t.included}: {payload?.pricing?.includedCopperMeters || 0} m</span>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <h2>{lang === 'ar' ? 'قائمة الخدمات والأسعار' : 'Service pricing list'}</h2>
+          <p>{lang === 'ar' ? 'الأسعار الرسمية المعتمدة للفنيين داخل النظام.' : 'Official service pricing used by technicians inside the system.'}</p>
+        </div>
+        <div className="service-table">
+          <div className="service-table-head">
+            <span>{lang === 'ar' ? 'السعر' : 'Price'}</span>
+            <span>{lang === 'ar' ? 'وصف الخدمة' : 'Service description'}</span>
+            <span>{lang === 'ar' ? 'الوحدة' : 'Unit'}</span>
+          </div>
+          {servicesCatalog[lang].map((item) => (
+            <div className="service-table-row" key={item.description}>
+              <strong>{item.price}</strong>
+              <span>{item.description}</span>
+              <span>{item.unit}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="order-list">

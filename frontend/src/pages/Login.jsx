@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLang } from '../context/LangContext';
 
 const presets = {
   admin: { email: 'bobkumeel@gmail.com', password: 'Kom123asd@' },
@@ -8,6 +9,7 @@ const presets = {
 };
 
 export default function Login() {
+  const { lang } = useLang();
   const [email, setEmail] = useState(presets.admin.email);
   const [password, setPassword] = useState(presets.admin.password);
   const { login, loading, error } = useAuth();
@@ -24,14 +26,15 @@ export default function Login() {
   };
 
   return (
-    <section className="page-shell auth-page" dir="ltr">
+    <section className="page-shell auth-page" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <div className="auth-layout">
         <div className="auth-info">
-          <p className="eyebrow">Demo access</p>
-          <h1>Sign in to Tarkeeb Pro</h1>
+          <p className="eyebrow">{lang === 'ar' ? 'دخول رسمي' : 'Official access'}</p>
+          <h1>{lang === 'ar' ? 'تسجيل الدخول إلى تركيب برو' : 'Sign in to Tarkeeb Pro'}</h1>
           <p>
-            This build ships with demo accounts so we can move quickly in the first phase, then connect it to a real
-            backend when needed.
+            {lang === 'ar'
+              ? 'الحسابات الرسمية جاهزة للاستخدام من المسؤول والفني، مع ربط كامل بالخلفية.'
+              : 'Official administrator and technician accounts are ready to use with full backend integration.'}
           </p>
 
           <div className="demo-grid">
@@ -43,7 +46,7 @@ export default function Login() {
               }}
               type="button"
             >
-              <strong>Administrator</strong>
+              <strong>{lang === 'ar' ? 'المسؤول' : 'Administrator'}</strong>
               <span>bobkumeel@gmail.com</span>
               <span>Kom123asd@</span>
             </button>
@@ -55,7 +58,7 @@ export default function Login() {
               }}
               type="button"
             >
-              <strong>Technician</strong>
+              <strong>{lang === 'ar' ? 'الفني' : 'Technician'}</strong>
               <span>kumeelalnahab@gmail.com</span>
               <span>Komeil@123</span>
             </button>
@@ -63,20 +66,21 @@ export default function Login() {
         </div>
 
         <form className="auth-card" onSubmit={onSubmit}>
-          <label>Email address</label>
+          <label>{lang === 'ar' ? 'البريد الإلكتروني' : 'Email address'}</label>
           <input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
 
-          <label>Password</label>
+          <label>{lang === 'ar' ? 'كلمة المرور' : 'Password'}</label>
           <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
 
           {error ? <p className="error-text">{error}</p> : null}
 
           <button className="btn-primary" disabled={loading} type="submit">
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading ? (lang === 'ar' ? 'جارٍ الدخول...' : 'Signing in...') : lang === 'ar' ? 'دخول' : 'Sign in'}
           </button>
 
           <p className="muted">
-            Need a quick look at the seeded accounts? <Link to="/register">Open demo accounts</Link>
+            {lang === 'ar' ? 'تحتاج نظرة سريعة على الحسابات الجاهزة؟' : 'Need a quick look at the seeded accounts?'}{' '}
+            <Link to="/register">{lang === 'ar' ? 'افتح الحسابات الرسمية' : 'Open official accounts'}</Link>
           </p>
         </form>
       </div>

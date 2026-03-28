@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaInstagram, FaLinkedinIn, FaTiktok, FaWhatsapp, FaXTwitter, FaYoutube } from 'react-icons/fa6';
+import { useLang } from '../context/LangContext';
 import { footerService } from '../services/api';
 
 const socialIcons = {
@@ -35,6 +36,7 @@ const defaultFooter = {
 };
 
 export default function Footer() {
+  const { lang } = useLang();
   const [footer, setFooter] = useState(null);
 
   useEffect(() => {
@@ -70,7 +72,7 @@ export default function Footer() {
       <div className="site-footer-inner">
         <div className="footer-brand-card">
           <span className="footer-eyebrow">Tarkeeb Pro</span>
-          <h3>Faster operations, clearer tracking, cleaner handoffs.</h3>
+          <h3>{lang === 'ar' ? 'تشغيل أسرع، متابعة أوضح، وتسليم أنظف.' : 'Faster operations, clearer tracking, cleaner handoffs.'}</h3>
           <p>{footer?.aboutText || defaultFooter.aboutText}</p>
           <div className="footer-socials">
             {socialLinks.map((item, index) => {
@@ -93,8 +95,8 @@ export default function Footer() {
         </div>
 
         <div className="footer-links-grid">
-          <FooterColumn title="Useful links" links={usefulLinks} />
-          <FooterColumn title="Customer care" links={customerServiceLinks} />
+          <FooterColumn title={lang === 'ar' ? 'روابط مهمة' : 'Useful links'} links={usefulLinks} />
+          <FooterColumn title={lang === 'ar' ? 'خدمة العملاء' : 'Customer care'} links={customerServiceLinks} />
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { useLang } from '../context/LangContext';
 import { notificationsService } from '../services/api';
 
 function NotificationMenu() {
@@ -102,34 +103,38 @@ function NotificationMenu() {
 
 export default function Navbar() {
   const { token, user, logout } = useAuth();
+  const { lang, toggleLang, t } = useLang();
   const isAdmin = user?.role === 'admin';
   const isTechnician = user?.role === 'technician';
 
   return (
-    <header className="nav-wrap" dir="ltr">
+    <header className="nav-wrap" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <nav className="nav">
         <Link className="brand" to="/">
           <span className="brand-mark">TP</span>
-          <span>Tarkeeb Pro</span>
+          <span>{t('brand')}</span>
         </Link>
 
         <div className="nav-links">
-          <NavLink to="/">Home</NavLink>
-          {isAdmin ? <NavLink to="/dashboard">Admin Dashboard</NavLink> : null}
-          {isTechnician ? <NavLink to="/tasks">Technician Tasks</NavLink> : null}
+          <NavLink to="/">{t('home')}</NavLink>
+          {isAdmin ? <NavLink to="/dashboard">{t('dashboard')}</NavLink> : null}
+          {isTechnician ? <NavLink to="/tasks">{t('orders')}</NavLink> : null}
         </div>
 
         <div className="nav-actions">
+          <button className="btn-language" onClick={toggleLang} type="button">
+            {lang === 'ar' ? 'English' : 'العربية'}
+          </button>
           <NotificationMenu />
           {!token ? (
             <>
-              <Link className="btn-light" to="/login">Sign in</Link>
-              <Link className="btn-secondary" to="/register">Demo accounts</Link>
+              <Link className="btn-light" to="/login">{t('login')}</Link>
+              <Link className="btn-secondary" to="/register">{t('register')}</Link>
             </>
           ) : (
             <>
               <span className="user-chip">{isAdmin ? 'Administrator' : user?.name}</span>
-              <button className="btn-danger" onClick={logout} type="button">Sign out</button>
+              <button className="btn-danger" onClick={logout} type="button">{t('logout')}</button>
             </>
           )}
         </div>

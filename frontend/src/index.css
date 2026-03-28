@@ -188,7 +188,8 @@ textarea {
 .btn-primary,
 .btn-light,
 .btn-secondary,
-.btn-danger {
+.btn-danger,
+.btn-language {
   border: 0;
   border-radius: 14px;
   padding: 12px 18px;
@@ -224,6 +225,12 @@ textarea {
 .btn-danger {
   color: var(--danger);
   background: rgba(196, 61, 47, 0.12);
+}
+
+.btn-language {
+  color: var(--brand-dark);
+  background: rgba(217, 107, 39, 0.12);
+  border: 1px solid rgba(217, 107, 39, 0.16);
 }
 
 .user-chip,
@@ -536,6 +543,38 @@ h1 {
   font-weight: 700;
 }
 
+.service-table {
+  display: grid;
+  gap: 8px;
+}
+
+.service-table-head,
+.service-table-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 140px;
+  gap: 12px;
+  align-items: center;
+}
+
+.service-table-head {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(17, 120, 100, 0.12);
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.service-table-row {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+}
+
+.service-table-row strong {
+  color: var(--brand-dark);
+}
+
 .task-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 18px;
@@ -719,12 +758,19 @@ button.preset-card {
   .order-main,
   .task-head,
   .tech-card,
-  .technician-heading {
+  .technician-heading,
+  .service-table-head,
+  .service-table-row {
     flex-direction: column;
     align-items: stretch;
   }
 
   .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .service-table-head,
+  .service-table-row {
     grid-template-columns: 1fr;
   }
 }

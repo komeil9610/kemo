@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useLang } from '../context/LangContext';
 import { homeService, operationsService } from '../services/api';
 
 const workflowSteps = [
@@ -18,6 +19,7 @@ const workflowSteps = [
 ];
 
 export default function Home() {
+  const { lang } = useLang();
   const [homeSettings, setHomeSettings] = useState(null);
   const [summary, setSummary] = useState(null);
 
@@ -39,7 +41,7 @@ export default function Home() {
   const stats = homeSettings?.stats || [];
 
   return (
-    <section className="home-page" dir="ltr">
+    <section className="home-page" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <div className="hero-panel">
         <div className="hero-copy">
           <p className="eyebrow">{homeSettings?.heroKicker}</p>
@@ -47,35 +49,37 @@ export default function Home() {
           <p className="hero-text">{homeSettings?.heroSubtitle}</p>
           <div className="hero-actions">
             <Link className="btn-primary" to={homeSettings?.primaryButtonUrl || '/dashboard'}>
-              {homeSettings?.primaryButtonText || 'Admin Dashboard'}
+              {homeSettings?.primaryButtonText || (lang === 'ar' ? 'لوحة الإدارة' : 'Admin Dashboard')}
             </Link>
             <Link className="btn-light" to={homeSettings?.secondaryButtonUrl || '/tasks'}>
-              {homeSettings?.secondaryButtonText || 'Technician View'}
+              {homeSettings?.secondaryButtonText || (lang === 'ar' ? 'واجهة الفني' : 'Technician View')}
             </Link>
           </div>
           <div className="hero-note">
-            SMS workflows and full automation are intentionally left for a later phase so the MVP stays fast and practical.
+            {lang === 'ar'
+              ? 'تركنا الرسائل النصية والأتمتة الكاملة لمرحلة لاحقة حتى يبقى الإصدار الأول سريعًا وعمليًا.'
+              : 'SMS workflows and full automation are intentionally left for a later phase so the MVP stays fast and practical.'}
           </div>
         </div>
 
         <div className="hero-card">
-          <h3>Today&apos;s summary</h3>
+          <h3>{lang === 'ar' ? 'ملخص اليوم' : "Today's summary"}</h3>
           <div className="mini-stats">
             <article>
               <strong>{summary?.pendingOrders ?? 0}</strong>
-              <span>Orders waiting for assignment</span>
+              <span>{lang === 'ar' ? 'طلبات بانتظار التعيين' : 'Orders waiting for assignment'}</span>
             </article>
             <article>
               <strong>{summary?.activeOrders ?? 0}</strong>
-              <span>Active jobs</span>
+              <span>{lang === 'ar' ? 'مهام نشطة' : 'Active jobs'}</span>
             </article>
             <article>
               <strong>{summary?.completedOrders ?? 0}</strong>
-              <span>Completed orders</span>
+              <span>{lang === 'ar' ? 'طلبات مكتملة' : 'Completed orders'}</span>
             </article>
             <article>
               <strong>{summary?.extrasRevenue ?? 0} SAR</strong>
-              <span>Extras revenue</span>
+              <span>{lang === 'ar' ? 'إيرادات الإضافات' : 'Extras revenue'}</span>
             </article>
           </div>
         </div>
@@ -93,7 +97,7 @@ export default function Home() {
       <div className="feature-section">
         <div className="section-heading">
           <p className="eyebrow">MVP roadmap</p>
-          <h2>How is the app structured?</h2>
+          <h2>{lang === 'ar' ? 'كيف تم تقسيم التطبيق؟' : 'How is the app structured?'}</h2>
         </div>
         <div className="workflow-grid">
           {workflowSteps.map((step) => (

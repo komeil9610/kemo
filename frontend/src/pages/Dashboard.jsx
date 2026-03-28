@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLang } from '../context/LangContext';
 import { operationsService } from '../services/api';
 
 const emptyOrderForm = {
@@ -45,6 +46,7 @@ const statusOptions = [
 ];
 
 export default function Dashboard() {
+  const { lang } = useLang();
   const [dashboard, setDashboard] = useState(null);
   const [orderForm, setOrderForm] = useState(emptyOrderForm);
   const [technicianForm, setTechnicianForm] = useState(emptyTechnicianForm);
@@ -122,16 +124,18 @@ export default function Dashboard() {
   };
 
   if (loading) {
-    return <section className="page-shell">Loading the admin dashboard...</section>;
+    return <section className="page-shell">{lang === 'ar' ? 'جارٍ تحميل لوحة الإدارة...' : 'Loading the admin dashboard...'}</section>;
   }
 
   return (
-    <section className="page-shell" dir="ltr">
+    <section className="page-shell" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <div className="section-heading">
-        <p className="eyebrow">Admin dashboard</p>
-        <h1>Customer operations control room</h1>
+        <p className="eyebrow">{lang === 'ar' ? 'لوحة الإدارة' : 'Admin dashboard'}</p>
+        <h1>{lang === 'ar' ? 'غرفة تحكم عمليات التركيب' : 'Customer operations control room'}</h1>
         <p className="section-subtitle">
-          Manage installation jobs, assign technicians, and create technician accounts from one place.
+          {lang === 'ar'
+            ? 'إدارة طلبات التركيب وتعيين الفنيين وإنشاء حساباتهم من مكان واحد.'
+            : 'Manage installation jobs, assign technicians, and create technician accounts from one place.'}
         </p>
       </div>
 
