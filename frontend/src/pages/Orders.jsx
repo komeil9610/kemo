@@ -113,6 +113,21 @@ const servicesCatalog = {
   ],
 };
 
+const workflowChecklist = {
+  en: [
+    'Confirm site access and customer contact details.',
+    'Select the correct service items and record quantities.',
+    'Move the job through en route, in progress, and completed.',
+    'Upload a clear post-install photo for the record.',
+  ],
+  ar: [
+    'تأكيد موقع العميل وبيانات التواصل قبل الانطلاق.',
+    'اختيار بنود الخدمة الصحيحة وتسجيل الكميات.',
+    'تحديث الحالة إلى في الطريق ثم جاري التركيب ثم مكتمل.',
+    'رفع صورة واضحة بعد التركيب لحفظ التوثيق.',
+  ],
+};
+
 export default function Orders() {
   const { user } = useAuth();
   const { lang, isRTL, toggleLang } = useLang();
@@ -121,6 +136,8 @@ export default function Orders() {
   const [message, setMessage] = useState('');
 
   const t = useMemo(() => copy[lang] || copy.en, [lang]);
+  const checklist = useMemo(() => workflowChecklist[lang] || workflowChecklist.en, [lang]);
+  const catalog = useMemo(() => servicesCatalog[lang] || servicesCatalog.en, [lang]);
 
   const loadOrders = useCallback(async () => {
     if (!user) {
@@ -172,24 +189,50 @@ export default function Orders() {
     await loadOrders();
   };
 
+  const orders = payload?.orders || [];
+  const activeCount = orders.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length;
+  const completedCount = orders.filter((order) => order.status === 'completed').length;
+  const pendingCount = orders.filter((order) => order.status === 'pending').length;
+
   if (loading) {
     return <section className="page-shell">{t.loading}</section>;
   }
 
   return (
     <section className="page-shell technician-page" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="section-heading technician-heading">
-        <div>
-          <p className="eyebrow">{t.eyebrow}</p>
-          <h1>{t.title}</h1>
-          <p className="section-subtitle">
-            {payload?.technician?.name} - {payload?.technician?.region || payload?.technician?.zone}
-          </p>
-          <p className="section-subtitle">{t.titleLine}</p>
+      <div className="technician-hero">
+        <div className="section-heading technician-heading">
+          <div>
+            <p className="eyebrow">{t.eyebrow}</p>
+            <h1>{t.title}</h1>
+            <p className="section-subtitle">
+              {payload?.technician?.name} - {payload?.technician?.region || payload?.technician?.zone}
+            </p>
+            <p className="section-subtitle">{t.titleLine}</p>
+          </div>
+          <button className="btn-secondary language-switch" onClick={toggleLang} type="button">
+            {t.languageButton}
+          </button>
         </div>
-        <button className="btn-secondary language-switch" onClick={toggleLang} type="button">
-          {t.languageButton}
-        </button>
+
+        <div className="technician-grid">
+          <article className="stat-card technician-stat">
+            <span>{lang === 'ar' ? 'المهام النشطة' : 'Active jobs'}</span>
+            <strong>{activeCount}</strong>
+          </article>
+          <article className="stat-card technician-stat">
+            <span>{lang === 'ar' ? 'المهام المكتملة' : 'Completed jobs'}</span>
+            <strong>{completedCount}</strong>
+          </article>
+          <article className="stat-card technician-stat">
+            <span>{lang === 'ar' ? 'قيد الانتظار' : 'Pending jobs'}</span>
+            <strong>{pendingCount}</strong>
+          </article>
+          <article className="stat-card technician-stat">
+            <span>{lang === 'ar' ? 'سعر متر النحاس' : 'Copper meter price'}</span>
+            <strong>{payload?.pricing?.copperPricePerMeter || 0} SAR</strong>
+          </article>
+        </div>
       </div>
 
       {message ? <div className="flash-message">{message}</div> : null}
@@ -200,108 +243,148 @@ export default function Orders() {
         <span>{t.included}: {payload?.pricing?.includedCopperMeters || 0} m</span>
       </div>
 
-      <div className="panel">
-        <div className="panel-header">
-          <h2>{lang === 'ar' ? 'قائمة الخدمات والأسعار' : 'Service pricing list'}</h2>
-          <p>{lang === 'ar' ? 'الأسعار الرسمية المعتمدة للفنيين داخل النظام.' : 'Official service pricing used by technicians inside the system.'}</p>
-        </div>
-        <div className="service-table">
-          <div className="service-table-head">
-            <span>{lang === 'ar' ? 'السعر' : 'Price'}</span>
-            <span>{lang === 'ar' ? 'وصف الخدمة' : 'Service description'}</span>
-            <span>{lang === 'ar' ? 'الوحدة' : 'Unit'}</span>
-          </div>
-          {servicesCatalog[lang].map((item) => (
-            <div className="service-table-row" key={item.description}>
-              <strong>{item.price}</strong>
-              <span>{item.description}</span>
-              <span>{item.unit}</span>
+      <div className="technician-layout">
+        <div className="technician-main">
+          <div className="panel">
+            <div className="panel-header">
+              <h2>{lang === 'ar' ? 'قائمة الخدمات والأسعار' : 'Service pricing list'}</h2>
+              <p>{lang === 'ar' ? 'الأسعار الرسمية المعتمدة للفنيين داخل النظام.' : 'Official service pricing used by technicians inside the system.'}</p>
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="order-list">
-        {payload?.orders?.length ? (
-          payload.orders.map((order) => (
-            <article className="task-card" key={order.id}>
-              <div className="task-head">
-                <div>
-                  <strong>{order.customerName}</strong>
-                  <p>{order.phone}</p>
-                  <p>{order.address}</p>
-                  <p>{order.acType}</p>
+            <div className="service-table">
+              <div className="service-table-head">
+                <span>{lang === 'ar' ? 'السعر' : 'Price'}</span>
+                <span>{lang === 'ar' ? 'وصف الخدمة' : 'Service description'}</span>
+                <span>{lang === 'ar' ? 'الوحدة' : 'Unit'}</span>
+              </div>
+              {catalog.map((item) => (
+                <div className="service-table-row" key={item.description}>
+                  <strong>{item.price}</strong>
+                  <span>{item.description}</span>
+                  <span>{item.unit}</span>
                 </div>
-                <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
-              </div>
+              ))}
+            </div>
+          </div>
 
-              <div className="status-actions">
-                {t.actions.map((action) => (
-                  <button
-                    key={action.value}
-                    className="btn-light"
-                    type="button"
-                    onClick={() => updateStatus(order.id, action.value)}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="task-grid">
-                <div className="panel inset-panel">
-                  <h3>{t.calcTitle}</h3>
-                  <label>{t.meter}</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min="0"
-                    value={order.extras?.copperMeters || 0}
-                    onChange={(event) =>
-                      updateExtras(order.id, order.extras, { copperMeters: Number(event.target.value) || 0 })
-                    }
-                  />
-
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(order.extras?.baseIncluded)}
-                      onChange={(event) =>
-                        updateExtras(order.id, order.extras, { baseIncluded: event.target.checked })
-                      }
-                    />
-                    <span>{t.base}</span>
-                  </label>
-
-                  <div className="quote-box">
-                    <span>{t.finalPrice}</span>
-                    <strong>{order.extras?.totalPrice || 0} SAR</strong>
+          <div className="order-list">
+            {orders.length ? (
+              orders.map((order) => (
+                <article className="task-card technician-task" key={order.id}>
+                  <div className="task-head">
+                    <div>
+                      <strong>{order.customerName}</strong>
+                      <p>{order.phone}</p>
+                      <p>{order.address}</p>
+                      <p>{order.acType}</p>
+                    </div>
+                    <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
                   </div>
-                </div>
 
-                <div className="panel inset-panel">
-                  <h3>{t.photoTitle}</h3>
-                  <label className="upload-box">
-                    <span>{t.photoPrompt}</span>
-                    <input type="file" accept="image/*" onChange={(event) => uploadPhoto(order.id, event.target.files?.[0])} />
-                  </label>
+                  <div className="task-meta-grid">
+                    <div className="task-meta-item">
+                      <span>{lang === 'ar' ? 'الموعد' : 'Scheduled'}</span>
+                      <strong>{order.scheduledDate}</strong>
+                    </div>
+                    <div className="task-meta-item">
+                      <span>{lang === 'ar' ? 'الإضافات' : 'Extras'}</span>
+                      <strong>{order.extras?.totalPrice || 0} SAR</strong>
+                    </div>
+                    <div className="task-meta-item">
+                      <span>{lang === 'ar' ? 'الفني' : 'Technician'}</span>
+                      <strong>{order.technicianName}</strong>
+                    </div>
+                  </div>
 
-                  <div className="photo-grid">
-                    {(order.photos || []).map((photo) => (
-                      <img alt={photo.name} className="photo-thumb" key={photo.id} src={photo.url} />
+                  <div className="status-actions">
+                    {t.actions.map((action) => (
+                      <button
+                        key={action.value}
+                        className="btn-light"
+                        type="button"
+                        onClick={() => updateStatus(order.id, action.value)}
+                      >
+                        {action.label}
+                      </button>
                     ))}
                   </div>
-                </div>
-              </div>
 
-              {order.notes ? <div className="notes-box">{t.notesPrefix} {order.notes}</div> : null}
-            </article>
-          ))
-        ) : (
-          <article className="panel">
-            <p className="muted">{t.empty}</p>
-          </article>
-        )}
+                  <div className="task-grid">
+                    <div className="panel inset-panel">
+                      <h3>{t.calcTitle}</h3>
+                      <label>{t.meter}</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        value={order.extras?.copperMeters || 0}
+                        onChange={(event) =>
+                          updateExtras(order.id, order.extras, { copperMeters: Number(event.target.value) || 0 })
+                        }
+                      />
+
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(order.extras?.baseIncluded)}
+                          onChange={(event) =>
+                            updateExtras(order.id, order.extras, { baseIncluded: event.target.checked })
+                          }
+                        />
+                        <span>{t.base}</span>
+                      </label>
+
+                      <div className="quote-box">
+                        <span>{t.finalPrice}</span>
+                        <strong>{order.extras?.totalPrice || 0} SAR</strong>
+                      </div>
+                    </div>
+
+                    <div className="panel inset-panel">
+                      <h3>{t.photoTitle}</h3>
+                      <label className="upload-box">
+                        <span>{t.photoPrompt}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => uploadPhoto(order.id, event.target.files?.[0])}
+                        />
+                      </label>
+
+                      <div className="photo-grid">
+                        {(order.photos || []).map((photo) => (
+                          <img alt={photo.name} className="photo-thumb" key={photo.id} src={photo.url} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {order.notes ? <div className="notes-box">{t.notesPrefix} {order.notes}</div> : null}
+                </article>
+              ))
+            ) : (
+              <article className="panel">
+                <p className="muted">{t.empty}</p>
+              </article>
+            )}
+          </div>
+        </div>
+
+        <aside className="technician-sidebar">
+          <div className="panel sticky-panel">
+            <div className="panel-header">
+              <h2>{lang === 'ar' ? 'قائمة العمل اليومية' : 'Daily work checklist'}</h2>
+              <p>{lang === 'ar' ? 'اتباع هذه النقاط يحافظ على جودة التنفيذ والتوثيق.' : 'Following these steps keeps execution and documentation consistent.'}</p>
+            </div>
+            <div className="checklist-list">
+              {checklist.map((item) => (
+                <article className="checklist-item" key={item}>
+                  <span className="check-icon">✓</span>
+                  <p>{item}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
   );

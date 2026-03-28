@@ -426,6 +426,31 @@ h1 {
   gap: 16px;
 }
 
+.technician-hero {
+  display: grid;
+  gap: 18px;
+}
+
+.technician-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.technician-stat {
+  display: grid;
+  gap: 8px;
+}
+
+.technician-stat span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.technician-stat strong {
+  font-size: 1.6rem;
+}
+
 .language-switch {
   white-space: nowrap;
   align-self: flex-start;
@@ -543,6 +568,27 @@ h1 {
   font-weight: 700;
 }
 
+.technician-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 18px;
+  align-items: start;
+}
+
+.technician-main {
+  display: grid;
+  gap: 18px;
+}
+
+.technician-sidebar {
+  position: relative;
+}
+
+.sticky-panel {
+  position: sticky;
+  top: 96px;
+}
+
 .service-table {
   display: grid;
   gap: 8px;
@@ -573,6 +619,65 @@ h1 {
 
 .service-table-row strong {
   color: var(--brand-dark);
+}
+
+.task-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.task-meta-item {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 6px;
+}
+
+.task-meta-item span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.task-meta-item strong {
+  font-size: 1rem;
+}
+
+.checklist-list {
+  display: grid;
+  gap: 12px;
+}
+
+.checklist-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(17, 120, 100, 0.06);
+  border: 1px solid rgba(17, 120, 100, 0.1);
+}
+
+.check-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 120, 100, 0.16);
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.technician-task {
+  display: grid;
+  gap: 14px;
 }
 
 .task-grid {
@@ -760,7 +865,10 @@ button.preset-card {
   .tech-card,
   .technician-heading,
   .service-table-head,
-  .service-table-row {
+  .service-table-row,
+  .technician-layout,
+  .technician-grid,
+  .task-meta-grid {
     flex-direction: column;
     align-items: stretch;
   }
@@ -772,6 +880,16 @@ button.preset-card {
   .service-table-head,
   .service-table-row {
     grid-template-columns: 1fr;
+  }
+
+  .technician-layout,
+  .technician-grid,
+  .task-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sticky-panel {
+    position: static;
   }
 }
 
