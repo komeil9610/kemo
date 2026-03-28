@@ -1,4 +1,5 @@
 const FILE_EXTENSION_REGEX = /\.[a-zA-Z0-9]+$/;
+const INTERNAL_PROXY_HEADER = "X-Tarkeeb-Pro-Internal";
 
 export default {
   async fetch(request, env) {
@@ -29,13 +30,17 @@ export default {
 };
 
 function proxyApiRequest(request, env) {
+  const headers = new Headers(request.headers);
+  headers.set(INTERNAL_PROXY_HEADER, "1");
+  const proxiedRequest = new Request(request, { headers });
+
   if (env.EDGE_API) {
-    return env.EDGE_API.fetch(request);
+    return env.EDGE_API.fetch(proxiedRequest);
   }
 
   const incomingUrl = new URL(request.url);
   const apiOrigin = env.API_ORIGIN || "https://tarkeeb-pro-edge-api.bobkumeel.workers.dev";
   const upstreamUrl = new URL(`${incomingUrl.pathname}${incomingUrl.search}`, apiOrigin);
 
-  return fetch(new Request(upstreamUrl.toString(), request));
+  return fetch(new Request(upstreamUrl.toString(), proxiedRequest));
 }

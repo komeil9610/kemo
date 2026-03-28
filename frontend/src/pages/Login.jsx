@@ -33,8 +33,8 @@ export default function Login() {
           <h1>{lang === 'ar' ? 'تسجيل الدخول إلى تركيب برو' : 'Sign in to Tarkeeb Pro'}</h1>
           <p>
             {lang === 'ar'
-              ? 'الحسابات الرسمية جاهزة للاستخدام من المسؤول والفني، مع ربط كامل بالخلفية.'
-              : 'Official administrator and technician accounts are ready to use with full backend integration.'}
+              ? 'تسجيل الدخول هنا رسمي ومربوط مباشرة بالخلفية. الحسابات الإدارية والفنية محمية ولا تُعرض بياناتها على الشاشة.'
+              : 'Sign in here is fully connected to the backend. Official admin and technician accounts are protected and their credentials are hidden from the screen.'}
           </p>
 
           <div className="demo-grid">
@@ -46,9 +46,8 @@ export default function Login() {
               }}
               type="button"
             >
-              <strong>{lang === 'ar' ? 'المسؤول' : 'Administrator'}</strong>
-              <span>bobkumeel@gmail.com</span>
-              <span>Kom123asd@</span>
+              <strong>{lang === 'ar' ? 'حساب المسؤول' : 'Admin account'}</strong>
+              <span>{lang === 'ar' ? 'اختصار داخلي للاستخدام السريع' : 'Internal shortcut for quick access'}</span>
             </button>
             <button
               className="preset-card"
@@ -58,9 +57,8 @@ export default function Login() {
               }}
               type="button"
             >
-              <strong>{lang === 'ar' ? 'الفني' : 'Technician'}</strong>
-              <span>kumeelalnahab@gmail.com</span>
-              <span>Komeil@123</span>
+              <strong>{lang === 'ar' ? 'حساب الفني' : 'Technician account'}</strong>
+              <span>{lang === 'ar' ? 'اختصار داخلي للاختبار فقط' : 'Internal shortcut for testing only'}</span>
             </button>
           </div>
         </div>
@@ -79,8 +77,8 @@ export default function Login() {
           </button>
 
           <p className="muted">
-            {lang === 'ar' ? 'تحتاج نظرة سريعة على الحسابات الجاهزة؟' : 'Need a quick look at the seeded accounts?'}{' '}
-            <Link to="/register">{lang === 'ar' ? 'افتح الحسابات الرسمية' : 'Open official accounts'}</Link>
+            {lang === 'ar' ? 'لإنشاء حساب عميل جديد استخدم بوابة التسجيل الرسمية.' : 'Use the official registration portal to create a new customer account.'}{' '}
+            <Link to="/register">{lang === 'ar' ? 'الانتقال إلى التسجيل' : 'Go to registration'}</Link>
           </p>
         </form>
       </div>

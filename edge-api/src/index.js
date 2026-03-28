@@ -8,6 +8,11 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "capacitor://localhost",
 ];
 
+const INTERNAL_PROXY_HEADER = "X-Tarkeeb-Pro-Internal";
+const DEFAULT_ACCESS_AUD = "d29039f60465cca5a1b5277ec36013408335d08497b2c7f90be6862d7ff14fe3";
+const DEFAULT_ACCESS_JWKS_URL = "https://bobkumeel.cloudflareaccess.com/cdn-cgi/access/certs";
+const jwksCache = new Map();
+
 const DEFAULT_PRODUCT_IMAGE =
   "https://images.unsplash.com/photo-1581093458791-9d15482442f0?auto=format&fit=crop&w=900&q=80";
 
@@ -22,6 +27,13 @@ export default {
     try {
       const url = new URL(request.url);
       const path = url.pathname;
+
+      if (!isInternalProxyRequest(request)) {
+        const accessResponse = await validateCloudflareAccess(request, env);
+        if (accessResponse) {
+          return accessResponse;
+        }
+      }
 
       if (path === "/api/health" && request.method === "GET") {
         return json(
@@ -1957,6 +1969,109 @@ function getAllowedOrigins(env) {
   return [...new Set([...configuredOrigins, ...DEFAULT_ALLOWED_ORIGINS])];
 }
 
+function isInternalProxyRequest(request) {
+  return request.headers.get(INTERNAL_PROXY_HEADER) === "1";
+}
+
+async function validateCloudflareAccess(request, env) {
+  const token =
+    request.headers.get("CF-Access-Jwt-Assertion") ||
+    request.headers.get("Cf-Access-Jwt-Assertion") ||
+    request.headers.get("cf-access-jwt-assertion");
+
+  if (!token) {
+    return json({ message: "Cloudflare Access token required" }, 401, request, env);
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return json({ message: "Invalid Cloudflare Access token" }, 401, request, env);
+  }
+
+  let header;
+  let payload;
+
+  try {
+    header = JSON.parse(base64UrlDecode(parts[0]));
+    payload = JSON.parse(base64UrlDecode(parts[1]));
+  } catch {
+    return json({ message: "Invalid Cloudflare Access token" }, 401, request, env);
+  }
+
+  const audience = env.ACCESS_AUD || DEFAULT_ACCESS_AUD;
+  if (!hasAudience(payload.aud, audience)) {
+    return json({ message: "Invalid Cloudflare Access audience" }, 403, request, env);
+  }
+
+  const jwksUrl = env.ACCESS_JWKS_URL || DEFAULT_ACCESS_JWKS_URL;
+  const issuer = new URL(jwksUrl).origin;
+  if (payload.iss && payload.iss !== issuer) {
+    return json({ message: "Invalid Cloudflare Access issuer" }, 403, request, env);
+  }
+
+  if (payload.exp && Number(payload.exp) < Math.floor(Date.now() / 1000)) {
+    return json({ message: "Cloudflare Access token expired" }, 401, request, env);
+  }
+
+  const jwkSet = await getAccessJwks(jwksUrl);
+  const jwk = jwkSet.find((entry) => entry.kid === header.kid);
+  if (!jwk) {
+    return json({ message: "Cloudflare Access signing key not found" }, 401, request, env);
+  }
+
+  const publicKey = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: "SHA-256",
+    },
+    false,
+    ["verify"]
+  );
+
+  const verified = await crypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    publicKey,
+    base64UrlToBytes(parts[2]),
+    new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
+  );
+
+  if (!verified) {
+    return json({ message: "Cloudflare Access token verification failed" }, 401, request, env);
+  }
+
+  return null;
+}
+
+function hasAudience(audience, expectedAudience) {
+  if (Array.isArray(audience)) {
+    return audience.includes(expectedAudience);
+  }
+
+  return String(audience || "") === expectedAudience;
+}
+
+async function getAccessJwks(jwksUrl) {
+  const cacheKey = String(jwksUrl);
+  const cached = jwksCache.get(cacheKey);
+  const now = Date.now();
+
+  if (cached && cached.expiresAt > now) {
+    return cached.keys;
+  }
+
+  const response = await fetch(jwksUrl);
+  if (!response.ok) {
+    throw new Error(`Unable to load Cloudflare Access JWKs from ${jwksUrl}`);
+  }
+
+  const data = await response.json();
+  const keys = Array.isArray(data?.keys) ? data.keys : [];
+  jwksCache.set(cacheKey, { keys, expiresAt: now + 60 * 60 * 1000 });
+  return keys;
+}
+
 async function hashPassword(password, salt) {
   const msg = new TextEncoder().encode(`${salt}:${password}`);
   const hash = await crypto.subtle.digest("SHA-256", msg);
@@ -2013,6 +2128,13 @@ function base64UrlDecode(value) {
   const binary = atob(padded);
   const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
   return new TextDecoder().decode(bytes);
+}
+
+function base64UrlToBytes(value) {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "===".slice((base64.length + 3) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
 function base64UrlFromBytes(bytes) {
