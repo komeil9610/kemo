@@ -96,6 +96,8 @@ const copy = {
     signature: 'Client signature',
     signaturePlaceholder: 'Type the client name as signature',
     saveStatus: 'Update status',
+    closureGuide: 'The final close and OTP entry are handled only from the daily tasks page, not from this screen.',
+    openClosureFlow: 'Open daily closure flow',
     exceptionGuide: 'Field exceptions are handled from the daily page with required reason and proof.',
     accountTitle: 'My account',
     availability: 'Availability',
@@ -169,6 +171,8 @@ const copy = {
     signature: 'توقيع العميل',
     signaturePlaceholder: 'اكتب اسم العميل كتوقيع',
     saveStatus: 'تحديث الحالة',
+    closureGuide: 'الإغلاق النهائي وإدخال OTP يتمان فقط من صفحة المهام اليومية وليس من هذه الشاشة.',
+    openClosureFlow: 'فتح مسار الإغلاق اليومي',
     exceptionGuide: 'معالجة المهام المتعثرة تتم من صفحة المهام اليومية مع سبب إجباري وصورة إثبات.',
     accountTitle: 'حسابي',
     availability: 'حالة التوفر',
@@ -720,9 +724,10 @@ export default function Orders() {
                           {t.saveStatus}
                         </button>
                         <Link className="btn-danger" to="/tasks/daily">
-                          {t.dailyTasksLink}
+                          {t.openClosureFlow}
                         </Link>
                       </div>
+                      <p className="notes-box">{t.closureGuide}</p>
                       <p className="muted">{t.exceptionGuide}</p>
                     </div>
                   </div>

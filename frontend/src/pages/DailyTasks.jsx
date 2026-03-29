@@ -107,6 +107,13 @@ const copy = {
     requestOtp: 'Request Zamil OTP',
     requestOtpAgain: 'Request a new OTP',
     submitOtp: 'Send OTP to operations',
+    closeStepsTitle: 'Closure steps',
+    closeSteps: [
+      'Upload proof photo and save the client signature.',
+      'Press Request Zamil OTP after finishing the installation.',
+      'When the customer receives the OTP, type it here and send it to operations.',
+      'Wait for the green approval before leaving the site.',
+    ],
     waitingForOps: 'Waiting for operations to request the OTP from Zamil and send the final approval.',
     waitingForApproval: 'OTP sent. Stay on-site until the green approval appears.',
     sentOtpLabel: 'Submitted OTP',
@@ -197,6 +204,13 @@ const copy = {
     requestOtp: 'طلب رمز الزامل',
     requestOtpAgain: 'طلب رمز جديد',
     submitOtp: 'إرسال الرمز للإدارة',
+    closeStepsTitle: 'خطوات الإغلاق',
+    closeSteps: [
+      'ارفع صورة الإثبات واحفظ توقيع العميل أولاً.',
+      'بعد انتهاء التركيب اضغط طلب رمز الزامل.',
+      'عندما يستلم العميل الرمز اكتبه هنا ثم اضغط إرسال الرمز للإدارة.',
+      'لا تغادر الموقع حتى يظهر لك الاعتماد الأخضر.',
+    ],
     waitingForOps: 'بانتظار الإدارة لتطلب OTP من بوابة الزامل ثم تكمل الاعتماد النهائي.',
     waitingForApproval: 'تم إرسال الرمز. ابقَ في الموقع حتى يظهر اعتماد الإدارة.',
     sentOtpLabel: 'الرمز المرسل',
@@ -793,6 +807,19 @@ export default function DailyTasks() {
                         (selectedOrder.timing?.isCritical ? t.criticalNotice : selectedOrder.timing?.isWarning ? t.warningNotice : '—')}
                     </strong>
                   </article>
+                </div>
+
+                <div className="panel inset-panel">
+                  <div className="panel-header">
+                    <h3>{t.closeStepsTitle}</h3>
+                  </div>
+                  <div className="audit-log-body">
+                    {t.closeSteps.map((step) => (
+                      <article className="audit-log-item" key={step}>
+                        <strong>{step}</strong>
+                      </article>
+                    ))}
+                  </div>
                 </div>
 
                 <label className="filter-field">

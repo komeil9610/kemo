@@ -2,7 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useLang } from '../context/LangContext';
-import { buildEscalationSnapshot, compareOrdersByInternalArea, formatSaudiPhoneDisplay, getAreaClusterLabel, operationsService } from '../services/api';
+import {
+  buildEscalationSnapshot,
+  compareOrdersByInternalArea,
+  formatSaudiPhoneDisplay,
+  getAreaClusterLabel,
+  notificationsService,
+  operationsService,
+} from '../services/api';
 
 const todayString = () => new Date().toISOString().slice(0, 10);
 const formatOrderNumber = (value) => String(value || '').replace(/^ORD-/, '');
@@ -45,6 +52,10 @@ const copy = {
     loading: 'Loading admin control board...',
     backDashboard: 'Back to dashboard',
     sync: 'Sync',
+    notificationsTitle: 'Live manager alerts',
+    notificationsHint: 'OTP requests and OTP receipts appear here immediately and refresh the dashboard automatically.',
+    emptyNotifications: 'No new manager notifications right now.',
+    markAllRead: 'Mark all as read',
     dateLabel: 'Operation date',
     searchLabel: 'Search',
     searchPlaceholder: 'Search customer, area, order, or technician',
@@ -147,6 +158,10 @@ const copy = {
     loading: 'جارٍ تحميل لوحة التحكم اليومية...',
     backDashboard: 'العودة للوحة الإدارة',
     sync: 'مزامنة',
+    notificationsTitle: 'تنبيهات المسؤول المباشرة',
+    notificationsHint: 'طلبات OTP ووصول الرمز تظهر هنا فوراً ويتم معها تحديث اللوحة تلقائياً.',
+    emptyNotifications: 'لا توجد تنبيهات جديدة للمسؤول حالياً.',
+    markAllRead: 'تعليم الكل كمقروء',
     dateLabel: 'تاريخ التشغيل',
     searchLabel: 'البحث',
     searchPlaceholder: 'ابحث بالعميل أو المنطقة أو رقم الطلب أو اسم الفني',
@@ -253,6 +268,7 @@ export default function AdminDailyTasks() {
   const [approvalOrderId, setApprovalOrderId] = useState('');
   const [savingOrderId, setSavingOrderId] = useState('');
   const [orderDrafts, setOrderDrafts] = useState({});
+  const [notifications, setNotifications] = useState([]);
   const [filters, setFilters] = useState({
     search: '',
     region: 'all',
@@ -260,6 +276,9 @@ export default function AdminDailyTasks() {
     status: 'all',
   });
   const alertedCriticalRef = useRef(new Set());
+  const seenNotificationIdsRef = useRef(new Set());
+  const latestNotificationIdRef = useRef(0);
+  const bootstrappedNotificationsRef = useRef(false);
 
   const t = copy[lang] || copy.en;
 
@@ -280,19 +299,73 @@ export default function AdminDailyTasks() {
     []
   );
 
+  const loadNotifications = useCallback(async (silent = false) => {
+    try {
+      const response = await notificationsService.list(latestNotificationIdRef.current || 0);
+      const freshItems = response.data?.notifications || [];
+
+      if (freshItems.length) {
+        latestNotificationIdRef.current = Math.max(
+          latestNotificationIdRef.current,
+          ...freshItems.map((item) => Number(item.id) || 0)
+        );
+      }
+
+      setNotifications((current) => {
+        const merged = [...freshItems, ...current]
+          .filter(
+            (item, index, items) =>
+              items.findIndex((entry) => String(entry.id) === String(item.id)) === index
+          )
+          .slice(0, 10);
+        return merged;
+      });
+
+      const unseenItems = freshItems.filter((item) => !seenNotificationIdsRef.current.has(String(item.id)));
+      unseenItems.forEach((item) => seenNotificationIdsRef.current.add(String(item.id)));
+
+      if (bootstrappedNotificationsRef.current && unseenItems.length) {
+        unseenItems.forEach((item) => {
+          toast(item.title, { duration: 5000 });
+          try {
+            if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
+              new window.Notification(item.title, { body: item.body });
+            }
+          } catch {
+            return;
+          }
+        });
+
+        await loadDashboard({ silently: true });
+      }
+
+      bootstrappedNotificationsRef.current = true;
+    } catch {
+      if (!silent) {
+        return;
+      }
+    }
+  }, [loadDashboard]);
+
   useEffect(() => {
     loadDashboard();
+    loadNotifications(false);
     window.addEventListener('operations-updated', loadDashboard);
-    return () => window.removeEventListener('operations-updated', loadDashboard);
-  }, [loadDashboard]);
+    window.addEventListener('operations-updated', loadNotifications);
+    return () => {
+      window.removeEventListener('operations-updated', loadDashboard);
+      window.removeEventListener('operations-updated', loadNotifications);
+    };
+  }, [loadDashboard, loadNotifications]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       loadDashboard({ silently: true });
+      loadNotifications(true);
     }, 8000);
 
     return () => window.clearInterval(intervalId);
-  }, [loadDashboard]);
+  }, [loadDashboard, loadNotifications]);
 
   const technicians = useMemo(() => dashboard?.technicians || [], [dashboard]);
   const timeStandards = useMemo(() => dashboard?.timeStandards || [], [dashboard]);
@@ -755,6 +828,39 @@ export default function AdminDailyTasks() {
 
       <div className="admin-daily-layout">
         <aside className="admin-daily-sidebar">
+          <section className="panel admin-daily-section">
+            <div className="panel-header">
+              <div>
+                <h2>{t.notificationsTitle}</h2>
+                <p>{t.notificationsHint}</p>
+              </div>
+              {notifications.some((item) => !item.isRead) ? (
+                <button
+                  className="btn-light"
+                  type="button"
+                  onClick={async () => {
+                    await notificationsService.markAllRead();
+                    setNotifications((current) => current.map((item) => ({ ...item, isRead: true })));
+                  }}
+                >
+                  {t.markAllRead}
+                </button>
+              ) : null}
+            </div>
+            <div className="notification-stack">
+              {notifications.length ? (
+                notifications.map((item) => (
+                  <article className={`notification-tile ${item.isRead ? 'read' : 'unread'}`} key={`admin-note-${item.id}`}>
+                    <strong>{item.title}</strong>
+                    <p>{item.body}</p>
+                  </article>
+                ))
+              ) : (
+                <p className="muted">{t.emptyNotifications}</p>
+              )}
+            </div>
+          </section>
+
           <section className="panel admin-daily-section admin-escalation-panel">
             <div className="panel-header">
               <div>

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const STORAGE_KEY = 'tarkeeb-pro-db';
+const NOTIFICATIONS_STORAGE_KEY = 'tarkeeb-pro-notifications';
 
 const readStorage = (key) => {
   if (typeof window === 'undefined') {
@@ -38,16 +39,11 @@ const removeStorage = (key) => {
   }
 };
 
-const readSession = (key) => {
-  if (typeof window === 'undefined') {
-    return null;
-  }
+const readStoredNotifications = () => safeJson(readStorage(NOTIFICATIONS_STORAGE_KEY), []);
 
-  try {
-    return window.sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
+const writeStoredNotifications = (items) => {
+  writeStorage(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(items || []));
+  window.dispatchEvent(new CustomEvent('operations-updated'));
 };
 
 const writeSession = (key, value) => {
@@ -434,6 +430,53 @@ const safeJson = (value, fallback) => {
   } catch {
     return fallback;
   }
+};
+
+const getActiveAuthUser = () => safeJson(readStorage('authUser'), null);
+
+const nextNotificationId = (items = []) =>
+  items.reduce((maxId, item) => Math.max(maxId, Number(item?.id) || 0), 0) + 1;
+
+const appendNotificationsForUsers = (userIds = [], payload = {}) => {
+  const normalizedUserIds = Array.from(new Set((userIds || []).map((item) => String(item || '').trim()).filter(Boolean)));
+  if (!normalizedUserIds.length) {
+    return;
+  }
+
+  const items = readStoredNotifications();
+  let currentId = nextNotificationId(items);
+  const createdAt = new Date().toISOString();
+
+  const nextItems = [
+    ...normalizedUserIds.map((userId) => ({
+      id: currentId++,
+      userId,
+      title: String(payload.title || '').trim() || 'Notification',
+      body: String(payload.body || '').trim() || '',
+      kind: String(payload.kind || 'status_update').trim(),
+      relatedOrderId: payload.relatedOrderId || null,
+      isRead: false,
+      createdAt,
+    })),
+    ...items,
+  ].slice(0, 120);
+
+  writeStoredNotifications(nextItems);
+};
+
+const notifyLocalAdmins = (state, payload = {}) => {
+  const adminUserIds = (state?.users || [])
+    .filter((user) => String(user?.role || '').trim() === 'admin')
+    .map((user) => String(user.id));
+  appendNotificationsForUsers(adminUserIds, payload);
+};
+
+const notifyLocalTechnicianUser = (state, technicianId, payload = {}) => {
+  const technician = (state?.technicians || []).find((entry) => String(entry.id) === String(technicianId));
+  if (!technician?.userId) {
+    return;
+  }
+  appendNotificationsForUsers([String(technician.userId)], payload);
 };
 
 const readState = () => {
@@ -974,7 +1017,7 @@ const localOperationsService = {
     }
 
     const requestedAt = new Date().toISOString();
-    return this.updateOrder(orderId, {
+    const response = await this.updateOrder(orderId, {
       status: ['pending', 'en_route'].includes(target.status) ? 'in_progress' : target.status,
       workStartedAt: target.workStartedAt || new Date().toISOString(),
       completionNote,
@@ -992,6 +1035,12 @@ const localOperationsService = {
         buildAuditEntry('zamil_request', 'technician', 'طلب الفني بدء إغلاق الزامل'),
       ],
     });
+    notifyLocalAdmins(state, {
+      title: 'جاهز لإغلاق الزامل',
+      body: `الفني ${target.technicianName || 'الميداني'} جاهز لإغلاق الطلب #${normalizeOrderId(orderId)} للعميل ${target.customerName}.`,
+      relatedOrderId: normalizeOrderId(orderId),
+    });
+    return response;
   },
 
   async submitClosureOtp(orderId, otpCode) {
@@ -1011,7 +1060,7 @@ const localOperationsService = {
       throw new Error('Request the Zamil OTP first');
     }
 
-    return this.updateOrder(orderId, {
+    const response = await this.updateOrder(orderId, {
       zamilClosureStatus: 'otp_submitted',
       zamilOtpCode: code,
       zamilOtpSubmittedAt: new Date().toISOString(),
@@ -1020,6 +1069,12 @@ const localOperationsService = {
         buildAuditEntry('zamil_otp', 'technician', 'أرسل الفني رمز OTP للإدارة'),
       ],
     });
+    notifyLocalAdmins(state, {
+      title: 'تم استلام OTP',
+      body: `وصل رمز OTP للطلب #${normalizeOrderId(orderId)} من الفني ${target.technicianName || 'الميداني'}.`,
+      relatedOrderId: normalizeOrderId(orderId),
+    });
+    return response;
   },
 
   async approveClosure(orderId) {
@@ -1035,7 +1090,7 @@ const localOperationsService = {
     }
 
     const approvedAt = new Date().toISOString();
-    return this.updateOrder(orderId, {
+    const response = await this.updateOrder(orderId, {
       status: 'completed',
       approvalStatus: 'approved',
       proofStatus: 'approved',
@@ -1049,6 +1104,12 @@ const localOperationsService = {
         buildAuditEntry('zamil_closed', 'admin', 'اعتمدت الإدارة إغلاق الطلب بعد قبول OTP في بوابة الزامل'),
       ],
     });
+    notifyLocalTechnicianUser(state, target.technicianId, {
+      title: 'تم اعتماد الإغلاق',
+      body: `اعتمدت الإدارة إغلاق الطلب #${normalizeOrderId(orderId)} ويمكنك مغادرة الموقع.`,
+      relatedOrderId: normalizeOrderId(orderId),
+    });
+    return response;
   },
 
   async cancelOrder(orderId, reason = '') {
@@ -1498,9 +1559,11 @@ export const operationsService = {
 };
 
 export const notificationsService = {
-  list: async () => {
+  list: async (sinceId = 0) => {
     try {
-      const response = await apiClient.get('/notifications');
+      const response = await apiClient.get('/notifications', {
+        params: sinceId ? { sinceId } : undefined,
+      });
       writeSession('localNotifications', JSON.stringify(response.data?.notifications || []));
       return response;
     } catch (error) {
@@ -1508,7 +1571,13 @@ export const notificationsService = {
         throw error;
       }
 
-      const items = safeJson(readSession('localNotifications'), []);
+      const activeUser = getActiveAuthUser();
+      const allItems = readStoredNotifications();
+      const items = allItems.filter(
+        (item) =>
+          String(item?.userId || '') === String(activeUser?.id || '') &&
+          (!sinceId || Number(item?.id) > Number(sinceId || 0))
+      );
       return { data: { notifications: items, unreadCount: items.filter((item) => !item.isRead).length } };
     }
   },
@@ -1520,6 +1589,13 @@ export const notificationsService = {
         throw error;
       }
 
+      const activeUser = getActiveAuthUser();
+      const allItems = readStoredNotifications().map((item) =>
+        String(item?.id) === String(id) && String(item?.userId || '') === String(activeUser?.id || '')
+          ? { ...item, isRead: true }
+          : item
+      );
+      writeStoredNotifications(allItems);
       return { data: { ok: true } };
     }
   },
@@ -1531,6 +1607,11 @@ export const notificationsService = {
         throw error;
       }
 
+      const activeUser = getActiveAuthUser();
+      const allItems = readStoredNotifications().map((item) =>
+        String(item?.userId || '') === String(activeUser?.id || '') ? { ...item, isRead: true } : item
+      );
+      writeStoredNotifications(allItems);
       return { data: { ok: true } };
     }
   },
