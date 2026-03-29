@@ -5,14 +5,66 @@ import { authService } from '../services/api';
 // Create Auth Context
 const AuthContext = createContext();
 
+const readStorage = (key) => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStorage = (key, value) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    return;
+  }
+};
+
+const removeStorage = (key) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    return;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem('authUser');
-    return raw ? JSON.parse(raw) : null;
+    const raw = readStorage('authUser');
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
   });
-  const [token, setToken] = useState(localStorage.getItem('authToken'));
+  const [token, setToken] = useState(() => readStorage('authToken'));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const permissions = {
+    canManageSystem: user?.role === 'admin',
+    canManageOrders: user?.role === 'admin',
+    canEditSubmittedOrders: user?.role === 'admin',
+    canManageTechnicians: user?.role === 'admin',
+    canManageSettings: user?.role === 'admin',
+  };
 
   const login = async (email, password) => {
     try {
@@ -26,8 +78,8 @@ export const AuthProvider = ({ children }) => {
       }
       setToken(nextToken);
       setUser(nextUser);
-      localStorage.setItem('authToken', nextToken);
-      localStorage.setItem('authUser', JSON.stringify(nextUser));
+      writeStorage('authToken', nextToken);
+      writeStorage('authUser', JSON.stringify(nextUser));
       return true;
     } catch (err) {
       const message = err?.response?.data?.message || err.message || 'Sign in failed';
@@ -41,8 +93,8 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('authUser');
+    removeStorage('authToken');
+    removeStorage('authUser');
   };
 
   const register = async (userData) => {
@@ -57,8 +109,8 @@ export const AuthProvider = ({ children }) => {
       }
       setToken(nextToken);
       setUser(nextUser);
-      localStorage.setItem('authToken', nextToken);
-      localStorage.setItem('authUser', JSON.stringify(nextUser));
+      writeStorage('authToken', nextToken);
+      writeStorage('authUser', JSON.stringify(nextUser));
       return true;
     } catch (err) {
       const message = err?.response?.data?.message || err.message || 'Account creation failed';
@@ -70,7 +122,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, error, login, logout, register }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        error,
+        login,
+        logout,
+        register,
+        isAdmin: user?.role === 'admin',
+        permissions,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -70,7 +70,7 @@ VALUES (
   1,
   'Tarkeeb Pro منصة موثوقة لإدارة طلبات التركيب والفنيين بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
   '[{"label":"الرئيسية","url":"/"},{"label":"المنتجات","url":"/products"},{"label":"طلباتي","url":"/orders"}]',
-  '[{"label":"الدعم الفني","url":"mailto:ops@tarkeebpro.sa"},{"label":"واتساب","url":"https://wa.me/966500000000"},{"label":"الأسئلة الشائعة","url":"/"}]',
+  '[{"label":"الدعم","url":"tel:+966558232644"},{"label":"واتساب","url":"https://wa.me/966558232644"},{"label":"اتصل بنا","url":"tel:+966558232644"}]',
   '[{"platform":"instagram","url":"https://instagram.com/tarkeebpro"},{"platform":"x","url":"https://x.com/tarkeebpro"},{"platform":"linkedin","url":"https://linkedin.com/company/tarkeebpro"}]',
   'جميع الحقوق محفوظة لكميل'
 )
@@ -109,7 +109,7 @@ VALUES (
   '/dashboard',
   'Technician View',
   '/tasks',
-  '[{"value":"1","label":"Admin account"},{"value":"1","label":"Seeded technician"},{"value":"85 SAR","label":"Copper meter price"}]'
+  '[{"value":"1","label":"Admin account"},{"value":"2","label":"Seeded technicians"},{"value":"85 SAR","label":"Copper meter price"}]'
 )
 ON CONFLICT(id) DO NOTHING;
 
@@ -120,25 +120,99 @@ CREATE TABLE IF NOT EXISTS technicians (
   phone TEXT NOT NULL,
   zone TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'available',
+  notes TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_technicians_status ON technicians(status);
 
+CREATE TABLE IF NOT EXISTS service_time_standards (
+  standard_key TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  ar_label TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL DEFAULT 60,
+  sort_order INTEGER NOT NULL DEFAULT 1
+);
+
+INSERT INTO service_time_standards (standard_key, label, ar_label, duration_minutes, sort_order)
+VALUES
+  ('split_installation', 'Wall split installation', 'تركيب مكيف سبليت جداري', 120, 1),
+  ('cassette_installation', 'Cassette AC installation', 'تركيب مكيف كاسيت', 180, 2),
+  ('preventive_maintenance', 'Preventive maintenance', 'صيانة وقائية', 45, 3)
+ON CONFLICT(standard_key) DO UPDATE SET
+  label = excluded.label,
+  ar_label = excluded.ar_label,
+  duration_minutes = excluded.duration_minutes,
+  sort_order = excluded.sort_order;
+
+CREATE TABLE IF NOT EXISTS internal_area_clusters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  city TEXT NOT NULL,
+  district TEXT NOT NULL,
+  area_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  ar_label TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(city, district)
+);
+
+INSERT INTO internal_area_clusters (city, district, area_key, label, ar_label, sort_order)
+VALUES
+  ('Dammam', 'Al Shatea', 'zone-a', 'Zone A', 'المنطقة أ', 1),
+  ('Dammam', 'Al Zuhour', 'zone-a', 'Zone A', 'المنطقة أ', 1),
+  ('Dammam', 'Al Fakhriyah', 'zone-b', 'Zone B', 'المنطقة ب', 2),
+  ('Riyadh', 'Al Yasmin', 'riyadh-north-1', 'North Riyadh 1', 'شمال الرياض 1', 3)
+ON CONFLICT(city, district) DO UPDATE SET
+  area_key = excluded.area_key,
+  label = excluded.label,
+  ar_label = excluded.ar_label,
+  sort_order = excluded.sort_order,
+  updated_at = CURRENT_TIMESTAMP;
+
 CREATE TABLE IF NOT EXISTS service_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_name TEXT NOT NULL,
   phone TEXT NOT NULL,
+  district TEXT NOT NULL DEFAULT '',
+  city TEXT NOT NULL DEFAULT '',
   address TEXT NOT NULL,
   ac_type TEXT NOT NULL,
+  service_category TEXT NOT NULL DEFAULT 'split_installation',
+  standard_duration_minutes INTEGER NOT NULL DEFAULT 120,
+  work_started_at TEXT,
+  completion_note TEXT NOT NULL DEFAULT '',
+  delay_reason TEXT NOT NULL DEFAULT '',
+  delay_note TEXT NOT NULL DEFAULT '',
+  work_type TEXT NOT NULL DEFAULT '',
+  ac_count INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'pending',
   scheduled_date TEXT NOT NULL,
+  scheduled_time TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'manual',
   notes TEXT NOT NULL DEFAULT '',
+  approval_status TEXT NOT NULL DEFAULT 'pending',
+  proof_status TEXT NOT NULL DEFAULT 'pending_review',
+  approved_at TEXT,
+  approved_by TEXT NOT NULL DEFAULT '',
+  client_signature TEXT NOT NULL DEFAULT '',
+  zamil_closure_status TEXT NOT NULL DEFAULT 'idle',
+  zamil_close_requested_at TEXT,
+  zamil_otp_code TEXT NOT NULL DEFAULT '',
+  zamil_otp_submitted_at TEXT,
+  zamil_closed_at TEXT,
+  suspension_reason TEXT NOT NULL DEFAULT '',
+  suspension_note TEXT NOT NULL DEFAULT '',
+  suspended_at TEXT,
+  exception_status TEXT NOT NULL DEFAULT 'none',
+  audit_log_json TEXT NOT NULL DEFAULT '[]',
   technician_id INTEGER,
   copper_meters REAL NOT NULL DEFAULT 0,
   base_included INTEGER NOT NULL DEFAULT 0,
   extras_total REAL NOT NULL DEFAULT 0,
+  service_items_json TEXT NOT NULL DEFAULT '[]',
   created_by_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -182,32 +256,46 @@ INSERT INTO users (name, email, password_hash, role, status)
 VALUES
   ('مسؤول تركيب برو', 'admin@tarkeebpro.sa', '6260a7306f61fcb20ec28f9a6b037bd4edbaaa66bfd73d94997faffa60141e95', 'admin', 'active'),
   ('فهد القحطاني', 'fahad@tarkeebpro.sa', '57119cdea6dc559b0d80e71208737269598d08f23b04f20eda198b889ca95541', 'technician', 'active'),
-  ('سلمان الدوسري', 'salman@tarkeebpro.sa', '0aab8aeaa6d15ef0cac12a8a9e8aac27387e18abccc583036d66ac6bc7fadd4c', 'technician', 'active')
+  ('سلمان الدوسري', 'salman@tarkeebpro.sa', '0aab8aeaa6d15ef0cac12a8a9e8aac27387e18abccc583036d66ac6bc7fadd4c', 'technician', 'active'),
+  ('محمود كميل', 'moreme112982@gmail.com', '5e480eeb5034e94dc686598221daaa44278e3864267a8d0b5cd187d3eb481b4a', 'technician', 'active')
 ON CONFLICT(email) DO UPDATE SET
   name = excluded.name,
   password_hash = excluded.password_hash,
   role = excluded.role,
   status = excluded.status;
 
-INSERT INTO technicians (user_id, name, phone, zone, status)
-SELECT id, 'فهد القحطاني', '+966500001111', 'شرق الرياض', 'available'
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'فهد القحطاني', '+966500001111', 'شرق الرياض', 'available', 'فني تجريبي لتغطية شرق الرياض.'
 FROM users
 WHERE email = 'fahad@tarkeebpro.sa'
 ON CONFLICT(user_id) DO UPDATE SET
   name = excluded.name,
   phone = excluded.phone,
   zone = excluded.zone,
-  status = excluded.status;
+  status = excluded.status,
+  notes = excluded.notes;
 
-INSERT INTO technicians (user_id, name, phone, zone, status)
-SELECT id, 'سلمان الدوسري', '+966500002222', 'شمال الرياض', 'busy'
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'سلمان الدوسري', '+966500002222', 'شمال الرياض', 'busy', 'فني تجريبي لتغطية شمال الرياض.'
 FROM users
 WHERE email = 'salman@tarkeebpro.sa'
 ON CONFLICT(user_id) DO UPDATE SET
   name = excluded.name,
   phone = excluded.phone,
   zone = excluded.zone,
-  status = excluded.status;
+  status = excluded.status,
+  notes = excluded.notes;
+
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'محمود كميل', '05041102100', 'الرياض', 'available', 'تغطية فعلية لمنطقة الرياض.'
+FROM users
+WHERE email = 'moreme112982@gmail.com'
+ON CONFLICT(user_id) DO UPDATE SET
+  name = excluded.name,
+  phone = excluded.phone,
+  zone = excluded.zone,
+  status = excluded.status,
+  notes = excluded.notes;
 
 INSERT INTO service_orders (
   customer_name,
@@ -221,6 +309,7 @@ INSERT INTO service_orders (
   copper_meters,
   base_included,
   extras_total,
+  service_items_json,
   created_by_user_id
 )
 SELECT
@@ -235,6 +324,7 @@ SELECT
   2,
   1,
   350,
+  '[]',
   u.id
 FROM users u
 JOIN technicians t ON t.user_id = (SELECT id FROM users WHERE email = 'fahad@tarkeebpro.sa')
@@ -253,6 +343,7 @@ INSERT INTO service_orders (
   copper_meters,
   base_included,
   extras_total,
+  service_items_json,
   created_by_user_id
 )
 SELECT
@@ -267,6 +358,7 @@ SELECT
   4,
   0,
   340,
+  '[]',
   u.id
 FROM users u
 JOIN technicians t ON t.user_id = (SELECT id FROM users WHERE email = 'salman@tarkeebpro.sa')

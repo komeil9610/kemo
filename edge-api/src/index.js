@@ -9,7 +9,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 const INTERNAL_PROXY_HEADER = "X-Tarkeeb-Pro-Internal";
-const DEFAULT_ACCESS_AUD = "d29039f60465cca5a1b5277ec36013408335d08497b2c7f90be6862d7ff14fe3";
+const DEFAULT_ACCESS_AUD = "282d6bbb5c79e6fa216dc031838ec36e641595f0c62f5ee0732e6d2f264eefa6";
 const DEFAULT_ACCESS_JWKS_URL = "https://bobkumeel.cloudflareaccess.com/cdn-cgi/access/certs";
 const jwksCache = new Map();
 
@@ -60,8 +60,42 @@ export default {
         return getOperationsDashboard(request, env);
       }
 
+      if (path === "/api/operations/summary" && request.method === "GET") {
+        return getOperationsSummary(request, env);
+      }
+
+      if (path === "/api/operations/time-standards" && request.method === "GET") {
+        return getServiceTimeStandards(request, env);
+      }
+
+      if (path === "/api/operations/time-standards" && request.method === "PUT") {
+        return updateServiceTimeStandards(request, env);
+      }
+
+      if (path === "/api/operations/area-clusters" && request.method === "GET") {
+        return getInternalAreaClusters(request, env);
+      }
+
+      if (path === "/api/operations/area-clusters" && request.method === "PUT") {
+        return updateInternalAreaClusters(request, env);
+      }
+
       if (path === "/api/operations/orders" && request.method === "POST") {
         return createServiceOrder(request, env);
+      }
+
+      if (path === "/api/operations/technicians" && request.method === "POST") {
+        return createTechnician(request, env);
+      }
+
+      if (path.startsWith("/api/operations/technicians/") && request.method === "PUT" && !path.endsWith("/status")) {
+        const id = path.split("/").pop();
+        return updateTechnician(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/technicians/") && request.method === "DELETE") {
+        const id = path.split("/").pop();
+        return deleteTechnician(request, id, env);
       }
 
       if (path === "/api/operations/technician/orders" && request.method === "GET") {
@@ -84,6 +118,39 @@ export default {
       if (path.startsWith("/api/operations/orders/") && path.endsWith("/status") && request.method === "PUT") {
         const id = path.split("/").slice(-2, -1)[0];
         return updateServiceOrderStatus(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && path.endsWith("/close-request") && request.method === "POST") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return requestServiceOrderClosure(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && path.endsWith("/close-otp") && request.method === "POST") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return submitServiceOrderClosureOtp(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && path.endsWith("/close-approve") && request.method === "POST") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return approveServiceOrderClosure(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/") && path.endsWith("/cancel") && request.method === "POST") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return cancelServiceOrder(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/technicians/") && path.endsWith("/status") && request.method === "PUT") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return updateTechnicianAvailability(request, id, env);
+      }
+
+      if (path === "/api/operations/admin/sample/reset" && request.method === "POST") {
+        return resetOperationsSampleData(request, env);
+      }
+
+      if (path === "/api/operations/admin/sample" && request.method === "DELETE") {
+        return clearOperationsSampleData(request, env);
       }
 
       if (path.startsWith("/api/operations/orders/") && path.endsWith("/extras") && request.method === "PUT") {
@@ -333,6 +400,15 @@ async function login(request, env) {
     return json({ message: "Invalid credentials" }, 401, request, env);
   }
 
+  const technician =
+    user.role === "technician"
+      ? await env.DB.prepare(
+          "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
+        )
+          .bind(Number(user.id))
+          .first()
+      : null;
+
   const token = await signJwt(
     {
       sub: String(user.id),
@@ -353,6 +429,11 @@ async function login(request, env) {
         email: user.email,
         role: user.role || "member",
         status: user.status || "active",
+        technicianId: technician ? String(technician.id) : null,
+        region: technician?.zone || null,
+        zone: technician?.zone || null,
+        technicianName: technician?.name || null,
+        technician: technician ? mapTechnician({ ...technician, email: user.email }) : null,
       },
     },
     200,
@@ -1071,6 +1152,56 @@ const OPERATIONS_PRICING = {
   basePrice: 180,
 };
 
+const SAMPLE_TECHNICIAN_SEEDS = [
+  {
+    name: "فهد القحطاني",
+    email: "fahad@tarkeebpro.sa",
+    phone: "+966500001111",
+    zone: "شرق الرياض",
+    status: "available",
+    notes: "فني تجريبي لتغطية شرق الرياض.",
+    passwordHash: "57119cdea6dc559b0d80e71208737269598d08f23b04f20eda198b889ca95541",
+  },
+  {
+    name: "سلمان الدوسري",
+    email: "salman@tarkeebpro.sa",
+    phone: "+966500002222",
+    zone: "شمال الرياض",
+    status: "busy",
+    notes: "فني تجريبي لتغطية شمال الرياض.",
+    passwordHash: "0aab8aeaa6d15ef0cac12a8a9e8aac27387e18abccc583036d66ac6bc7fadd4c",
+  },
+];
+
+const SAMPLE_ORDER_SEEDS = [
+  {
+    customerName: "أبو خالد",
+    phone: "+966555000111",
+    address: "حي الياسمين - الرياض",
+    acType: "سبليت 24 ألف وحدة",
+    status: "pending",
+    scheduledDate: "2026-03-29",
+    notes: "الدور الثاني - يوجد مصعد",
+    technicianEmail: "fahad@tarkeebpro.sa",
+    copperMeters: 2,
+    baseIncluded: true,
+    serviceItems: [],
+  },
+  {
+    customerName: "أم ناصر",
+    phone: "+966555000222",
+    address: "حي النرجس - الرياض",
+    acType: "شباك 18 ألف وحدة",
+    status: "in_progress",
+    scheduledDate: "2026-03-28",
+    notes: "الموقع يحتاج تواصل قبل الوصول بـ 30 دقيقة",
+    technicianEmail: "salman@tarkeebpro.sa",
+    copperMeters: 4,
+    baseIncluded: false,
+    serviceItems: [],
+  },
+];
+
 async function getOperationsDashboard(request, env) {
   const admin = await requireAdmin(request, env);
   if (!admin) {
@@ -1079,11 +1210,15 @@ async function getOperationsDashboard(request, env) {
 
   const technicians = await readTechnicians(env);
   const orders = await readServiceOrders(env);
+  const timeStandards = await readServiceTimeStandards(env);
+  const areaClusters = await readInternalAreaClusters(env);
   const summary = buildOperationsSummary(orders, technicians);
 
   return json(
     {
       pricing: OPERATIONS_PRICING,
+      timeStandards,
+      areaClusters,
       technicians,
       orders,
       summary,
@@ -1092,6 +1227,97 @@ async function getOperationsDashboard(request, env) {
     request,
     env
   );
+}
+
+async function getOperationsSummary(request, env) {
+  const technicians = await readTechnicians(env);
+  const orders = await readServiceOrders(env);
+  const summary = buildOperationsSummary(orders, technicians);
+
+  return json({ summary }, 200, request, env);
+}
+
+async function getServiceTimeStandards(request, env) {
+  const user = await requireRoles(request, env, ["admin", "technician"]);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const timeStandards = await readServiceTimeStandards(env);
+  return json({ timeStandards }, 200, request, env);
+}
+
+async function getInternalAreaClusters(request, env) {
+  const user = await requireRoles(request, env, ["admin", "technician"]);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const areaClusters = await readInternalAreaClusters(env);
+  return json({ areaClusters }, 200, request, env);
+}
+
+async function updateServiceTimeStandards(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const standards = normalizeServiceTimeStandards(body.standards);
+  if (!standards.length) {
+    return json({ message: "At least one time standard is required" }, 400, request, env);
+  }
+
+  for (const standard of standards) {
+    await env.DB.prepare(
+      `INSERT INTO service_time_standards (standard_key, label, ar_label, duration_minutes, sort_order)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(standard_key) DO UPDATE SET
+         label = excluded.label,
+         ar_label = excluded.ar_label,
+         duration_minutes = excluded.duration_minutes,
+         sort_order = excluded.sort_order`
+    )
+      .bind(
+        standard.standardKey,
+        standard.label,
+        standard.arLabel,
+        standard.durationMinutes,
+        standard.sortOrder
+      )
+      .run();
+  }
+
+  const timeStandards = await readServiceTimeStandards(env);
+  return json({ timeStandards }, 200, request, env);
+}
+
+async function updateInternalAreaClusters(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const clusters = normalizeInternalAreaClusters(body.clusters);
+  if (!clusters.length) {
+    return json({ message: "At least one internal area mapping is required" }, 400, request, env);
+  }
+
+  await env.DB.prepare("DELETE FROM internal_area_clusters").run();
+
+  for (const cluster of clusters) {
+    await env.DB.prepare(
+      `INSERT INTO internal_area_clusters (city, district, area_key, label, ar_label, sort_order, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+    )
+      .bind(cluster.city, cluster.district, cluster.areaKey, cluster.label, cluster.arLabel, cluster.sortOrder)
+      .run();
+  }
+
+  const areaClusters = await readInternalAreaClusters(env);
+  return json({ areaClusters }, 200, request, env);
 }
 
 async function createServiceOrder(request, env) {
@@ -1106,49 +1332,291 @@ async function createServiceOrder(request, env) {
     return json({ message: normalized.error }, 400, request, env);
   }
 
-  const technician = await env.DB.prepare(
-    "SELECT t.id, t.user_id, t.name, t.zone FROM technicians t WHERE t.id = ?"
+  const technician = normalized.technicianId
+    ? await env.DB.prepare("SELECT t.id, t.user_id, t.name, t.zone FROM technicians t WHERE t.id = ?")
+        .bind(Number(normalized.technicianId))
+        .first()
+    : null;
+
+  if (normalized.technicianId && !technician) {
+    return json({ message: "Technician not found" }, 404, request, env);
+  }
+
+  const serviceItems = normalizeServiceItems(normalized.serviceItems);
+  const serviceItemsTotal = calculateServiceItemsTotal(serviceItems);
+  const created = await env.DB.prepare(
+    `INSERT INTO service_orders (
+      customer_name, phone, district, city, address, ac_type, service_category, standard_duration_minutes,
+      work_type, ac_count, status, scheduled_date, scheduled_time, source, notes, technician_id, copper_meters,
+      base_included, extras_total, service_items_json, audit_log_json, created_by_user_id, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
   )
-    .bind(Number(normalized.technicianId))
+    .bind(
+      normalized.customerName,
+      normalizeSaudiPhoneNumber(normalized.phone),
+      normalized.district,
+      normalized.city,
+      normalized.address,
+      normalized.acType,
+      normalized.serviceCategory,
+      normalized.standardDurationMinutes,
+      normalized.workType,
+      normalized.acCount,
+      "pending",
+      normalized.scheduledDate,
+      normalized.scheduledTime,
+      normalized.source,
+      normalized.notes,
+      technician ? Number(technician.id) : null,
+      0,
+      0,
+      serviceItemsTotal,
+      JSON.stringify(serviceItems),
+      JSON.stringify([
+        {
+          id: `audit-${Date.now()}`,
+          type: "created",
+          actor: "admin",
+          message: `تم إنشاء الطلب وإسناده لجدول ${normalized.scheduledDate}.`,
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+      Number(admin.sub)
+    )
+    .run();
+
+  if (technician) {
+    await createNotification(
+      env,
+      technician.user_id,
+      "طلب جديد مسند لك",
+      `تم إسناد طلب ${normalized.customerName} في ${technician.zone} إليك.`,
+      "new_order",
+      created.meta.last_row_id
+    );
+  }
+
+  const order = await readServiceOrderById(env, created.meta.last_row_id);
+  return json({ order }, 201, request, env);
+}
+
+async function createTechnician(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const firstName = String(body.firstName || "").trim();
+  const lastName = String(body.lastName || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const phone = normalizeSaudiPhoneNumber(body.phone);
+  const password = String(body.password || "").trim();
+  const region = String(body.region || "").trim();
+  const notes = String(body.notes || "").trim();
+  const status = normalizeTechnicianStatus(body.status);
+
+  if (!firstName || !lastName || !email || !phone || !password || !region) {
+    return json({ message: "All technician fields are required" }, 400, request, env);
+  }
+
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
+    .bind(email)
+    .first();
+
+  if (existing) {
+    return json({ message: "This email is already registered" }, 409, request, env);
+  }
+
+  const passwordHash = await hashPassword(password, email);
+  const userName = `${firstName} ${lastName}`.trim();
+
+  const createdUser = await env.DB.prepare(
+    "INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)"
+  )
+    .bind(userName, email, passwordHash, "technician", "active")
+    .run();
+
+  const userId = createdUser.meta.last_row_id;
+  await env.DB.prepare(
+    "INSERT INTO technicians (user_id, name, phone, zone, status, notes) VALUES (?, ?, ?, ?, ?, ?)"
+  )
+    .bind(Number(userId), userName, phone, region, status, notes)
+    .run();
+
+  const technician = await env.DB.prepare(
+    "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
+  )
+    .bind(Number(userId))
+    .first();
+
+  return json(
+    {
+      user: {
+        id: Number(userId),
+        firstName,
+        lastName,
+        name: userName,
+        email,
+        phone,
+        role: "technician",
+        technicianId: technician ? String(technician.id) : String(userId),
+        region,
+        notes,
+      },
+      technician: mapTechnician(technician || {
+        id: Number(userId),
+        user_id: Number(userId),
+        name: userName,
+        phone,
+        zone: region,
+        status,
+      }),
+    },
+    201,
+    request,
+    env
+  );
+}
+
+async function updateTechnician(request, technicianId, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const id = Number(technicianId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return json({ message: "Invalid technician id" }, 400, request, env);
+  }
+
+  const existing = await env.DB.prepare(
+    `SELECT
+      t.id,
+      t.user_id,
+      t.name,
+      t.phone,
+      t.zone,
+      t.status,
+      COALESCE(t.notes, '') AS notes,
+      u.email
+     FROM technicians t
+     JOIN users u ON u.id = t.user_id
+     WHERE t.id = ?`
+  )
+    .bind(id)
+    .first();
+
+  if (!existing) {
+    return json({ message: "Technician not found" }, 404, request, env);
+  }
+
+  const body = await readJson(request);
+  const firstName = String(body.firstName || "").trim();
+  const lastName = String(body.lastName || "").trim();
+  const email = String(body.email || existing.email || "").trim().toLowerCase();
+  const phone = normalizeSaudiPhoneNumber(body.phone ?? existing.phone);
+  const region = String(body.region ?? existing.zone ?? "").trim();
+  const notes = String(body.notes ?? existing.notes ?? "").trim();
+  const status = normalizeTechnicianStatus(body.status ?? existing.status);
+  const password = String(body.password || "").trim();
+  const name =
+    `${firstName || existing.name.split(" ").slice(0, -1).join(" ")} ${lastName || existing.name.split(" ").slice(-1).join(" ")}`.trim() ||
+    existing.name;
+
+  if (!name || !email || !phone || !region) {
+    return json({ message: "Name, email, phone, and region are required" }, 400, request, env);
+  }
+
+  const duplicate = await env.DB.prepare(
+    "SELECT id FROM users WHERE email = ? AND id != ?"
+  )
+    .bind(email, Number(existing.user_id))
+    .first();
+
+  if (duplicate) {
+    return json({ message: "This email is already registered" }, 409, request, env);
+  }
+
+  if (password) {
+    const passwordHash = await hashPassword(password, email);
+    await env.DB.prepare(
+      "UPDATE users SET name = ?, email = ?, password_hash = ? WHERE id = ?"
+    )
+      .bind(name, email, passwordHash, Number(existing.user_id))
+      .run();
+  } else {
+    await env.DB.prepare("UPDATE users SET name = ?, email = ? WHERE id = ?")
+      .bind(name, email, Number(existing.user_id))
+      .run();
+  }
+
+  await env.DB.prepare(
+    "UPDATE technicians SET name = ?, phone = ?, zone = ?, status = ?, notes = ? WHERE id = ?"
+  )
+    .bind(name, phone, region, status, notes, id)
+    .run();
+
+  const technician = await env.DB.prepare(
+    `SELECT
+      t.id,
+      t.user_id,
+      t.name,
+      t.phone,
+      t.zone,
+      t.status,
+      COALESCE(t.notes, '') AS notes,
+      u.email
+     FROM technicians t
+     LEFT JOIN users u ON u.id = t.user_id
+     WHERE t.id = ?`
+  )
+    .bind(id)
+    .first();
+
+  return json({ technician: mapTechnician(technician) }, 200, request, env);
+}
+
+async function deleteTechnician(request, technicianId, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const id = Number(technicianId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return json({ message: "Invalid technician id" }, 400, request, env);
+  }
+
+  const technician = await env.DB.prepare(
+    "SELECT id, user_id, name FROM technicians WHERE id = ?"
+  )
+    .bind(id)
     .first();
 
   if (!technician) {
     return json({ message: "Technician not found" }, 404, request, env);
   }
 
-  const created = await env.DB.prepare(
-    `INSERT INTO service_orders (
-      customer_name, phone, address, ac_type, status, scheduled_date, notes, technician_id,
-      copper_meters, base_included, extras_total, created_by_user_id, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+  const activeOrder = await env.DB.prepare(
+    "SELECT id FROM service_orders WHERE technician_id = ? AND status IN ('pending', 'en_route', 'in_progress') LIMIT 1"
   )
-    .bind(
-      normalized.customerName,
-      normalized.phone,
-      normalized.address,
-      normalized.acType,
-      "pending",
-      normalized.scheduledDate,
-      normalized.notes,
-      Number(normalized.technicianId),
-      0,
-      0,
-      0,
-      Number(admin.sub)
-    )
-    .run();
+    .bind(id)
+    .first();
 
-  await createNotification(
-    env,
-    technician.user_id,
-    "طلب جديد مسند لك",
-    `تم إسناد طلب ${normalized.customerName} في ${technician.zone} إليك.`,
-    "new_order",
-    created.meta.last_row_id
-  );
+  if (activeOrder) {
+    return json(
+      { message: "Cannot delete a technician with active assigned orders" },
+      409,
+      request,
+      env
+    );
+  }
 
-  const order = await readServiceOrderById(env, created.meta.last_row_id);
-  return json({ order }, 201, request, env);
+  await env.DB.prepare("DELETE FROM technicians WHERE id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(Number(technician.user_id)).run();
+
+  return json({ message: "Technician deleted" }, 200, request, env);
 }
 
 async function updateServiceOrder(request, id, env) {
@@ -1163,7 +1631,14 @@ async function updateServiceOrder(request, id, env) {
   }
 
   const existing = await env.DB.prepare(
-    "SELECT id, technician_id, status FROM service_orders WHERE id = ?"
+    `SELECT
+      id, technician_id, status, customer_name, phone, notes, district, city, address, ac_type, service_category, standard_duration_minutes,
+      work_started_at, completion_note, delay_reason, delay_note, scheduled_date, scheduled_time, work_type, ac_count, source,
+      approval_status, proof_status, approved_at, approved_by, client_signature, zamil_closure_status, zamil_close_requested_at,
+      zamil_otp_code, zamil_otp_submitted_at, zamil_closed_at, suspension_reason, suspension_note, suspended_at, exception_status,
+      audit_log_json, copper_meters, base_included, service_items_json
+     FROM service_orders
+     WHERE id = ?`
   )
     .bind(orderId)
     .first();
@@ -1173,33 +1648,204 @@ async function updateServiceOrder(request, id, env) {
   }
 
   const body = await readJson(request);
-  const status = body.status ? String(body.status).trim() : existing.status;
-  const notes = body.notes !== undefined ? String(body.notes || "").trim() : null;
-  const technicianId = body.technicianId ? Number(body.technicianId) : existing.technician_id;
+  const customerName =
+    body.customerName !== undefined ? String(body.customerName || "").trim() : String(existing.customer_name || "").trim();
+  const phone = body.phone !== undefined ? normalizeSaudiPhoneNumber(body.phone) : normalizeSaudiPhoneNumber(existing.phone);
+  const status = body.status !== undefined ? String(body.status || "").trim() : existing.status;
+  const notes = body.notes !== undefined ? String(body.notes || "").trim() : String(existing.notes || "").trim();
+  const district =
+    body.district !== undefined ? String(body.district || "").trim() : String(existing.district || "").trim();
+  const city = body.city !== undefined ? String(body.city || "").trim() : String(existing.city || "").trim();
+  const address =
+    body.address !== undefined ? String(body.address || "").trim() : String(existing.address || "").trim();
+  const acType =
+    body.acType !== undefined ? String(body.acType || "").trim() : String(existing.ac_type || "").trim();
+  const serviceCategory =
+    body.serviceCategory !== undefined
+      ? String(body.serviceCategory || "split_installation").trim()
+      : String(existing.service_category || "split_installation").trim();
+  const standardDurationMinutes =
+    body.standardDurationMinutes !== undefined
+      ? Math.max(1, Number(body.standardDurationMinutes) || 1)
+      : Math.max(1, Number(existing.standard_duration_minutes) || 120);
+  const workStartedAt =
+    body.workStartedAt !== undefined ? String(body.workStartedAt || "").trim() || null : existing.work_started_at || null;
+  const completionNote =
+    body.completionNote !== undefined
+      ? String(body.completionNote || "").trim()
+      : String(existing.completion_note || "").trim();
+  const delayReason =
+    body.delayReason !== undefined ? String(body.delayReason || "").trim() : String(existing.delay_reason || "").trim();
+  const delayNote =
+    body.delayNote !== undefined ? String(body.delayNote || "").trim() : String(existing.delay_note || "").trim();
+  const scheduledDate =
+    body.scheduledDate !== undefined
+      ? String(body.scheduledDate || "").trim()
+      : String(existing.scheduled_date || "").trim();
+  const scheduledTime =
+    body.scheduledTime !== undefined
+      ? String(body.scheduledTime || "").trim()
+      : String(existing.scheduled_time || "").trim();
+  const workType =
+    body.workType !== undefined ? String(body.workType || "").trim() : String(existing.work_type || "").trim();
+  const acCount = body.acCount !== undefined ? Math.max(1, Number(body.acCount) || 1) : Number(existing.ac_count || 1);
+  const source = body.source !== undefined ? String(body.source || "manual").trim() : String(existing.source || "manual").trim();
+  const approvalStatus =
+    body.approvalStatus !== undefined
+      ? String(body.approvalStatus || "pending").trim()
+      : String(existing.approval_status || "pending").trim();
+  const proofStatus =
+    body.proofStatus !== undefined
+      ? String(body.proofStatus || "pending_review").trim()
+      : String(existing.proof_status || "pending_review").trim();
+  const approvedAt =
+    body.approvedAt !== undefined ? String(body.approvedAt || "").trim() || null : existing.approved_at || null;
+  const approvedBy =
+    body.approvedBy !== undefined ? String(body.approvedBy || "").trim() : String(existing.approved_by || "").trim();
+  const clientSignature =
+    body.clientSignature !== undefined
+      ? String(body.clientSignature || "").trim()
+      : String(existing.client_signature || "").trim();
+  const zamilClosureStatus =
+    body.zamilClosureStatus !== undefined
+      ? String(body.zamilClosureStatus || "idle").trim()
+      : String(existing.zamil_closure_status || "idle").trim();
+  const zamilCloseRequestedAt =
+    body.zamilCloseRequestedAt !== undefined
+      ? String(body.zamilCloseRequestedAt || "").trim() || null
+      : existing.zamil_close_requested_at || null;
+  const zamilOtpCode =
+    body.zamilOtpCode !== undefined
+      ? String(body.zamilOtpCode || "").trim()
+      : String(existing.zamil_otp_code || "").trim();
+  const zamilOtpSubmittedAt =
+    body.zamilOtpSubmittedAt !== undefined
+      ? String(body.zamilOtpSubmittedAt || "").trim() || null
+      : existing.zamil_otp_submitted_at || null;
+  const zamilClosedAt =
+    body.zamilClosedAt !== undefined
+      ? String(body.zamilClosedAt || "").trim() || null
+      : existing.zamil_closed_at || null;
+  const suspensionReason =
+    body.suspensionReason !== undefined
+      ? String(body.suspensionReason || "").trim()
+      : String(existing.suspension_reason || "").trim();
+  const suspensionNote =
+    body.suspensionNote !== undefined
+      ? String(body.suspensionNote || "").trim()
+      : String(existing.suspension_note || "").trim();
+  const suspendedAt =
+    body.suspendedAt !== undefined ? String(body.suspendedAt || "").trim() || null : existing.suspended_at || null;
+  const exceptionStatus =
+    body.exceptionStatus !== undefined
+      ? String(body.exceptionStatus || "none").trim()
+      : String(existing.exception_status || "none").trim();
+  const technicianId =
+    body.technicianId === undefined
+      ? existing.technician_id
+      : body.technicianId === "" || body.technicianId === null
+        ? null
+        : Number(body.technicianId);
+  const serviceItems =
+    body.serviceItems !== undefined
+      ? normalizeServiceItems(body.serviceItems)
+      : parseStoredServiceItems(existing.service_items_json);
+  const auditLog =
+    body.auditLog !== undefined
+      ? normalizeAuditLogEntries(body.auditLog)
+      : normalizeAuditLogEntries(parseJsonArray(existing.audit_log_json));
 
-  if (!["pending", "en_route", "in_progress", "completed"].includes(status)) {
+  if (!["pending", "en_route", "in_progress", "completed", "canceled", "suspended"].includes(status)) {
     return json({ message: "Invalid order status" }, 400, request, env);
   }
 
-  const technician = await env.DB.prepare(
-    "SELECT id, user_id, name FROM technicians WHERE id = ?"
-  )
-    .bind(Number(technicianId))
-    .first();
+  if (!["idle", "requested", "otp_submitted", "closed"].includes(zamilClosureStatus)) {
+    return json({ message: "Invalid Zamil closure status" }, 400, request, env);
+  }
 
-  if (!technician) {
+  if (!scheduledDate) {
+    return json({ message: "Scheduled date is required" }, 400, request, env);
+  }
+
+  if (!customerName || !phone || !address) {
+    return json({ message: "Customer name, phone, and address are required" }, 400, request, env);
+  }
+
+  if (!acType) {
+    return json({ message: "AC type is required" }, 400, request, env);
+  }
+
+  if (technicianId !== null && (!Number.isInteger(technicianId) || technicianId <= 0)) {
     return json({ message: "Technician not found" }, 404, request, env);
   }
 
+  const technician =
+    technicianId === null
+      ? null
+      : await env.DB.prepare("SELECT id, user_id, name FROM technicians WHERE id = ?").bind(Number(technicianId)).first();
+
+  if (technicianId !== null && !technician) {
+    return json({ message: "Technician not found" }, 404, request, env);
+  }
+
+  const serviceItemsTotal = calculateServiceItemsTotal(serviceItems);
+  const extrasTotal =
+    calculateExtrasTotal(existing.copper_meters, Boolean(existing.base_included)) + serviceItemsTotal;
+
   await env.DB.prepare(
     `UPDATE service_orders
-     SET status = ?, technician_id = ?, notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP
+     SET customer_name = ?, phone = ?, status = ?, technician_id = ?, notes = ?, district = ?, city = ?, address = ?, ac_type = ?, service_category = ?,
+         standard_duration_minutes = ?, work_started_at = ?, completion_note = ?, delay_reason = ?, delay_note = ?,
+         scheduled_date = ?, scheduled_time = ?, work_type = ?, ac_count = ?, source = ?, approval_status = ?,
+         proof_status = ?, approved_at = ?, approved_by = ?, client_signature = ?, zamil_closure_status = ?,
+         zamil_close_requested_at = ?, zamil_otp_code = ?, zamil_otp_submitted_at = ?, zamil_closed_at = ?,
+         suspension_reason = ?, suspension_note = ?, suspended_at = ?, exception_status = ?, audit_log_json = ?,
+         service_items_json = ?, extras_total = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`
   )
-    .bind(status, technician.id, notes, orderId)
+    .bind(
+      customerName,
+      phone,
+      status,
+      technician ? technician.id : null,
+      notes,
+      district,
+      city,
+      address,
+      acType,
+      serviceCategory,
+      standardDurationMinutes,
+      workStartedAt,
+      completionNote,
+      delayReason,
+      delayNote,
+      scheduledDate,
+      scheduledTime,
+      workType,
+      acCount,
+      source,
+      approvalStatus,
+      proofStatus,
+      approvedAt,
+      approvedBy,
+      clientSignature,
+      zamilClosureStatus,
+      zamilCloseRequestedAt,
+      zamilOtpCode,
+      zamilOtpSubmittedAt,
+      zamilClosedAt,
+      suspensionReason,
+      suspensionNote,
+      suspendedAt,
+      exceptionStatus,
+      JSON.stringify(auditLog),
+      JSON.stringify(serviceItems),
+      extrasTotal,
+      orderId
+    )
     .run();
 
-  if (Number(existing.technician_id) !== technician.id) {
+  if (technician && Number(existing.technician_id || 0) !== technician.id) {
     await createNotification(
       env,
       technician.user_id,
@@ -1214,6 +1860,47 @@ async function updateServiceOrder(request, id, env) {
   return json({ order }, 200, request, env);
 }
 
+async function updateTechnicianAvailability(request, technicianId, env) {
+  const user = await requireRoles(request, env, ["admin", "technician"]);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const id = Number(technicianId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return json({ message: "Invalid technician id" }, 400, request, env);
+  }
+
+  const technician = await env.DB.prepare(
+    "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
+  )
+    .bind(id)
+    .first();
+
+  if (!technician) {
+    return json({ message: "Technician not found" }, 404, request, env);
+  }
+
+  if (user.role === "technician" && String(technician.user_id) !== String(user.sub)) {
+    return json({ message: "Forbidden" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const status = normalizeTechnicianStatus(body.status);
+
+  await env.DB.prepare("UPDATE technicians SET status = ? WHERE id = ?")
+    .bind(status, id)
+    .run();
+
+  const nextTechnician = await env.DB.prepare(
+    "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
+  )
+    .bind(id)
+    .first();
+
+  return json({ technician: mapTechnician(nextTechnician) }, 200, request, env);
+}
+
 async function getTechnicianOrders(request, env) {
   const user = await requireRoles(request, env, ["technician"]);
   if (!user) {
@@ -1221,7 +1908,18 @@ async function getTechnicianOrders(request, env) {
   }
 
   const technician = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, status FROM technicians WHERE user_id = ?"
+    `SELECT
+      t.id,
+      t.user_id,
+      t.name,
+      t.phone,
+      t.zone,
+      t.status,
+      COALESCE(t.notes, '') AS notes,
+      u.email
+     FROM technicians t
+     LEFT JOIN users u ON u.id = t.user_id
+     WHERE t.user_id = ?`
   )
     .bind(Number(user.sub))
     .first();
@@ -1232,8 +1930,12 @@ async function getTechnicianOrders(request, env) {
 
   const { results } = await env.DB.prepare(
     `SELECT
-      o.id, o.customer_name, o.phone, o.address, o.ac_type, o.status, o.scheduled_date, o.notes,
-      o.copper_meters, o.base_included, o.extras_total, o.created_at, o.updated_at,
+      o.id, o.customer_name, o.phone, o.district, o.city, o.address, o.ac_type, o.service_category, o.standard_duration_minutes,
+      o.work_started_at, o.completion_note, o.delay_reason, o.delay_note, o.work_type, o.ac_count, o.status, o.scheduled_date,
+      o.scheduled_time, o.source, o.notes, o.approval_status, o.proof_status, o.approved_at, o.approved_by,
+      o.client_signature, o.zamil_closure_status, o.zamil_close_requested_at, o.zamil_otp_code, o.zamil_otp_submitted_at,
+      o.zamil_closed_at, o.suspension_reason, o.suspension_note, o.suspended_at, o.exception_status, o.audit_log_json,
+      o.copper_meters, o.base_included, o.extras_total, o.service_items_json, o.created_at, o.updated_at,
       t.id AS technician_id, t.name AS technician_name
      FROM service_orders o
      LEFT JOIN technicians t ON t.id = o.technician_id
@@ -1243,18 +1945,76 @@ async function getTechnicianOrders(request, env) {
     .bind(Number(technician.id))
     .all();
 
-  const orders = await Promise.all((results || []).map((row) => mapServiceOrderRow(env, row)));
+  const areaClusters = await readInternalAreaClusters(env);
+  const orders = await Promise.all((results || []).map((row) => mapServiceOrderRow(env, row, areaClusters)));
+  const timeStandards = await readServiceTimeStandards(env);
 
   return json(
     {
       technician: mapTechnician(technician),
       pricing: OPERATIONS_PRICING,
+      timeStandards,
+      areaClusters,
       orders,
     },
     200,
     request,
     env
   );
+}
+
+async function cancelServiceOrder(request, id, env) {
+  const user = await requireRoles(request, env, ["admin", "technician"]);
+  if (!user) {
+    return json({ message: "Unauthorized" }, 401, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const existing = await env.DB.prepare(
+    `SELECT
+      o.id,
+      o.customer_name,
+      o.notes,
+      o.technician_id,
+      t.user_id AS technician_user_id
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     WHERE o.id = ?`
+  )
+    .bind(orderId)
+    .first();
+
+  if (!existing) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  if (user.role === "technician" && Number(existing.technician_user_id) !== Number(user.sub)) {
+    return json({ message: "This order is not assigned to you" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const reason = String(body.reason || "").trim();
+  const nextNotes = [existing.notes, reason].filter(Boolean).join(" | ");
+
+  await env.DB.prepare(
+    "UPDATE service_orders SET status = 'canceled', notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+  )
+    .bind(nextNotes, orderId)
+    .run();
+
+  await notifyAdmins(
+    env,
+    "تم إلغاء الطلب",
+    `تم إلغاء الطلب #${orderId}${reason ? ` بسبب: ${reason}` : ""}.`,
+    orderId
+  );
+
+  const updated = await readServiceOrderById(env, orderId);
+  return json({ order: updated }, 200, request, env);
 }
 
 async function updateServiceOrderStatus(request, id, env) {
@@ -1271,13 +2031,14 @@ async function updateServiceOrderStatus(request, id, env) {
   const body = await readJson(request);
   const status = String(body.status || "").trim();
 
-  if (!["pending", "en_route", "in_progress", "completed"].includes(status)) {
+  if (!["pending", "en_route", "in_progress", "completed", "suspended"].includes(status)) {
     return json({ message: "Invalid order status" }, 400, request, env);
   }
 
   const order = await env.DB.prepare(
     `SELECT
-      o.id, o.customer_name, o.technician_id,
+      o.id, o.customer_name, o.technician_id, o.audit_log_json, o.suspension_reason, o.suspension_note, o.exception_status,
+      o.zamil_closure_status, o.work_started_at,
       t.user_id AS technician_user_id, t.name AS technician_name
      FROM service_orders o
      LEFT JOIN technicians t ON t.id = o.technician_id
@@ -1294,18 +2055,299 @@ async function updateServiceOrderStatus(request, id, env) {
     return json({ message: "This order is not assigned to you" }, 403, request, env);
   }
 
+  if (user.role === "technician" && status === "completed") {
+    return json({ message: "Use the Zamil closure flow to complete this order" }, 409, request, env);
+  }
+
+  const suspensionReason = String(body.suspensionReason || "").trim();
+  const suspensionNote = String(body.suspensionNote || "").trim();
+  const baseAuditLog = normalizeAuditLogEntries(parseJsonArray(order.audit_log_json));
+  const nextAuditLog =
+    body.auditLog !== undefined
+      ? normalizeAuditLogEntries(body.auditLog)
+      : normalizeAuditLogEntries([
+          ...baseAuditLog,
+          {
+            type: status === "suspended" ? "suspended" : "status",
+            actor: user.role === "admin" ? "admin" : "technician",
+            message:
+              status === "suspended"
+                ? `Task suspended${suspensionReason ? `: ${suspensionReason}` : ""}`
+                : `Status changed to ${status}`,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+
+  if (status === "suspended" && !suspensionReason) {
+    return json({ message: "Suspension reason is required" }, 400, request, env);
+  }
+
   await env.DB.prepare(
-    "UPDATE service_orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    `UPDATE service_orders
+     SET status = ?, work_started_at = ?, suspension_reason = ?, suspension_note = ?, suspended_at = ?, exception_status = ?, audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
   )
-    .bind(status, orderId)
+    .bind(
+      status,
+      status === "in_progress" ? order.work_started_at || new Date().toISOString() : order.work_started_at || null,
+      status === "suspended" ? suspensionReason : String(order.suspension_reason || ""),
+      status === "suspended" ? suspensionNote : String(order.suspension_note || ""),
+      status === "suspended" ? new Date().toISOString() : null,
+      status === "suspended" ? String(body.exceptionStatus || "open").trim() : String(order.exception_status || "none"),
+      JSON.stringify(nextAuditLog),
+      orderId
+    )
     .run();
 
   await notifyAdmins(
     env,
-    "تحديث من الفني",
-    `الطلب #${orderId} للعميل ${order.customer_name} أصبح بحالة ${mapOrderStatusLabel(status)}.`,
+    status === "suspended" ? "مهمة متعثرة" : "تحديث من الفني",
+    status === "suspended"
+      ? `تم تعليق الطلب #${orderId} للعميل ${order.customer_name}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`
+      : `الطلب #${orderId} للعميل ${order.customer_name} أصبح بحالة ${mapOrderStatusLabel(status)}.`,
     orderId
   );
+
+  const updated = await readServiceOrderById(env, orderId);
+  return json({ order: updated }, 200, request, env);
+}
+
+async function requestServiceOrderClosure(request, id, env) {
+  const user = await requireRoles(request, env, ["technician"]);
+  if (!user) {
+    return json({ message: "Technician access required" }, 403, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const order = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.status, o.audit_log_json, o.zamil_closure_status, o.standard_duration_minutes,
+      o.work_started_at, o.completion_note, o.delay_reason, o.delay_note,
+      t.user_id AS technician_user_id, t.name AS technician_name
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     WHERE o.id = ?`
+  )
+    .bind(orderId)
+    .first();
+
+  if (!order) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  if (Number(order.technician_user_id) !== Number(user.sub)) {
+    return json({ message: "This order is not assigned to you" }, 403, request, env);
+  }
+
+  if (["completed", "canceled", "suspended"].includes(String(order.status || ""))) {
+    return json({ message: "This order cannot enter the closure flow" }, 409, request, env);
+  }
+
+  const photoCountRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM service_order_photos WHERE order_id = ?"
+  )
+    .bind(orderId)
+    .first();
+
+  if (Number(photoCountRow?.count || 0) < 1) {
+    return json({ message: "Upload at least one proof photo before requesting the OTP" }, 400, request, env);
+  }
+
+  const body = await readJson(request);
+  const completionNote = String(body.completionNote || "").trim();
+  const delayReason = String(body.delayReason || "").trim();
+  const delayNote = String(body.delayNote || "").trim();
+  const workStartedAt = order.work_started_at || new Date().toISOString();
+  const elapsedMinutes = calculateElapsedMinutes(workStartedAt, null);
+  const standardDurationMinutes = Math.max(1, Number(order.standard_duration_minutes) || 120);
+
+  if (elapsedMinutes > standardDurationMinutes && !delayReason) {
+    return json({ message: "Delay reason is required before closing an overdue task" }, 400, request, env);
+  }
+
+  const requestedAt = new Date().toISOString();
+  const nextAuditLog = normalizeAuditLogEntries([
+    ...parseJsonArray(order.audit_log_json),
+    {
+      type: "zamil_request",
+      actor: "technician",
+      message: "طلب الفني بدء إغلاق الزامل",
+      createdAt: requestedAt,
+    },
+  ]);
+
+  await env.DB.prepare(
+    `UPDATE service_orders
+     SET status = ?, work_started_at = ?, completion_note = ?, delay_reason = ?, delay_note = ?, zamil_closure_status = 'requested',
+         zamil_close_requested_at = ?, zamil_otp_code = '', zamil_otp_submitted_at = NULL, zamil_closed_at = NULL,
+         approval_status = 'pending', proof_status = 'pending_review', audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(
+      ["pending", "en_route"].includes(String(order.status || "")) ? "in_progress" : String(order.status || "in_progress"),
+      workStartedAt,
+      completionNote,
+      delayReason,
+      delayNote,
+      requestedAt,
+      JSON.stringify(nextAuditLog),
+      orderId
+    )
+    .run();
+
+  await notifyAdmins(
+    env,
+    "جاهز لإغلاق الزامل",
+    `الفني ${order.technician_name || "الميداني"} جاهز لإغلاق الطلب #${orderId} للعميل ${order.customer_name}.`,
+    orderId
+  );
+
+  const updated = await readServiceOrderById(env, orderId);
+  return json({ order: updated }, 200, request, env);
+}
+
+async function submitServiceOrderClosureOtp(request, id, env) {
+  const user = await requireRoles(request, env, ["technician"]);
+  if (!user) {
+    return json({ message: "Technician access required" }, 403, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const order = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.audit_log_json, o.zamil_closure_status,
+      t.user_id AS technician_user_id, t.name AS technician_name
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     WHERE o.id = ?`
+  )
+    .bind(orderId)
+    .first();
+
+  if (!order) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  if (Number(order.technician_user_id) !== Number(user.sub)) {
+    return json({ message: "This order is not assigned to you" }, 403, request, env);
+  }
+
+  if (!["requested", "otp_submitted"].includes(String(order.zamil_closure_status || "idle"))) {
+    return json({ message: "Request the Zamil OTP first" }, 409, request, env);
+  }
+
+  const body = await readJson(request);
+  const otpCode = String(body.otpCode || "")
+    .replace(/\s+/g, "")
+    .trim();
+
+  if (!otpCode) {
+    return json({ message: "OTP code is required" }, 400, request, env);
+  }
+
+  const submittedAt = new Date().toISOString();
+  const nextAuditLog = normalizeAuditLogEntries([
+    ...parseJsonArray(order.audit_log_json),
+    {
+      type: "zamil_otp",
+      actor: "technician",
+      message: "أرسل الفني رمز OTP للإدارة",
+      createdAt: submittedAt,
+    },
+  ]);
+
+  await env.DB.prepare(
+    `UPDATE service_orders
+     SET zamil_closure_status = 'otp_submitted', zamil_otp_code = ?, zamil_otp_submitted_at = ?,
+         audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(otpCode, submittedAt, JSON.stringify(nextAuditLog), orderId)
+    .run();
+
+  await notifyAdmins(
+    env,
+    "تم استلام OTP",
+    `وصل رمز OTP للطلب #${orderId} من الفني ${order.technician_name || "الميداني"}.`,
+    orderId
+  );
+
+  const updated = await readServiceOrderById(env, orderId);
+  return json({ order: updated }, 200, request, env);
+}
+
+async function approveServiceOrderClosure(request, id, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const order = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.audit_log_json, o.zamil_closure_status, o.technician_id,
+      t.user_id AS technician_user_id, t.name AS technician_name,
+      u.name AS technician_user_name
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     LEFT JOIN users u ON u.id = t.user_id
+     WHERE o.id = ?`
+  )
+    .bind(orderId)
+    .first();
+
+  if (!order) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  if (String(order.zamil_closure_status || "idle") !== "otp_submitted") {
+    return json({ message: "OTP has not been submitted yet" }, 409, request, env);
+  }
+
+  const approvedAt = new Date().toISOString();
+  const adminName = String(admin.name || admin.email || "admin").trim();
+  const nextAuditLog = normalizeAuditLogEntries([
+    ...parseJsonArray(order.audit_log_json),
+    {
+      type: "zamil_closed",
+      actor: "admin",
+      message: "اعتمدت الإدارة إغلاق الطلب بعد قبول OTP في بوابة الزامل",
+      createdAt: approvedAt,
+    },
+  ]);
+
+  await env.DB.prepare(
+    `UPDATE service_orders
+     SET status = 'completed', approval_status = 'approved', proof_status = 'approved', approved_at = ?, approved_by = ?,
+         exception_status = 'none', zamil_closure_status = 'closed', zamil_closed_at = ?, audit_log_json = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(approvedAt, adminName, approvedAt, JSON.stringify(nextAuditLog), orderId)
+    .run();
+
+  if (order.technician_user_id) {
+    await createNotification(
+      env,
+      order.technician_user_id,
+      "تم إغلاق المهمة",
+      `تم اعتماد الطلب #${orderId} ويمكنك مغادرة الموقع الآن.`,
+      "status_update",
+      orderId
+    );
+  }
 
   const updated = await readServiceOrderById(env, orderId);
   return json({ order: updated }, 200, request, env);
@@ -1325,7 +2367,26 @@ async function updateServiceOrderExtras(request, id, env) {
   const body = await readJson(request);
   const copperMeters = Math.max(0, Number(body.copperMeters) || 0);
   const baseIncluded = body.baseIncluded ? 1 : 0;
-  const extrasTotal = calculateExtrasTotal(copperMeters, Boolean(baseIncluded));
+  const existing = await env.DB.prepare(
+    `SELECT o.id, o.service_items_json, t.user_id AS technician_user_id
+     FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
+     WHERE o.id = ?`
+  )
+    .bind(orderId)
+    .first();
+
+  if (!existing) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  if (user.role === "technician" && Number(existing.technician_user_id) !== Number(user.sub)) {
+    return json({ message: "This order is not assigned to you" }, 403, request, env);
+  }
+
+  const extrasTotal =
+    calculateExtrasTotal(copperMeters, Boolean(baseIncluded)) +
+    calculateServiceItemsTotal(parseStoredServiceItems(existing.service_items_json));
 
   await env.DB.prepare(
     `UPDATE service_orders
@@ -1344,6 +2405,142 @@ async function updateServiceOrderExtras(request, id, env) {
 
   const order = await readServiceOrderById(env, orderId);
   return json({ order }, 200, request, env);
+}
+
+async function resetOperationsSampleData(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  const adminUser = await env.DB.prepare("SELECT id FROM users WHERE id = ?")
+    .bind(Number(admin.sub))
+    .first();
+
+  for (const seed of SAMPLE_TECHNICIAN_SEEDS) {
+    await env.DB.prepare(
+      `INSERT INTO users (name, email, password_hash, role, status)
+       VALUES (?, ?, ?, 'technician', 'active')
+       ON CONFLICT(email) DO UPDATE SET
+         name = excluded.name,
+         password_hash = excluded.password_hash,
+         role = excluded.role,
+         status = excluded.status`
+    )
+      .bind(seed.name, seed.email, seed.passwordHash)
+      .run();
+
+    const user = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
+      .bind(seed.email)
+      .first();
+
+    await env.DB.prepare(
+      `INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         name = excluded.name,
+         phone = excluded.phone,
+         zone = excluded.zone,
+         status = excluded.status,
+         notes = excluded.notes`
+    )
+      .bind(Number(user.id), seed.name, seed.phone, seed.zone, seed.status, seed.notes)
+      .run();
+  }
+
+  for (const seed of SAMPLE_ORDER_SEEDS) {
+    const technician = await env.DB.prepare(
+      `SELECT t.id
+       FROM technicians t
+       JOIN users u ON u.id = t.user_id
+       WHERE u.email = ?`
+    )
+      .bind(seed.technicianEmail)
+      .first();
+
+    const exists = await env.DB.prepare(
+      "SELECT id FROM service_orders WHERE customer_name = ? AND phone = ?"
+    )
+      .bind(seed.customerName, seed.phone)
+      .first();
+
+    if (exists || !technician || !adminUser) {
+      continue;
+    }
+
+    const serviceItems = normalizeServiceItems(seed.serviceItems);
+    await env.DB.prepare(
+      `INSERT INTO service_orders (
+        customer_name, phone, address, ac_type, status, scheduled_date, notes, technician_id,
+        copper_meters, base_included, extras_total, service_items_json, created_by_user_id, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+    )
+      .bind(
+        seed.customerName,
+        seed.phone,
+        seed.address,
+        seed.acType,
+        seed.status,
+        seed.scheduledDate,
+        seed.notes,
+        Number(technician.id),
+        seed.copperMeters,
+        seed.baseIncluded ? 1 : 0,
+        calculateExtrasTotal(seed.copperMeters, seed.baseIncluded) + calculateServiceItemsTotal(serviceItems),
+        JSON.stringify(serviceItems),
+        Number(adminUser.id)
+      )
+      .run();
+  }
+
+  return json({ message: "Sample data restored" }, 200, request, env);
+}
+
+async function clearOperationsSampleData(request, env) {
+  const admin = await requireAdmin(request, env);
+  if (!admin) {
+    return json({ message: "Admin access required" }, 403, request, env);
+  }
+
+  for (const seed of SAMPLE_ORDER_SEEDS) {
+    await env.DB.prepare("DELETE FROM service_orders WHERE customer_name = ? AND phone = ?")
+      .bind(seed.customerName, seed.phone)
+      .run();
+  }
+
+  for (const seed of SAMPLE_TECHNICIAN_SEEDS) {
+    const technician = await env.DB.prepare(
+      `SELECT t.id, t.user_id
+       FROM technicians t
+       JOIN users u ON u.id = t.user_id
+       WHERE u.email = ?`
+    )
+      .bind(seed.email)
+      .first();
+
+    if (!technician) {
+      continue;
+    }
+
+    const hasOrders = await env.DB.prepare(
+      "SELECT id FROM service_orders WHERE technician_id = ? LIMIT 1"
+    )
+      .bind(Number(technician.id))
+      .first();
+
+    if (hasOrders) {
+      continue;
+    }
+
+    await env.DB.prepare("DELETE FROM technicians WHERE id = ?")
+      .bind(Number(technician.id))
+      .run();
+    await env.DB.prepare("DELETE FROM users WHERE id = ?")
+      .bind(Number(technician.user_id))
+      .run();
+  }
+
+  return json({ message: "Sample data cleared" }, 200, request, env);
 }
 
 async function uploadServiceOrderPhoto(request, id, env) {
@@ -1459,7 +2656,18 @@ async function markAllNotificationsRead(request, env) {
 
 async function readTechnicians(env) {
   const { results } = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, status FROM technicians ORDER BY id ASC"
+    `SELECT
+      t.id,
+      t.user_id,
+      t.name,
+      t.phone,
+      t.zone,
+      t.status,
+      COALESCE(t.notes, '') AS notes,
+      u.email
+     FROM technicians t
+     LEFT JOIN users u ON u.id = t.user_id
+     ORDER BY t.id ASC`
   ).all();
 
   return (results || []).map(mapTechnician);
@@ -1470,31 +2678,130 @@ function mapTechnician(row) {
     id: String(row.id),
     userId: String(row.user_id),
     name: row.name,
+    email: row.email || "",
     phone: row.phone,
+    region: row.zone,
     zone: row.zone,
     status: row.status,
+    notes: row.notes || "",
   };
 }
 
+function normalizeTechnicianStatus(status) {
+  return ["available", "busy"].includes(String(status || "").trim()) ? String(status).trim() : "available";
+}
+
+function normalizeSaudiPhoneNumber(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) {
+    return "";
+  }
+
+  if (digits.startsWith("966")) {
+    return `0${digits.slice(3)}`;
+  }
+
+  if (digits.startsWith("5") && digits.length === 9) {
+    return `0${digits}`;
+  }
+
+  if (digits.startsWith("0")) {
+    return digits;
+  }
+
+  return digits.length === 9 ? `0${digits}` : digits;
+}
+
+function normalizeServiceItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const id = String(item?.id || "").trim();
+      const description = String(item?.description || "").trim();
+      const price = Number(item?.price ?? 0) || 0;
+      const unit = String(item?.unit || "").trim();
+      const quantity = Math.max(1, Number(item?.quantity) || 1);
+      const totalPrice = Number(item?.totalPrice ?? price * quantity) || 0;
+
+      if (!id || !description || price <= 0) {
+        return null;
+      }
+
+      return {
+        id,
+        description,
+        price,
+        unit,
+        quantity,
+        totalPrice,
+      };
+    })
+    .filter(Boolean);
+}
+
+function parseStoredServiceItems(rawValue) {
+  try {
+    return normalizeServiceItems(JSON.parse(rawValue || "[]"));
+  } catch {
+    return [];
+  }
+}
+
+function calculateServiceItemsTotal(items = []) {
+  return normalizeServiceItems(items).reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0);
+}
+
+function normalizeAuditLogEntries(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry, index) => {
+      const message = String(entry?.message || "").trim();
+      if (!message) {
+        return null;
+      }
+
+      return {
+        id:
+          String(entry?.id || "").trim() ||
+          `audit-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+        type: String(entry?.type || "note").trim() || "note",
+        actor: String(entry?.actor || "system").trim() || "system",
+        message,
+        createdAt: String(entry?.createdAt || new Date().toISOString()).trim() || new Date().toISOString(),
+      };
+    })
+    .filter(Boolean);
+}
+
 async function readServiceOrders(env) {
+  const areaClusters = await readInternalAreaClusters(env);
   const { results } = await env.DB.prepare(
     `SELECT
-      o.id, o.customer_name, o.phone, o.address, o.ac_type, o.status, o.scheduled_date, o.notes,
-      o.copper_meters, o.base_included, o.extras_total, o.created_at, o.updated_at,
+      o.id, o.customer_name, o.phone, o.district, o.city, o.address, o.ac_type, o.service_category,
+      o.standard_duration_minutes, o.work_started_at, o.completion_note, o.delay_reason, o.delay_note,
+      o.work_type, o.ac_count, o.status, o.scheduled_date, o.scheduled_time, o.source, o.notes, o.approval_status,
+      o.proof_status, o.approved_at, o.approved_by, o.client_signature, o.zamil_closure_status, o.zamil_close_requested_at,
+      o.zamil_otp_code, o.zamil_otp_submitted_at, o.zamil_closed_at, o.suspension_reason, o.suspension_note,
+      o.suspended_at, o.exception_status, o.audit_log_json, o.copper_meters, o.base_included, o.extras_total,
+      o.service_items_json, o.created_at, o.updated_at,
       t.id AS technician_id, t.name AS technician_name, t.user_id AS technician_user_id
      FROM service_orders o
      LEFT JOIN technicians t ON t.id = o.technician_id
      ORDER BY o.id DESC`
   ).all();
 
-  return Promise.all((results || []).map((row) => mapServiceOrderRow(env, row)));
+  return Promise.all((results || []).map((row) => mapServiceOrderRow(env, row, areaClusters)));
 }
 
 async function readServiceOrderById(env, orderId) {
+  const areaClusters = await readInternalAreaClusters(env);
   const row = await env.DB.prepare(
     `SELECT
-      o.id, o.customer_name, o.phone, o.address, o.ac_type, o.status, o.scheduled_date, o.notes,
-      o.copper_meters, o.base_included, o.extras_total, o.created_at, o.updated_at,
+      o.id, o.customer_name, o.phone, o.district, o.city, o.address, o.ac_type, o.service_category,
+      o.standard_duration_minutes, o.work_started_at, o.completion_note, o.delay_reason, o.delay_note,
+      o.work_type, o.ac_count, o.status, o.scheduled_date, o.scheduled_time, o.source, o.notes, o.approval_status,
+      o.proof_status, o.approved_at, o.approved_by, o.client_signature, o.zamil_closure_status, o.zamil_close_requested_at,
+      o.zamil_otp_code, o.zamil_otp_submitted_at, o.zamil_closed_at, o.suspension_reason, o.suspension_note,
+      o.suspended_at, o.exception_status, o.audit_log_json, o.copper_meters, o.base_included, o.extras_total,
+      o.service_items_json, o.created_at, o.updated_at,
       t.id AS technician_id, t.name AS technician_name, t.user_id AS technician_user_id
      FROM service_orders o
      LEFT JOIN technicians t ON t.id = o.technician_id
@@ -1507,10 +2814,10 @@ async function readServiceOrderById(env, orderId) {
     return null;
   }
 
-  return mapServiceOrderRow(env, row);
+  return mapServiceOrderRow(env, row, areaClusters);
 }
 
-async function mapServiceOrderRow(env, row) {
+async function mapServiceOrderRow(env, row, areaClusters = []) {
   const { results } = await env.DB.prepare(
     `SELECT id, image_name, image_url, created_at
      FROM service_order_photos
@@ -1525,19 +2832,55 @@ async function mapServiceOrderRow(env, row) {
     numericId: row.id,
     customerName: row.customer_name,
     phone: row.phone,
+    district: row.district || "",
+    city: row.city || "",
+    ...resolveInternalAreaCluster({ city: row.city, district: row.district }, areaClusters),
     address: row.address,
     acType: row.ac_type,
+    serviceCategory: row.service_category || "split_installation",
+    standardDurationMinutes: Math.max(1, Number(row.standard_duration_minutes) || 120),
+    workStartedAt: row.work_started_at,
+    completionNote: row.completion_note || "",
+    delayReason: row.delay_reason || "",
+    delayNote: row.delay_note || "",
+    workType: row.work_type || "",
+    acCount: Number(row.ac_count || 1),
     status: row.status,
     scheduledDate: row.scheduled_date,
+    scheduledTime: row.scheduled_time || "",
+    source: row.source || "manual",
     notes: row.notes,
+    approvalStatus: row.approval_status || "pending",
+    proofStatus: row.proof_status || "pending_review",
+    approvedAt: row.approved_at,
+    approvedBy: row.approved_by || "",
+    clientSignature: row.client_signature || "",
+    zamilClosureStatus: row.zamil_closure_status || "idle",
+    zamilCloseRequestedAt: row.zamil_close_requested_at,
+    zamilOtpCode: row.zamil_otp_code || "",
+    zamilOtpSubmittedAt: row.zamil_otp_submitted_at,
+    zamilClosedAt: row.zamil_closed_at,
+    suspensionReason: row.suspension_reason || "",
+    suspensionNote: row.suspension_note || "",
+    suspendedAt: row.suspended_at,
+    exceptionStatus: row.exception_status || "none",
+    auditLog: parseJsonArray(row.audit_log_json),
     technicianId: row.technician_id ? String(row.technician_id) : "",
     technicianName: row.technician_name || "غير معين",
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
     extras: {
       copperMeters: Number(row.copper_meters || 0),
       baseIncluded: Boolean(row.base_included),
       totalPrice: Number(row.extras_total || 0),
     },
+    serviceItems: (() => {
+      try {
+        return normalizeServiceItems(JSON.parse(row.service_items_json || "[]"));
+      } catch {
+        return [];
+      }
+    })(),
     photos: (results || []).map((photo) => ({
       id: `photo-${photo.id}`,
       name: photo.image_name,
@@ -1575,34 +2918,146 @@ function buildOperationsSummary(orders, technicians) {
 function normalizeServiceOrderInput(body) {
   const customerName = String(body.customerName || "").trim();
   const phone = String(body.phone || "").trim();
+  const district = String(body.district || "").trim();
+  const city = String(body.city || "").trim();
   const address = String(body.address || "").trim();
   const acType = String(body.acType || "").trim();
+  const serviceCategory = String(body.serviceCategory || inferServiceCategory(body.workType || acType) || "split_installation").trim();
+  const standardDurationMinutes = Math.max(1, Number(body.standardDurationMinutes) || 120);
+  const workType = String(body.workType || acType || "").trim();
+  const acCount = Math.max(1, Number(body.acCount) || 1);
   const scheduledDate = String(body.scheduledDate || "").trim();
-  const technicianId = Number(body.technicianId);
+  const scheduledTime = String(body.scheduledTime || "").trim();
+  const source = String(body.source || "manual").trim();
+  const technicianId = body.technicianId === "" || body.technicianId === undefined ? null : Number(body.technicianId);
   const notes = String(body.notes || "").trim();
+  const serviceItems = normalizeServiceItems(body.serviceItems);
 
   if (!customerName || !phone || !address || !acType || !scheduledDate) {
     return { error: "All order fields are required" };
   }
 
-  if (!Number.isInteger(technicianId) || technicianId <= 0) {
+  if (technicianId !== null && (!Number.isInteger(technicianId) || technicianId <= 0)) {
     return { error: "Valid technician is required" };
   }
 
   return {
     customerName,
     phone,
+    district,
+    city,
     address,
     acType,
+    serviceCategory,
+    standardDurationMinutes,
+    workType,
+    acCount,
     scheduledDate,
+    scheduledTime,
+    source,
     technicianId,
     notes,
+    serviceItems,
   };
 }
 
 function calculateExtrasTotal(copperMeters, baseIncluded) {
   const copperTotal = Math.max(0, Number(copperMeters) || 0) * OPERATIONS_PRICING.copperPricePerMeter;
   return copperTotal + (baseIncluded ? OPERATIONS_PRICING.basePrice : 0);
+}
+
+function inferServiceCategory(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) {
+    return "split_installation";
+  }
+  if (text.includes("cassette") || text.includes("كاسيت")) {
+    return "cassette_installation";
+  }
+  if (text.includes("maintenance") || text.includes("preventive") || text.includes("صيانة") || text.includes("وقائية")) {
+    return "preventive_maintenance";
+  }
+  return "split_installation";
+}
+
+function normalizeServiceTimeStandards(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item, index) => {
+      const standardKey = String(item?.standardKey || "").trim();
+      const label = String(item?.label || "").trim();
+      const arLabel = String(item?.arLabel || "").trim();
+      const durationMinutes = Math.max(1, Number(item?.durationMinutes) || 0);
+
+      if (!standardKey || !label || !arLabel || !durationMinutes) {
+        return null;
+      }
+
+      return {
+        standardKey,
+        label,
+        arLabel,
+        durationMinutes,
+        sortOrder: Math.max(1, Number(item?.sortOrder) || index + 1),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.label.localeCompare(right.label));
+}
+
+function normalizeAreaText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeInternalAreaClusters(items = []) {
+  const seen = new Set();
+
+  return (Array.isArray(items) ? items : [])
+    .map((item, index) => {
+      const city = String(item?.city || "").trim();
+      const district = String(item?.district || "").trim();
+      const dedupeKey = `${normalizeAreaText(city)}::${normalizeAreaText(district)}`;
+
+      if (!city || !district || seen.has(dedupeKey)) {
+        return null;
+      }
+
+      seen.add(dedupeKey);
+
+      const areaKey = String(item?.areaKey || item?.label || dedupeKey).trim() || dedupeKey;
+      const label = String(item?.label || areaKey).trim() || areaKey;
+      const arLabel = String(item?.arLabel || label).trim() || label;
+
+      return {
+        city,
+        district,
+        areaKey,
+        label,
+        arLabel,
+        sortOrder: Math.max(1, Number(item?.sortOrder) || index + 1),
+      };
+    })
+    .filter(Boolean)
+    .sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.label.localeCompare(right.label) ||
+        left.city.localeCompare(right.city) ||
+        left.district.localeCompare(right.district)
+    );
+}
+
+function calculateElapsedMinutes(startedAt, endedAt = null) {
+  const start = startedAt ? new Date(startedAt) : null;
+  if (!start || Number.isNaN(start.getTime())) {
+    return 0;
+  }
+
+  const end = endedAt ? new Date(endedAt) : new Date();
+  if (!end || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
 }
 
 function mapOrderStatusLabel(status) {
@@ -1612,6 +3067,7 @@ function mapOrderStatusLabel(status) {
       en_route: "في الطريق",
       in_progress: "جاري التركيب",
       completed: "مكتمل",
+      suspended: "معلقة",
     }[status] || status
   );
 }
@@ -1633,6 +3089,68 @@ async function notifyAdmins(env, title, body, relatedOrderId = null) {
   for (const admin of results || []) {
     await createNotification(env, admin.id, title, body, "status_update", relatedOrderId);
   }
+}
+
+async function readServiceTimeStandards(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT standard_key, label, ar_label, duration_minutes, sort_order
+     FROM service_time_standards
+     ORDER BY sort_order ASC, standard_key ASC`
+  ).all();
+
+  return normalizeServiceTimeStandards(
+    (results || []).map((row) => ({
+      standardKey: row.standard_key,
+      label: row.label,
+      arLabel: row.ar_label,
+      durationMinutes: row.duration_minutes,
+      sortOrder: row.sort_order,
+    }))
+  );
+}
+
+async function readInternalAreaClusters(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT city, district, area_key, label, ar_label, sort_order
+     FROM internal_area_clusters
+     ORDER BY sort_order ASC, label ASC, city ASC, district ASC`
+  ).all();
+
+  return normalizeInternalAreaClusters(
+    (results || []).map((row) => ({
+      city: row.city,
+      district: row.district,
+      areaKey: row.area_key,
+      label: row.label,
+      arLabel: row.ar_label,
+      sortOrder: row.sort_order,
+    }))
+  );
+}
+
+function resolveInternalAreaCluster(location, areaClusters = []) {
+  const city = String(location?.city || "").trim();
+  const district = String(location?.district || "").trim();
+  const matched =
+    (areaClusters || []).find(
+      (entry) =>
+        normalizeAreaText(entry?.city) === normalizeAreaText(city) &&
+        normalizeAreaText(entry?.district) === normalizeAreaText(district)
+    ) || null;
+  const fallbackLabel = [district, city].filter(Boolean).join(" - ") || "General pool";
+  const fallbackArLabel = [district, city].filter(Boolean).join(" - ") || "منطقة عامة";
+
+  return {
+    internalAreaKey:
+      String(
+        matched?.areaKey ||
+          `${normalizeAreaText(city || "general") || "general"}-${normalizeAreaText(district || "general") || "general"}`
+      ).trim() || "general",
+    internalAreaLabel: String(matched?.label || fallbackLabel).trim() || fallbackLabel,
+    internalAreaArLabel: String(matched?.arLabel || fallbackArLabel).trim() || fallbackArLabel,
+    internalAreaSortOrder: Math.max(1, Number(matched?.sortOrder) || 999),
+    internalAreaMatched: Boolean(matched),
+  };
 }
 
 function normalizeProductInput(body) {
@@ -1856,9 +3374,9 @@ function getDefaultFooterSettings() {
       { label: "مهام الفني", url: "/tasks" },
     ],
     customerServiceLinks: [
-      { label: "الدعم الفني", url: "mailto:ops@tarkeebpro.sa" },
-      { label: "واتساب", url: "https://wa.me/966500000000" },
-      { label: "الأسئلة الشائعة", url: "/" },
+      { label: "الدعم", url: "tel:+966558232644" },
+      { label: "واتساب", url: "https://wa.me/966558232644" },
+      { label: "اتصل بنا", url: "tel:+966558232644" },
     ],
     socialLinks: [
       { platform: "instagram", url: "https://instagram.com/tarkeebpro" },

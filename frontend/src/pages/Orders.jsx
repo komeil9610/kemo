@@ -1,8 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
-import { formatSaudiPhoneDisplay, notificationsService, operationsService } from '../services/api';
+import {
+  buildEscalationSnapshot,
+  compareOrdersByInternalArea,
+  formatSaudiPhoneDisplay,
+  getAreaClusterLabel,
+  notificationsService,
+  operationsService,
+  technicianStatusOptions,
+} from '../services/api';
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -24,7 +33,7 @@ const startOfToday = () => {
 };
 
 const resolveRegion = (order, technician) => {
-  return order?.region || order?.zone || technician?.region || technician?.zone || 'Saudi Arabia';
+  return order?.district || order?.region || order?.zone || technician?.region || technician?.zone || 'Saudi Arabia';
 };
 
 const isOverdueOrder = (order) => {
@@ -55,176 +64,187 @@ const formatOrderNumber = (value) => String(value || '').replace(/^ORD-/, '');
 const copy = {
   en: {
     eyebrow: 'Technician app',
-    title: 'Technician operations hub',
-    titleLine: 'Today’s jobs, alerts, pricing, and proof-of-work tools built for field execution.',
-    languageButton: 'العربية',
-    quickNav: 'Quick navigation',
-    overview: 'Overview',
-    pricingTitle: 'Pricing snapshot',
-    filtersTitle: 'Task filters',
-    alertsTitle: 'Live alerts',
-    checklistTitle: 'Daily checklist',
-    allStatuses: 'All statuses',
-    allRegions: 'All regions',
-    searchPlaceholder: 'Search order number, customer, phone, or address',
-    orderNumber: 'Order #',
-    summaryLabel: 'Today summary',
-    attentionLabel: 'Needs attention',
-    meter: 'Extra copper meter',
-    base: 'Base unit',
-    included: 'Included copper meters',
-    calcTitle: 'Cost calculator',
-    photoTitle: 'Post-install documentation',
-    photoPrompt: 'Choose a photo from the phone or camera',
-    finalPrice: 'Final customer price',
-    notesPrefix: 'Note:',
-    empty: 'No assigned tasks yet.',
-    loading: 'Loading technician tasks...',
-    showing: 'Showing',
-    of: 'of',
-    tasks: 'tasks',
-    newTasks: 'New tasks',
-    overdueTasks: 'Overdue tasks',
-    noAlerts: 'No live alerts right now.',
-    navigationLinks: [
-      { label: 'Summary', href: '#technician-summary' },
-      { label: 'Tasks', href: '#technician-tasks' },
-      { label: 'Pricing', href: '#technician-pricing' },
-      { label: 'Checklist', href: '#technician-checklist' },
-    ],
+    title: 'Daily field workflow',
+    subtitle: 'Today’s jobs, navigation, proof upload, and account controls built for one-handed use.',
+    loading: 'Loading technician workspace...',
+    generalTasksLink: 'General tasks',
+    dailyTasksLink: 'Daily tasks',
+    tabs: {
+      today: 'Assigned tasks',
+      history: 'History',
+      notifications: 'Alerts',
+      account: 'Account',
+    },
+    emptyToday: 'No assigned tasks match this date.',
+    emptyHistory: 'No completed history yet.',
+    emptyNotifications: 'No notifications right now.',
+    dateFilter: 'Task date',
+    allDates: 'All dates',
+    standardTime: 'Standard',
+    elapsedTime: 'Elapsed',
+    customer: 'Customer',
+    region: 'District',
+    scheduled: 'Scheduled',
+    workType: 'Work required',
+    notes: 'Notes',
+    quickActions: 'Quick actions',
+    call: 'Call',
+    route: 'Route',
+    statusRail: 'Required status flow',
+    proofTitle: 'Proof of completion',
+    photoPrompt: 'Upload installation photo',
+    signature: 'Client signature',
+    signaturePlaceholder: 'Type the client name as signature',
+    saveStatus: 'Update status',
+    exceptionGuide: 'Field exceptions are handled from the daily page with required reason and proof.',
+    accountTitle: 'My account',
+    availability: 'Availability',
+    logout: 'Log out',
+    sync: 'Sync now',
+    checklist: 'Daily checklist',
+    notificationsTitle: 'Live notifications',
     statusLabels: {
       pending: 'Pending',
       en_route: 'On the way',
-      in_progress: 'Installing',
+      in_progress: 'In progress',
       completed: 'Completed',
+      suspended: 'Suspended',
       canceled: 'Canceled',
     },
-    actions: [
-      { value: 'en_route', label: 'I am on site' },
-      { value: 'in_progress', label: 'Start installation' },
-      { value: 'completed', label: 'Mark as done' },
+    statusFlow: [
+      { value: 'pending', label: 'Pending' },
+      { value: 'en_route', label: 'Traveling' },
+      { value: 'in_progress', label: 'Installing' },
     ],
+    proofBadgePending: 'Need upload',
+    proofBadgeDone: 'Proof uploaded',
+    metrics: {
+      today: 'Today jobs',
+      active: 'Active now',
+      done: 'Done',
+      alerts: 'Needs attention',
+    },
     messages: {
       statusUpdated: 'Task status updated.',
-      photoUploaded: 'Documentation photo uploaded.',
+      photoUploaded: 'Proof photo uploaded.',
     },
+    checklistItems: [
+      'Call the customer before heading out.',
+      'Open Maps from the task detail before departure.',
+      'Take a clear photo after the installation.',
+      'Move the task to completed only after proof is saved.',
+    ],
   },
   ar: {
     eyebrow: 'تطبيق الفني',
-    title: 'مركز عمليات الفني',
-    titleLine: 'مهام اليوم والتنبيهات والتسعير والتوثيق في مساحة مخصصة للفني فقط.',
-    languageButton: 'English',
-    quickNav: 'تنقل سريع',
-    overview: 'نظرة عامة',
-    pricingTitle: 'ملخص التسعير',
-    filtersTitle: 'تصفية المهام',
-    alertsTitle: 'تنبيهات فورية',
-    checklistTitle: 'قائمة المراجعة اليومية',
-    allStatuses: 'كل الحالات',
-    allRegions: 'كل المناطق',
-    searchPlaceholder: 'ابحث برقم الطلب أو اسم العميل أو الجوال أو العنوان',
-    orderNumber: 'رقم الطلب',
-    summaryLabel: 'ملخص اليوم',
-    attentionLabel: 'يحتاج متابعة',
-    meter: 'متر نحاس إضافي',
-    base: 'قاعدة إضافية',
-    included: 'الأمتار المشمولة',
-    calcTitle: 'حاسبة التكلفة',
-    photoTitle: 'توثيق ما بعد التركيب',
-    photoPrompt: 'اختر صورة من الجوال أو الكاميرا',
-    finalPrice: 'السعر النهائي للعميل',
-    notesPrefix: 'ملاحظة:',
-    empty: 'لا توجد مهام مخصصة حتى الآن.',
-    loading: 'جارٍ تحميل مهام الفني...',
-    showing: 'عرض',
-    of: 'من',
-    tasks: 'مهام',
-    newTasks: 'مهام جديدة',
-    overdueTasks: 'مهام متأخرة',
-    noAlerts: 'لا توجد تنبيهات حية الآن.',
-    navigationLinks: [
-      { label: 'الملخص', href: '#technician-summary' },
-      { label: 'المهام', href: '#technician-tasks' },
-      { label: 'التسعير', href: '#technician-pricing' },
-      { label: 'المراجعة', href: '#technician-checklist' },
-    ],
+    title: 'سير العمل اليومي للفني',
+    subtitle: 'مهام اليوم، الملاحة، رفع الإثبات، وإعدادات الحساب في تجربة مبنية للاستخدام السريع بيد واحدة.',
+    loading: 'جارٍ تحميل مساحة الفني...',
+    generalTasksLink: 'المهام العامة',
+    dailyTasksLink: 'المهام اليومية',
+    tabs: {
+      today: 'المهام المسندة',
+      history: 'السجل',
+      notifications: 'الإشعارات',
+      account: 'حسابي',
+    },
+    emptyToday: 'لا توجد مهام مسندة مطابقة لهذا التاريخ.',
+    emptyHistory: 'لا يوجد سجل منجز حتى الآن.',
+    emptyNotifications: 'لا توجد إشعارات حالياً.',
+    dateFilter: 'تاريخ المهمة',
+    allDates: 'كل التواريخ',
+    standardTime: 'المعياري',
+    elapsedTime: 'المستغرق',
+    customer: 'العميل',
+    region: 'الحي',
+    scheduled: 'الموعد',
+    workType: 'العمل المطلوب',
+    notes: 'ملاحظات',
+    quickActions: 'إجراءات سريعة',
+    call: 'اتصال',
+    route: 'الموقع',
+    statusRail: 'شريط الحالة الإجباري',
+    proofTitle: 'إثبات الإنجاز',
+    photoPrompt: 'رفع صورة التركيب',
+    signature: 'توقيع العميل',
+    signaturePlaceholder: 'اكتب اسم العميل كتوقيع',
+    saveStatus: 'تحديث الحالة',
+    exceptionGuide: 'معالجة المهام المتعثرة تتم من صفحة المهام اليومية مع سبب إجباري وصورة إثبات.',
+    accountTitle: 'حسابي',
+    availability: 'حالة التوفر',
+    logout: 'تسجيل الخروج',
+    sync: 'مزامنة الآن',
+    checklist: 'قائمة اليوم',
+    notificationsTitle: 'تنبيهات مباشرة',
     statusLabels: {
       pending: 'قيد الانتظار',
       en_route: 'في الطريق',
-      in_progress: 'جاري التركيب',
-      completed: 'مكتمل',
-      canceled: 'ملغى',
+      in_progress: 'جاري العمل',
+      completed: 'مكتملة',
+      suspended: 'معلقة',
+      canceled: 'ملغاة',
     },
-    actions: [
-      { value: 'en_route', label: 'وصلت للموقع' },
-      { value: 'in_progress', label: 'بدء التركيب' },
-      { value: 'completed', label: 'تم الإنجاز' },
+    statusFlow: [
+      { value: 'pending', label: 'انتظار' },
+      { value: 'en_route', label: 'في الطريق' },
+      { value: 'in_progress', label: 'جاري التنفيذ' },
     ],
+    proofBadgePending: 'بحاجة لتوثيق',
+    proofBadgeDone: 'تم رفع الإثبات',
+    metrics: {
+      today: 'مهام اليوم',
+      active: 'نشطة الآن',
+      done: 'مكتملة',
+      alerts: 'تحتاج متابعة',
+    },
     messages: {
       statusUpdated: 'تم تحديث حالة المهمة.',
-      photoUploaded: 'تم رفع صورة التوثيق.',
+      photoUploaded: 'تم رفع صورة الإثبات.',
     },
+    checklistItems: [
+      'اتصل بالعميل قبل التوجه للموقع.',
+      'افتح خرائط Google من شاشة المهمة قبل الانطلاق.',
+      'ارفع صورة واضحة بعد إنهاء التركيب.',
+      'لا تغلق المهمة كمكتملة قبل حفظ الإثبات.',
+    ],
   },
 };
 
-const servicesCatalog = {
-  en: [
-    { description: 'Supply and install rubber pads for outdoor units', price: 45, unit: 'per set' },
-    { description: 'Supply and install water drain pipes', price: 30, unit: 'per meter' },
-    { description: 'Supply and install a power socket', price: 40, unit: 'per piece' },
-    { description: 'Supply and install electrical cable with protective sleeve', price: 25, unit: 'per meter' },
-    { description: 'Supply and install copper pipes - Asian copper', price: 70, unit: 'per meter' },
-    { description: 'Supply and install copper pipes - American copper', price: 100, unit: 'per meter' },
-    { description: 'Welding new copper pipes to old pipes with different sizes', price: 30, unit: 'per meter' },
-    { description: 'Supply and install wooden frame for window AC unit', price: 30, unit: 'per frame' },
-    { description: 'Removal fee for an old split AC unit', price: 100, unit: 'per unit' },
-    { description: 'Removal fee for an old window AC unit', price: 50, unit: 'per unit' },
-    { description: 'Supply and install wall bracket for 12K / 18K / 24K BTU units', price: 60, unit: 'per bracket' },
-    { description: 'Supply and install wall bracket for units above 24K BTU', price: 80, unit: 'per bracket' },
-    { description: 'One-floor scaffold', price: 100, unit: 'fixed' },
-    { description: 'Two-floor scaffold', price: 200, unit: 'fixed' },
-  ],
-  ar: [
-    { description: 'توريد وتركيب قواعد مطاطية للوحدات الخارجية', price: 45, unit: 'لكل مجموعة' },
-    { description: 'توريد وتركيب أنابيب تصريف المياه', price: 30, unit: 'لكل متر' },
-    { description: 'توريد وتركيب مقبس كهربائي', price: 40, unit: 'لكل قطعة' },
-    { description: 'توريد وتركيب كابل كهربائي مع غلاف واق', price: 25, unit: 'لكل متر' },
-    { description: 'توريد وتركيب أنابيب نحاسية - نحاس (اسيوي)', price: 70, unit: 'لكل متر' },
-    { description: 'توريد وتركيب أنابيب نحاسية - نحاس (امريكي)', price: 100, unit: 'لكل متر' },
-    { description: 'لحام أنابيب نحاسية جديدة مع الأنابيب القديمة (بمقاسات مختلفة)', price: 30, unit: 'لكل متر' },
-    { description: 'توريد وتركيب إطار خشبي لوحدة تكييف الشباك', price: 30, unit: 'لكل إطار' },
-    { description: 'رسوم إزالة وحدة تكييف سبليت قديمة', price: 100, unit: 'لكل وحدة' },
-    { description: 'رسوم إزالة وحدة تكييف شباك قديمة', price: 50, unit: 'لكل وحدة' },
-    { description: 'توريد وتركيب حامل جداري لوحدات تكييف بسعات 12K / 18K / 24K BTU', price: 60, unit: 'لكل حامل' },
-    { description: 'توريد وتركيب حامل جداري للوحدات التي تزيد سعتها عن 24K BTU', price: 80, unit: 'لكل حامل' },
-    { description: 'سقالة دور واحد', price: 100, unit: 'ثابت' },
-    { description: 'سقالة دورين', price: 200, unit: 'ثابت' },
-  ],
+const statusOrder = {
+  pending: 0,
+  en_route: 1,
+  in_progress: 2,
+  completed: 3,
+  suspended: 4,
+  canceled: 5,
 };
 
-const workflowChecklist = {
-  en: [
-    'Confirm site access and customer contact details.',
-    'Select the correct service items and record quantities.',
-    'Move the job through en route, in progress, and completed.',
-    'Upload a clear post-install photo for the record.',
-  ],
-  ar: [
-    'تأكيد موقع العميل وبيانات التواصل قبل الانطلاق.',
-    'اختيار بنود الخدمة الصحيحة وتسجيل الكميات.',
-    'تحديث الحالة إلى في الطريق ثم جاري التركيب ثم مكتمل.',
-    'رفع صورة واضحة بعد التركيب لحفظ التوثيق.',
-  ],
-};
+const sortOrders = (orders = []) =>
+  [...orders].sort((left, right) => {
+    const areaComparison = compareOrdersByInternalArea(left, right);
+    if (areaComparison !== 0) {
+      return areaComparison;
+    }
+    if ((statusOrder[left.status] || 99) !== (statusOrder[right.status] || 99)) {
+      return (statusOrder[left.status] || 99) - (statusOrder[right.status] || 99);
+    }
+    return `${left.scheduledDate || ''} ${left.scheduledTime || ''}`.localeCompare(
+      `${right.scheduledDate || ''} ${right.scheduledTime || ''}`
+    );
+  });
 
 export default function Orders() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { lang, isRTL, toggleLang } = useLang();
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [updatingAvailability, setUpdatingAvailability] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [filters, setFilters] = useState({ search: '', status: 'all', region: 'all' });
+  const [activeTab, setActiveTab] = useState('today');
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const [selectedDateFilter, setSelectedDateFilter] = useState('all');
+  const [signatureDrafts, setSignatureDrafts] = useState({});
 
   const seenOrderIdsRef = useRef(new Set());
   const seenOverdueIdsRef = useRef(new Set());
@@ -233,8 +253,6 @@ export default function Orders() {
   const bootstrappedNotificationsRef = useRef(false);
 
   const t = useMemo(() => copy[lang] || copy.en, [lang]);
-  const checklist = useMemo(() => workflowChecklist[lang] || workflowChecklist.en, [lang]);
-  const catalog = useMemo(() => servicesCatalog[lang] || servicesCatalog.en, [lang]);
 
   const loadOrders = useCallback(
     async (silent = false) => {
@@ -272,10 +290,7 @@ export default function Orders() {
             overdueAlerts.push({
               id: `overdue-${orderId}`,
               title: lang === 'ar' ? 'مهمة متأخرة' : 'Overdue task',
-              body:
-                lang === 'ar'
-                  ? `${order.customerName} - ${formatDate(order.scheduledDate, lang)}`
-                  : `${order.customerName} - ${formatDate(order.scheduledDate, lang)}`,
+              body: `${order.customerName} - ${formatDate(order.scheduledDate, lang)}`,
             });
           }
         });
@@ -305,7 +320,7 @@ export default function Orders() {
       try {
         const response = await notificationsService.list();
         const items = response.data?.notifications || [];
-        const nextNotifications = items.slice(0, 5);
+        const nextNotifications = items.slice(0, 8);
         setNotifications(nextNotifications);
 
         const nextIds = new Set(nextNotifications.map((item) => String(item.id)));
@@ -349,11 +364,96 @@ export default function Orders() {
     };
   }, [loadNotifications, loadOrders, user?.role, user?.technicianId]);
 
+  const technician = useMemo(() => payload?.technician || null, [payload]);
+  const orders = useMemo(() => payload?.orders || [], [payload]);
+  const timeStandards = useMemo(() => payload?.timeStandards || [], [payload]);
+
+  const ordersWithMeta = useMemo(
+    () =>
+      sortOrders(
+        orders.map((order) => ({
+          ...order,
+          region: resolveRegion(order, technician),
+          overdue: isOverdueOrder(order),
+          hasProof: Boolean(order.photos?.length),
+          timing: buildEscalationSnapshot(order, timeStandards),
+        }))
+      ),
+    [orders, technician, timeStandards]
+  );
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayOrders = useMemo(
+    () =>
+      ordersWithMeta.filter((order) => {
+        if (selectedDateFilter !== 'all' && order.scheduledDate !== selectedDateFilter) {
+          return false;
+        }
+        return true;
+      }),
+    [ordersWithMeta, selectedDateFilter]
+  );
+
+  const historyOrders = useMemo(
+    () =>
+      ordersWithMeta.filter(
+        (order) =>
+          ['completed', 'canceled', 'suspended'].includes(order.status) ||
+          (order.scheduledDate && order.scheduledDate !== todayKey)
+      ),
+    [ordersWithMeta, todayKey]
+  );
+
+  const assignedDateOptions = useMemo(
+    () =>
+      Array.from(new Set(ordersWithMeta.map((order) => order.scheduledDate).filter(Boolean))).sort((left, right) =>
+        String(left).localeCompare(String(right))
+      ),
+    [ordersWithMeta]
+  );
+
+  const alertOrders = useMemo(() => ordersWithMeta.filter((order) => order.overdue || order.status === 'pending').slice(0, 6), [ordersWithMeta]);
+
+  useEffect(() => {
+    const visibleOrders = activeTab === 'history' ? historyOrders : todayOrders;
+    if (!visibleOrders.length) {
+      setSelectedOrderId('');
+      return;
+    }
+    if (!visibleOrders.some((order) => String(order.id) === String(selectedOrderId))) {
+      setSelectedOrderId(String(visibleOrders[0].id));
+    }
+  }, [activeTab, historyOrders, selectedOrderId, todayOrders]);
+
+  const selectedOrder = useMemo(
+    () => ordersWithMeta.find((order) => String(order.id) === String(selectedOrderId)) || null,
+    [ordersWithMeta, selectedOrderId]
+  );
+
+  const activeCount = ordersWithMeta.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length;
+  const completedCount = ordersWithMeta.filter((order) => order.status === 'completed').length;
+  const attentionCount = ordersWithMeta.filter((order) => order.overdue || order.status === 'pending').length;
+
   const updateStatus = async (orderId, status) => {
     setMessage('');
     await operationsService.updateTechnicianStatus(orderId, status);
     setMessage(t.messages.statusUpdated);
     await loadOrders();
+  };
+
+  const updateAvailability = async (status) => {
+    if (!technician?.id) {
+      return;
+    }
+
+    try {
+      setUpdatingAvailability(true);
+      setMessage('');
+      await operationsService.updateTechnicianAvailability(technician.id, status);
+      await loadOrders();
+    } finally {
+      setUpdatingAvailability(false);
+    }
   };
 
   const uploadPhoto = async (orderId, file) => {
@@ -367,414 +467,390 @@ export default function Orders() {
     await loadOrders();
   };
 
-  const cancelOrder = async (orderId) => {
-    setMessage('');
-    await operationsService.cancelOrder(orderId, lang === 'ar' ? 'تم رفض الطلب من العميل' : 'Customer rejected the order');
-    setMessage(lang === 'ar' ? 'تم إلغاء الطلب.' : 'Order canceled.');
+  const saveSignature = async (order) => {
+    const value = signatureDrafts[order.id];
+    await operationsService.updateOrder(order.id, { clientSignature: value || order.clientSignature || '' });
     await loadOrders();
   };
 
-  const orders = useMemo(() => payload?.orders || [], [payload]);
-  const technician = useMemo(() => payload?.technician || null, [payload]);
-
-  const ordersWithMeta = useMemo(
-    () =>
-      orders.map((order) => ({
-        ...order,
-        region: resolveRegion(order, technician),
-        overdue: isOverdueOrder(order),
-      })),
-    [orders, technician]
+  const tabItems = useMemo(
+    () => [
+      { id: 'today', label: t.tabs.today, count: todayOrders.length },
+      { id: 'history', label: t.tabs.history, count: historyOrders.length },
+      { id: 'notifications', label: t.tabs.notifications, count: notifications.length + alertOrders.length },
+      { id: 'account', label: t.tabs.account, count: 0 },
+    ],
+    [alertOrders.length, historyOrders.length, notifications.length, t.tabs, todayOrders.length]
   );
 
-  const filteredOrders = useMemo(() => {
-    const searchTerm = filters.search.trim().toLowerCase();
-
-    return ordersWithMeta
-      .filter((order) => {
-        const matchesStatus = filters.status === 'all' || order.status === filters.status;
-        const matchesRegion = filters.region === 'all' || order.region === filters.region;
-
-        if (!searchTerm) {
-          return matchesStatus && matchesRegion;
-        }
-
-        const haystack = [
-          order.id,
-          order.numericId,
-          order.customerName,
-          order.phone,
-          formatSaudiPhoneDisplay(order.phone),
-          order.address,
-          order.acType,
-          order.technicianName,
-          order.region,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-
-        return matchesStatus && matchesRegion && haystack.includes(searchTerm);
-      })
-      .sort((a, b) => {
-        if (a.overdue !== b.overdue) {
-          return a.overdue ? -1 : 1;
-        }
-
-        const rank = {
-          pending: 0,
-          en_route: 1,
-          in_progress: 2,
-          completed: 3,
-        };
-
-        if ((rank[a.status] || 9) !== (rank[b.status] || 9)) {
-          return (rank[a.status] || 9) - (rank[b.status] || 9);
-        }
-
-        return String(a.scheduledDate || '').localeCompare(String(b.scheduledDate || ''));
-      });
-  }, [filters.region, filters.search, filters.status, ordersWithMeta]);
-
-  const regionOptions = useMemo(() => {
-    const options = new Set();
-    ordersWithMeta.forEach((order) => {
-      if (order.region) {
-        options.add(order.region);
-      }
-    });
-    if (technician?.region) {
-      options.add(technician.region);
-    }
-    if (technician?.zone) {
-      options.add(technician.zone);
-    }
-    return Array.from(options);
-  }, [ordersWithMeta, technician]);
-
-  const activeCount = ordersWithMeta.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length;
-  const completedCount = ordersWithMeta.filter((order) => order.status === 'completed').length;
-  const pendingCount = ordersWithMeta.filter((order) => order.status === 'pending').length;
-  const overdueCount = ordersWithMeta.filter((order) => order.overdue).length;
-  const attentionCount = pendingCount + overdueCount;
-  const liveNotifications = notifications.slice(0, 4);
-  const newTaskAlerts = ordersWithMeta.filter((order) => order.status === 'pending').slice(0, 3);
-  const overdueAlerts = ordersWithMeta.filter((order) => order.overdue).slice(0, 3);
-  const alertCards = [...overdueAlerts, ...newTaskAlerts];
-
-  const resetFilters = () => {
-    setFilters({ search: '', status: 'all', region: 'all' });
-  };
+  const openMapsUrl = selectedOrder
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedOrder.address || selectedOrder.region || '')}`
+    : '#';
 
   if (loading) {
     return <section className="page-shell">{t.loading}</section>;
   }
 
   return (
-    <section className="page-shell technician-page" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="technician-hero" id="technician-summary">
-        <div className="section-heading technician-heading">
-          <div>
-            <p className="eyebrow">{t.eyebrow}</p>
-            <h1>{t.title}</h1>
-            <p className="section-subtitle">
-              {technician?.name} - {technician?.region || technician?.zone}
-            </p>
-            <p className="section-subtitle">{t.titleLine}</p>
-          </div>
-          <button className="btn-secondary language-switch" onClick={toggleLang} type="button">
-            {t.languageButton}
-          </button>
+    <section className="page-shell technician-app-shell" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="technician-app-header">
+        <div>
+          <p className="eyebrow">{t.eyebrow}</p>
+          <h1>{t.title}</h1>
+          <p className="section-subtitle">
+            {technician?.name} - {technician?.region || technician?.zone}
+          </p>
+          <p className="section-subtitle">{t.subtitle}</p>
         </div>
-
-        <div className="technician-grid">
-          <article className="stat-card technician-stat">
-            <span>{lang === 'ar' ? 'المهام النشطة' : 'Active jobs'}</span>
-            <strong>{activeCount}</strong>
-          </article>
-          <article className="stat-card technician-stat">
-            <span>{lang === 'ar' ? 'المهام المكتملة' : 'Completed jobs'}</span>
-            <strong>{completedCount}</strong>
-          </article>
-          <article className="stat-card technician-stat">
-            <span>{lang === 'ar' ? 'قيد الانتظار' : 'Pending jobs'}</span>
-            <strong>{pendingCount}</strong>
-          </article>
-          <article className="stat-card technician-stat">
-            <span>{lang === 'ar' ? 'سعر متر النحاس' : 'Copper meter price'}</span>
-            <strong>{payload?.pricing?.copperPricePerMeter || 0} SAR</strong>
-          </article>
+        <div className="status-actions">
+          <Link className="btn-primary" to="/tasks">
+            {t.generalTasksLink}
+          </Link>
+          <Link className="btn-light" to="/tasks/daily">
+            {t.dailyTasksLink}
+          </Link>
+          <button className="btn-secondary language-switch" onClick={toggleLang} type="button">
+            {lang === 'ar' ? 'English' : 'العربية'}
+          </button>
         </div>
       </div>
 
       {message ? <div className="flash-message">{message}</div> : null}
 
-      <div className="pricing-strip">
-        <span>{t.meter}: {payload?.pricing?.copperPricePerMeter || 0} SAR</span>
-        <span>{t.base}: {payload?.pricing?.basePrice || 0} SAR</span>
-        <span>{t.included}: {payload?.pricing?.includedCopperMeters || 0} m</span>
-        <span>{t.overdueTasks}: {overdueCount}</span>
+      <div className="technician-summary-strip">
+        <article className="tech-summary-card">
+          <span>{t.metrics.today}</span>
+          <strong>{todayOrders.length}</strong>
+        </article>
+        <article className="tech-summary-card">
+          <span>{t.metrics.active}</span>
+          <strong>{activeCount}</strong>
+        </article>
+        <article className="tech-summary-card">
+          <span>{t.metrics.done}</span>
+          <strong>{completedCount}</strong>
+        </article>
+        <article className="tech-summary-card attention">
+          <span>{t.metrics.alerts}</span>
+          <strong>{attentionCount}</strong>
+        </article>
       </div>
 
-      <div className="technician-layout">
-        <div className="technician-main">
-          <div className="panel" id="technician-tasks">
-            <div className="panel-header">
-              <h2>{t.filtersTitle}</h2>
-              <p>
-                {t.showing} {filteredOrders.length} {t.of} {ordersWithMeta.length} {t.tasks}
-              </p>
-            </div>
-
-            <div className="filter-bar">
-              <label className="filter-field">
-                <span>{lang === 'ar' ? 'البحث' : 'Search'}</span>
-                <input
-                  className="input"
-                  type="search"
-                  value={filters.search}
-                  onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
-                  placeholder={t.searchPlaceholder}
-                />
-              </label>
-
-              <label className="filter-field">
-                <span>{lang === 'ar' ? 'الحالة' : 'Status'}</span>
-                <select
-                  className="input"
-                  value={filters.status}
-                  onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-                >
-                  <option value="all">{t.allStatuses}</option>
-                  {Object.entries(t.statusLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="filter-field">
-                <span>{lang === 'ar' ? 'المنطقة' : 'Region'}</span>
-                <select
-                  className="input"
-                  value={filters.region}
-                  onChange={(event) => setFilters((current) => ({ ...current, region: event.target.value }))}
-                >
-                  <option value="all">{t.allRegions}</option>
-                  {regionOptions.map((region) => (
-                    <option key={region} value={region}>
-                      {region}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button className="btn-light filter-reset" type="button" onClick={resetFilters}>
-                {lang === 'ar' ? 'إعادة الضبط' : 'Reset'}
-              </button>
-            </div>
-          </div>
-
-          <div className="panel" id="technician-pricing">
-            <div className="panel-header">
-              <h2>{lang === 'ar' ? 'قائمة الخدمات والأسعار' : 'Service pricing list'}</h2>
-              <p>{lang === 'ar' ? 'الأسعار الرسمية المعتمدة للفنيين داخل النظام.' : 'Official service pricing used by technicians inside the system.'}</p>
-            </div>
-            <div className="service-table">
-              <div className="service-table-head">
-                <span>{lang === 'ar' ? 'السعر' : 'Price'}</span>
-                <span>{lang === 'ar' ? 'وصف الخدمة' : 'Service description'}</span>
-                <span>{lang === 'ar' ? 'الوحدة' : 'Unit'}</span>
-              </div>
-              {catalog.map((item) => (
-                <div className="service-table-row" key={item.description}>
-                  <strong>{item.price}</strong>
-                  <span>{item.description}</span>
-                  <span>{item.unit}</span>
+      <div className="technician-app-body">
+        {activeTab === 'today' ? (
+          <div className="technician-workspace">
+            <section className="panel today-column">
+              <div className="panel-header">
+                <div>
+                  <h2>{t.tabs.today}</h2>
+                  <p>{todayOrders.length ? `${todayOrders.length}` : t.emptyToday}</p>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="order-list">
-            {filteredOrders.length ? (
-              filteredOrders.map((order) => (
-                <article className="task-card technician-task" key={order.id}>
-                  <div className="task-head">
-                    <div>
-                      <p className="task-region">{order.region}</p>
-                      <strong>{order.customerName}</strong>
-                      <p>{formatSaudiPhoneDisplay(order.phone)}</p>
-                      <p className="task-order-number">{t.orderNumber} {formatOrderNumber(order.id)}</p>
-                      <p>{order.address}</p>
-                      <p className="task-ac-type">{order.acType}</p>
-                    </div>
-                    <div className="task-badges">
-                      {order.overdue ? <span className="alert-pill">{lang === 'ar' ? 'متأخرة' : 'Overdue'}</span> : null}
-                      <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
-                    </div>
-                  </div>
-
-                  <div className="task-meta-grid">
-                    <div className="task-meta-item">
-                      <span>{lang === 'ar' ? 'الموعد' : 'Scheduled'}</span>
-                      <strong>{formatDate(order.scheduledDate, lang)}</strong>
-                    </div>
-                    <div className="task-meta-item">
-                      <span>{lang === 'ar' ? 'المنطقة' : 'Region'}</span>
-                      <strong>{order.region}</strong>
-                    </div>
-                    <div className="task-meta-item">
-                      <span>{lang === 'ar' ? 'الإضافات' : 'Extras'}</span>
-                      <strong>{order.extras?.totalPrice || 0} SAR</strong>
-                    </div>
-                    <div className="task-meta-item">
-                      <span>{lang === 'ar' ? 'الفني' : 'Technician'}</span>
-                      <strong>{order.technicianName}</strong>
-                    </div>
-                  </div>
-
-                  <div className="status-actions">
-                    {t.actions.map((action) => (
-                      <button
-                        key={action.value}
-                        className="btn-light"
-                        type="button"
-                        disabled={['completed', 'canceled'].includes(order.status)}
-                        onClick={() => updateStatus(order.id, action.value)}
-                      >
-                        {action.label}
-                      </button>
+                <label className="filter-field compact-filter">
+                  <span>{t.dateFilter}</span>
+                  <select className="input compact-input" value={selectedDateFilter} onChange={(event) => setSelectedDateFilter(event.target.value)}>
+                    <option value="all">{t.allDates}</option>
+                    {assignedDateOptions.map((date) => (
+                      <option key={date} value={date}>
+                        {formatDate(date, lang)}
+                      </option>
                     ))}
-                    {['completed', 'canceled'].includes(order.status) ? null : (
-                      <button className="btn-danger" type="button" onClick={() => cancelOrder(order.id)}>
-                        {lang === 'ar' ? 'إلغاء الطلب' : 'Cancel order'}
-                      </button>
-                    )}
+                  </select>
+                </label>
+              </div>
+              <div className="tech-job-list">
+                {todayOrders.length ? (
+                  todayOrders.map((order) => (
+                    <button
+                      className={`tech-job-card ${order.status} ${String(selectedOrderId) === String(order.id) ? 'selected' : ''}`}
+                      key={order.id}
+                      type="button"
+                      onClick={() => setSelectedOrderId(String(order.id))}
+                    >
+                      <div className="tech-job-top">
+                        <span className="tech-job-time">{order.scheduledTime || order.scheduledDate || '—'}</span>
+                        <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
+                      </div>
+                      <strong>{order.customerName}</strong>
+                      <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
+                      <span>{order.region}</span>
+                      <span>{order.workType || order.acType}</span>
+                      <small>
+                        {t.standardTime}: {order.timing?.standardDurationMinutes || 0} min
+                      </small>
+                      {order.overdue ? <small className="alert-pill">{lang === 'ar' ? 'متأخرة' : 'Overdue'}</small> : null}
+                    </button>
+                  ))
+                ) : (
+                  <p className="muted">{t.emptyToday}</p>
+                )}
+              </div>
+            </section>
+
+            <section className="panel task-detail-panel">
+              {selectedOrder ? (
+                <>
+                  <div className="task-detail-head">
+                    <div>
+                      <p className="task-region">{getAreaClusterLabel(selectedOrder, lang)}</p>
+                      <p className="task-region">{selectedOrder.region}</p>
+                      <h2>
+                        #{formatOrderNumber(selectedOrder.id)} - {selectedOrder.customerName}
+                      </h2>
+                      <p>{formatSaudiPhoneDisplay(selectedOrder.phone)}</p>
+                    </div>
+                    <span className={`status-badge ${selectedOrder.status}`}>
+                      {t.statusLabels[selectedOrder.status] || selectedOrder.status}
+                    </span>
                   </div>
 
-                  <div className="task-grid">
-                    <div className="panel inset-panel">
-                      <h3>{t.calcTitle}</h3>
-                      <div className="quote-box">
-                        <span>{lang === 'ar' ? 'تفاصيل الإضافات' : 'Add-on details'}</span>
-                        <strong>{order.extras?.totalPrice || 0} SAR</strong>
-                      </div>
-                      <p className="muted">
-                        {t.meter}: {order.extras?.copperMeters || 0}
-                      </p>
-                      <p className="muted">
-                        {t.base}: {order.extras?.baseIncluded ? (lang === 'ar' ? 'نعم' : 'Yes') : (lang === 'ar' ? 'لا' : 'No')}
-                      </p>
-                      <p className="muted">{lang === 'ar' ? 'تعديل الإضافات للمسؤول فقط.' : 'Add-ons are editable by the admin only.'}</p>
-                    </div>
+                  <div className="task-quick-actions">
+                    <a className="btn-light" href={`tel:${selectedOrder.phone}`}>
+                      {t.call}
+                    </a>
+                    <a className="btn-primary" href={openMapsUrl} rel="noreferrer" target="_blank">
+                      {t.route}
+                    </a>
+                  </div>
 
+                  <div className="task-detail-grid">
+                    <div className="detail-card">
+                      <span>{t.customer}</span>
+                      <strong>{selectedOrder.customerName}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>{lang === 'ar' ? 'المنطقة الداخلية' : 'Internal zone'}</span>
+                      <strong>{getAreaClusterLabel(selectedOrder, lang)}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>{t.region}</span>
+                      <strong>{selectedOrder.region}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>{t.scheduled}</span>
+                      <strong>
+                        {formatDate(selectedOrder.scheduledDate, lang)} {selectedOrder.scheduledTime ? `• ${selectedOrder.scheduledTime}` : ''}
+                      </strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>{t.workType}</span>
+                      <strong>{selectedOrder.workType || selectedOrder.acType}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>{t.standardTime}</span>
+                      <strong>{selectedOrder.timing?.standardDurationMinutes || 0} min</strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>{t.elapsedTime}</span>
+                      <strong>{selectedOrder.timing?.elapsedMinutes || 0} min</strong>
+                    </div>
+                  </div>
+
+                  <div className="panel inset-panel">
+                    <h3>{t.quickActions}</h3>
+                    <p>{selectedOrder.address}</p>
+                    {selectedOrder.notes ? <p className="notes-box">{t.notes}: {selectedOrder.notes}</p> : null}
+                    {(selectedOrder.serviceItems || []).length ? (
+                      <div className="task-service-list">
+                        {selectedOrder.serviceItems.map((item) => (
+                          <article className="task-service-item" key={item.id}>
+                            <strong>{item.description}</strong>
+                            <span>
+                              {item.quantity} x {item.price} SAR
+                            </span>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mandatory-status-panel">
+                    <div className="panel-header">
+                      <h3>{t.statusRail}</h3>
+                    </div>
+                    <div className="status-rail">
+                      {t.statusFlow.map((step, index) => (
+                        <button
+                          className={`status-step ${selectedOrder.status === step.value ? 'active' : ''}`}
+                          disabled={selectedOrder.status === 'canceled'}
+                          key={step.value}
+                          type="button"
+                          onClick={() => updateStatus(selectedOrder.id, step.value)}
+                        >
+                          <span>{index + 1}</span>
+                          <strong>{step.label}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="proof-shell">
                     <div className="panel inset-panel">
-                      <h3>{t.photoTitle}</h3>
+                      <div className="panel-header">
+                        <h3>{t.proofTitle}</h3>
+                        <p>{selectedOrder.hasProof ? t.proofBadgeDone : t.proofBadgePending}</p>
+                      </div>
                       <label className="upload-box">
                         <span>{t.photoPrompt}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) => uploadPhoto(order.id, event.target.files?.[0])}
-                        />
+                        <input type="file" accept="image/*" onChange={(event) => uploadPhoto(selectedOrder.id, event.target.files?.[0])} />
                       </label>
-
                       <div className="photo-grid">
-                        {(order.photos || []).map((photo) => (
+                        {(selectedOrder.photos || []).map((photo) => (
                           <img alt={photo.name} className="photo-thumb" key={photo.id} src={photo.url} />
                         ))}
                       </div>
                     </div>
+
+                    <div className="panel inset-panel">
+                      <label className="filter-field">
+                        <span>{t.signature}</span>
+                        <input
+                          className="input"
+                          placeholder={t.signaturePlaceholder}
+                          value={signatureDrafts[selectedOrder.id] ?? selectedOrder.clientSignature ?? ''}
+                          onChange={(event) =>
+                            setSignatureDrafts((current) => ({
+                              ...current,
+                              [selectedOrder.id]: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <div className="status-actions">
+                        <button className="btn-light" type="button" onClick={() => saveSignature(selectedOrder)}>
+                          {t.saveStatus}
+                        </button>
+                        <Link className="btn-danger" to="/tasks/daily">
+                          {t.dailyTasksLink}
+                        </Link>
+                      </div>
+                      <p className="muted">{t.exceptionGuide}</p>
+                    </div>
                   </div>
-
-                  {order.notes ? <div className="notes-box">{t.notesPrefix} {order.notes}</div> : null}
-                </article>
-              ))
-            ) : (
-              <article className="panel">
-                <p className="muted">{t.empty}</p>
-              </article>
-            )}
+                </>
+              ) : (
+                <p className="muted">{t.emptyToday}</p>
+              )}
+            </section>
           </div>
-        </div>
+        ) : null}
 
-        <aside className="technician-sidebar">
-          <div className="panel sticky-panel technician-side-panel">
-            <div className="sidebar-counter">
-              <span>{t.summaryLabel}</span>
-              <strong>{attentionCount}</strong>
-              <small>{t.attentionLabel}</small>
-            </div>
+        {activeTab === 'history' ? (
+          <section className="panel history-panel">
             <div className="panel-header">
-              <h2>{t.quickNav}</h2>
-              <p>{lang === 'ar' ? 'شريط تنقل سريع للفني، مع متابعة التنبيهات والمهام المتأخرة.' : 'A fast technician-only side rail for navigation, alerts, and overdue jobs.'}</p>
+              <h2>{t.tabs.history}</h2>
             </div>
-            <div className="side-nav">
-              {t.navigationLinks.map((item) => (
-                <a key={item.href} className="side-nav-link" href={item.href}>
-                  {item.label}
-                </a>
-              ))}
-            </div>
-          </div>
-
-          <div className="panel sticky-panel technician-side-panel">
-            <div className="panel-header">
-              <h2>{t.alertsTitle}</h2>
-              <p>{lang === 'ar' ? 'التنبيهات الأحدث من النظام والمهام التي تحتاج متابعة اليوم.' : 'The newest alerts from the system and the jobs that need attention today.'}</p>
-            </div>
-            <div className="alert-stack">
-              {alertCards.length ? (
-                alertCards.map((order) => (
-                  <article className="alert-card" key={`${order.id}-${order.status}`}>
-                    <strong>{order.customerName}</strong>
-                    <p>{order.address}</p>
-                    <span>{order.overdue ? (lang === 'ar' ? 'متأخرة' : 'Overdue') : (lang === 'ar' ? 'جديدة' : 'New')}</span>
+            <div className="history-list">
+              {historyOrders.length ? (
+                historyOrders.map((order) => (
+                  <article className="history-card" key={order.id}>
+                    <div className="task-head">
+                      <div>
+                        <strong>#{formatOrderNumber(order.id)} - {order.customerName}</strong>
+                        <p>{order.region}</p>
+                        <p>{formatDate(order.scheduledDate, lang)}</p>
+                      </div>
+                      <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
+                    </div>
+                    <p>{order.workType || order.acType}</p>
                   </article>
                 ))
               ) : (
-                <p className="muted">{t.noAlerts}</p>
+                <p className="muted">{t.emptyHistory}</p>
               )}
             </div>
-          </div>
+          </section>
+        ) : null}
 
-          <div className="panel sticky-panel technician-side-panel" id="technician-checklist">
+        {activeTab === 'notifications' ? (
+          <section className="panel notifications-panel">
             <div className="panel-header">
-              <h2>{t.checklistTitle}</h2>
-              <p>{lang === 'ar' ? 'اتباع هذه النقاط يحافظ على جودة التنفيذ والتوثيق.' : 'Following these steps keeps execution and documentation consistent.'}</p>
+              <h2>{t.notificationsTitle}</h2>
             </div>
+            <div className="notification-stack">
+              {alertOrders.map((order) => (
+                <article className="alert-card" key={`${order.id}-${order.status}`}>
+                  <strong>{order.customerName}</strong>
+                  <p>{order.address}</p>
+                  <span>{order.overdue ? (lang === 'ar' ? 'متأخرة' : 'Overdue') : t.statusLabels[order.status] || order.status}</span>
+                </article>
+              ))}
+              {notifications.map((item) => (
+                <article className={`notification-tile ${item.isRead ? 'read' : 'unread'}`} key={item.id}>
+                  <strong>{item.title}</strong>
+                  <p>{item.body}</p>
+                </article>
+              ))}
+              {!notifications.length && !alertOrders.length ? <p className="muted">{t.emptyNotifications}</p> : null}
+            </div>
+          </section>
+        ) : null}
+
+        {activeTab === 'account' ? (
+          <section className="panel account-panel">
+            <div className="panel-header">
+              <h2>{t.accountTitle}</h2>
+            </div>
+            <div className="technician-availability-card">
+              <div>
+                <span>{t.availability}</span>
+                <strong>
+                  {technician?.status === 'busy'
+                    ? lang === 'ar'
+                      ? 'مشغول'
+                      : 'Busy'
+                    : lang === 'ar'
+                      ? 'متاح'
+                      : 'Available'}
+                </strong>
+              </div>
+              <select
+                className="input compact-input"
+                disabled={updatingAvailability}
+                value={technician?.status === 'busy' ? 'busy' : 'available'}
+                onChange={(event) => updateAvailability(event.target.value)}
+              >
+                {technicianStatusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {lang === 'ar' ? option.arLabel : option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="checklist-list">
-              {checklist.map((item) => (
+              {t.checklistItems.map((item) => (
                 <article className="checklist-item" key={item}>
                   <span className="check-icon">✓</span>
                   <p>{item}</p>
                 </article>
               ))}
             </div>
-          </div>
 
-          <div className="panel sticky-panel technician-side-panel">
-            <div className="panel-header">
-              <h2>{lang === 'ar' ? 'تنبيهات النظام' : 'System notifications'}</h2>
-              <p>{lang === 'ar' ? 'الرسائل الأخيرة المرتبطة بالحساب والمهام.' : 'The latest messages linked to the account and assigned jobs.'}</p>
+            <div className="status-actions">
+              <button className="btn-light" type="button" onClick={() => loadOrders(false)}>
+                {t.sync}
+              </button>
+              <button className="btn-danger" type="button" onClick={logout}>
+                {t.logout}
+              </button>
             </div>
-            <div className="notification-stack">
-              {liveNotifications.length ? (
-                liveNotifications.map((item) => (
-                  <article className={`notification-tile ${item.isRead ? 'read' : 'unread'}`} key={item.id}>
-                    <strong>{item.title}</strong>
-                    <p>{item.body}</p>
-                  </article>
-                ))
-              ) : (
-                <p className="muted">{t.noAlerts}</p>
-              )}
-            </div>
-          </div>
-        </aside>
+          </section>
+        ) : null}
       </div>
+
+      <nav className="bottom-tab-bar" aria-label="Technician navigation">
+        {tabItems.map((item) => (
+          <button
+            className={activeTab === item.id ? 'active' : ''}
+            key={item.id}
+            type="button"
+            onClick={() => setActiveTab(item.id)}
+          >
+            <strong>{item.label}</strong>
+            {item.count ? <span>{item.count}</span> : null}
+          </button>
+        ))}
+      </nav>
     </section>
   );
 }

@@ -241,6 +241,17 @@ textarea {
   font-weight: 700;
 }
 
+.close-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .user-chip {
   background: rgba(17, 120, 100, 0.1);
   color: var(--accent);
@@ -1156,6 +1167,763 @@ button.preset-card {
   color: var(--muted);
 }
 
+.ops-layout,
+.technician-workspace,
+.admin-daily-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.ops-layout {
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.ops-main,
+.ops-sidebar,
+.ops-section,
+.admin-daily-main,
+.admin-daily-sidebar,
+.admin-daily-section,
+.bulk-import-grid,
+.bulk-row-list,
+.dispatch-lanes,
+.dispatch-inbox,
+.dispatch-lane,
+.lane-job-list,
+.proof-grid,
+.coverage-map,
+.coverage-chip-grid,
+.compact-tech-list,
+.compact-order-list,
+.technician-app-shell,
+.technician-app-body,
+.today-column,
+.tech-job-list,
+.task-detail-panel,
+.task-detail-grid,
+.proof-shell,
+.history-list,
+.task-service-list,
+.admin-urgent-list,
+.admin-daily-roster,
+.admin-lane-metrics {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-daily-layout {
+  grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.22fr);
+  align-items: start;
+}
+
+.admin-daily-filters {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.2fr) repeat(3, minmax(160px, 0.8fr)) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.admin-daily-roster {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.admin-technician-lane {
+  min-height: 240px;
+}
+
+.admin-unassigned-lane {
+  border-color: rgba(217, 107, 39, 0.16);
+}
+
+.admin-lane-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-lane-metrics article {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(17, 120, 100, 0.07);
+  border: 1px solid rgba(17, 120, 100, 0.12);
+  display: grid;
+  gap: 4px;
+}
+
+.admin-lane-metrics strong {
+  font-size: 1.2rem;
+  color: var(--ink);
+}
+
+.admin-lane-metrics span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.admin-task-row,
+.admin-urgent-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+}
+
+.compact-filter {
+  min-width: 220px;
+}
+
+.timing-warning,
+.warning-escalation-card,
+.escalation-warning {
+  border-color: rgba(217, 107, 39, 0.24);
+  background: rgba(255, 248, 240, 0.92);
+}
+
+.timing-critical,
+.critical-escalation-card,
+.escalation-critical {
+  border-color: rgba(196, 61, 47, 0.24);
+  background: rgba(255, 241, 241, 0.95);
+  box-shadow: 0 14px 28px rgba(196, 61, 47, 0.12);
+}
+
+.admin-task-row-main,
+.admin-task-row-controls,
+.admin-daily-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-task-row-main {
+  flex-direction: column;
+}
+
+.admin-task-row-main p,
+.admin-task-row-main small,
+.admin-urgent-card p,
+.admin-urgent-card small {
+  margin-bottom: 0;
+}
+
+.admin-task-row-controls {
+  flex-wrap: wrap;
+}
+
+.ops-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.ops-field-span {
+  grid-column: 1 / -1;
+}
+
+.segmented-control {
+  display: inline-flex;
+  gap: 10px;
+  padding: 6px;
+  width: fit-content;
+  border-radius: 18px;
+  background: rgba(17, 120, 100, 0.08);
+  border: 1px solid rgba(17, 120, 100, 0.12);
+}
+
+.segmented-control button,
+.bottom-tab-bar button,
+.tech-job-card {
+  border: 0;
+  cursor: pointer;
+}
+
+.segmented-control button {
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.segmented-control button.active {
+  background: #fff;
+  color: var(--brand-dark);
+  box-shadow: 0 10px 20px rgba(17, 24, 39, 0.08);
+}
+
+.bulk-import-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
+}
+
+.bulk-upload-card,
+.bulk-preview-card,
+.dispatch-lane,
+.dispatch-inbox,
+.proof-card,
+.coverage-map {
+  border: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.bulk-row-card,
+.dispatch-job-card,
+.lane-job-card,
+.detail-card,
+.tech-job-card,
+.history-card,
+.coverage-chip {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid var(--line);
+}
+
+.dispatch-board {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.dispatch-inbox,
+.dispatch-lane {
+  min-height: 320px;
+  padding: 18px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(217, 107, 39, 0.08), transparent 22%),
+    rgba(255, 255, 255, 0.68);
+}
+
+.dispatch-column-head,
+.dispatch-job-top,
+.proof-card-top,
+.tech-job-top,
+.task-detail-head,
+.task-quick-actions,
+.technician-app-header,
+.technician-summary-strip,
+.bottom-tab-bar,
+.lane-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dispatch-column-head p,
+.proof-card-top p,
+.history-card p,
+.lane-job-card span,
+.tech-job-card span {
+  margin-bottom: 0;
+}
+
+.dispatch-job-card,
+.lane-job-card,
+.tech-job-card {
+  text-align: left;
+}
+
+html[dir='rtl'] .dispatch-job-card,
+html[dir='rtl'] .lane-job-card,
+html[dir='rtl'] .tech-job-card {
+  text-align: right;
+}
+
+.lane-job-card strong,
+.dispatch-job-card strong {
+  display: block;
+}
+
+.proof-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.proof-card {
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.coverage-chip-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coverage-chip {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+
+html[dir='rtl'] .coverage-chip {
+  text-align: right;
+}
+
+.coverage-chip strong {
+  color: var(--brand-dark);
+  font-size: 1.35rem;
+}
+
+.compact-tech-list .tech-card,
+.compact-order-list .order-card {
+  box-shadow: none;
+}
+
+.report-order-card {
+  padding: 18px;
+}
+
+.technician-app-shell {
+  padding-bottom: 96px;
+}
+
+.technician-app-header {
+  align-items: flex-start;
+}
+
+.technician-summary-strip {
+  flex-wrap: wrap;
+}
+
+.technician-date-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.tech-summary-card {
+  min-width: 160px;
+  flex: 1 1 180px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  box-shadow: var(--shadow);
+}
+
+.tech-summary-card span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.tech-summary-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.9rem;
+}
+
+.tech-summary-card small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.tech-summary-card.attention {
+  background: rgba(217, 107, 39, 0.1);
+}
+
+.tech-summary-card.success {
+  background: rgba(17, 120, 100, 0.1);
+}
+
+.technician-workspace {
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+}
+
+.today-column,
+.task-detail-panel,
+.history-panel,
+.notifications-panel,
+.account-panel {
+  align-content: start;
+}
+
+.tech-job-card {
+  display: grid;
+  gap: 8px;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.tech-job-card.selected {
+  border-color: rgba(217, 107, 39, 0.28);
+  box-shadow: 0 18px 28px rgba(84, 57, 33, 0.1);
+  transform: translateY(-1px);
+}
+
+.tech-job-card.pending {
+  background: rgba(217, 107, 39, 0.08);
+}
+
+.tech-job-card.en_route,
+.tech-job-card.in_progress {
+  background: rgba(17, 120, 100, 0.08);
+}
+
+.tech-job-card.completed {
+  background: rgba(29, 78, 216, 0.08);
+}
+
+.tech-job-time {
+  font-weight: 800;
+  color: var(--brand-dark);
+}
+
+.task-detail-panel {
+  min-height: 100%;
+}
+
+.task-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-card {
+  display: grid;
+  gap: 6px;
+}
+
+.detail-card span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.mandatory-status-panel {
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(17, 120, 100, 0.06);
+  border: 1px solid rgba(17, 120, 100, 0.12);
+}
+
+.status-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.compact-status-rail {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.status-step {
+  display: grid;
+  gap: 8px;
+  padding: 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.85);
+  text-align: center;
+}
+
+.status-step span {
+  width: 30px;
+  height: 30px;
+  margin: 0 auto;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(217, 107, 39, 0.12);
+  color: var(--brand-dark);
+  font-weight: 800;
+}
+
+.status-step.active {
+  border-color: rgba(17, 120, 100, 0.24);
+  background: rgba(17, 120, 100, 0.12);
+}
+
+.proof-shell {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.close-otp-panel,
+.close-flow-meta,
+.close-flow-actions,
+.zamil-room-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.close-flow-meta {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.close-flow-card,
+.portal-step-card,
+.otp-code-preview {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.84);
+  display: grid;
+  gap: 6px;
+}
+
+.close-flow-card span,
+.portal-step-card span,
+.otp-code-preview span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.close-flow-card strong,
+.portal-step-card strong,
+.otp-code-preview strong {
+  color: var(--ink);
+}
+
+.otp-code-input,
+.otp-code-preview strong {
+  letter-spacing: 0.35em;
+  font-weight: 800;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.otp-code-preview.large strong {
+  font-size: 1.4rem;
+}
+
+.zamil-room-panel {
+  border-color: rgba(17, 120, 100, 0.16);
+  background:
+    radial-gradient(circle at top right, rgba(17, 120, 100, 0.08), transparent 22%),
+    rgba(255, 255, 255, 0.9);
+}
+
+.zamil-room-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.zamil-request-card {
+  border-color: rgba(217, 107, 39, 0.16);
+  background: linear-gradient(135deg, rgba(255, 248, 240, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.otp-ready-card {
+  border-color: rgba(17, 120, 100, 0.16);
+  background: linear-gradient(135deg, rgba(240, 250, 247, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.close-stage-pill.idle {
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--muted);
+}
+
+.close-stage-pill.requested {
+  background: rgba(217, 107, 39, 0.12);
+  color: var(--brand-dark);
+}
+
+.close-stage-pill.otp_submitted {
+  background: rgba(17, 120, 100, 0.12);
+  color: var(--accent);
+}
+
+.close-stage-pill.closed {
+  background: rgba(29, 78, 216, 0.12);
+  color: #1d4ed8;
+}
+
+.task-service-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.task-service-item:last-child {
+  border-bottom: 0;
+}
+
+.history-list {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.bottom-tab-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 24px));
+  padding: 10px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  box-shadow: 0 20px 36px rgba(17, 24, 39, 0.14);
+  backdrop-filter: blur(16px);
+  z-index: 25;
+}
+
+.bottom-tab-bar button {
+  flex: 1 1 0;
+  padding: 12px 10px;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+}
+
+.bottom-tab-bar button.active {
+  background: rgba(217, 107, 39, 0.12);
+  color: var(--brand-dark);
+}
+
+.bottom-tab-bar button span {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.suspend-panel {
+  border-color: rgba(176, 43, 43, 0.16);
+  background: rgba(176, 43, 43, 0.04);
+}
+
+.suspend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.suspend-panel textarea.input {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.admin-exception-panel {
+  border-color: rgba(176, 43, 43, 0.18);
+  box-shadow: 0 18px 36px rgba(176, 43, 43, 0.1);
+}
+
+.exception-list {
+  display: grid;
+  gap: 14px;
+}
+
+.exception-card {
+  border: 1px solid rgba(176, 43, 43, 0.18);
+  background: linear-gradient(135deg, rgba(255, 239, 239, 0.96), rgba(255, 247, 247, 0.98));
+  box-shadow: 0 14px 28px rgba(176, 43, 43, 0.12);
+  animation: exceptionPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes exceptionPulse {
+  0%,
+  100% {
+    box-shadow: 0 14px 28px rgba(176, 43, 43, 0.1);
+  }
+  50% {
+    box-shadow: 0 18px 34px rgba(176, 43, 43, 0.2);
+  }
+}
+
+.route-suggestion-card {
+  align-items: flex-start;
+}
+
+.route-suggestion-card small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.internal-area-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.lane-drop-target {
+  outline: 2px dashed rgba(17, 120, 100, 0.35);
+  outline-offset: -8px;
+}
+
+.load-meter {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(17, 120, 100, 0.05);
+  border: 1px solid rgba(17, 120, 100, 0.12);
+}
+
+.load-meter-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.load-meter-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.08);
+  overflow: hidden;
+}
+
+.load-meter-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #117864, #d96b27);
+}
+
+.audit-log-preview {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(15, 91, 160, 0.06);
+}
+
+.audit-log-preview span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.audit-log-list {
+  margin-top: 12px;
+}
+
+.audit-log-list summary {
+  cursor: pointer;
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
+.audit-log-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.audit-log-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(17, 24, 39, 0.04);
+}
+
+.audit-log-item small {
+  color: var(--muted);
+}
+
 @media (max-width: 960px) {
   .hero-panel,
   .dashboard-grid,
@@ -1217,6 +1985,33 @@ button.preset-card {
   .sticky-panel {
     position: static;
   }
+
+  .ops-layout,
+  .admin-daily-layout,
+  .admin-daily-filters,
+  .bulk-import-grid,
+  .dispatch-board,
+  .zamil-room-grid,
+  .technician-workspace,
+  .proof-shell,
+  .close-flow-meta,
+  .suspend-grid,
+  .task-detail-grid,
+  .ops-form-grid,
+  .status-rail,
+  .admin-daily-roster {
+    grid-template-columns: 1fr;
+  }
+
+  .coverage-chip-grid,
+  .proof-grid,
+  .history-list {
+    grid-template-columns: 1fr;
+  }
+
+  .bottom-tab-bar {
+    width: calc(100% - 20px);
+  }
 }
 
 @media (max-width: 640px) {
@@ -1238,5 +2033,23 @@ button.preset-card {
   .order-card {
     padding: 18px;
     border-radius: 22px;
+  }
+
+  .dispatch-column-head,
+  .proof-card-top,
+  .technician-app-header,
+  .admin-daily-header,
+  .technician-summary-strip,
+  .task-detail-head,
+  .task-quick-actions,
+  .bottom-tab-bar,
+  .admin-task-row-main,
+  .admin-task-row-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bottom-tab-bar {
+    gap: 6px;
   }
 }
