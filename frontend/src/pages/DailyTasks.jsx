@@ -13,6 +13,7 @@ import {
   operationsService,
   technicianStatusOptions,
 } from '../services/api';
+import { notificationHaptic, sendAppNotification, selectionHaptic } from '../utils/mobileNative';
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -139,15 +140,15 @@ const copy = {
     criticalNotice: 'You exceeded the allowed time. Contact operations and log the delay reason before closure.',
     statusLabels: {
       pending: 'Pending',
-      en_route: 'En route',
-      in_progress: 'In progress',
+      scheduled: 'Dispatched',
+      in_transit: 'Installing',
       completed: 'Completed',
       suspended: 'Suspended',
     },
     statusFlow: [
       { value: 'pending', label: 'Pending' },
-      { value: 'en_route', label: 'Traveling' },
-      { value: 'in_progress', label: 'Installing' },
+      { value: 'scheduled', label: 'Assigned' },
+      { value: 'in_transit', label: 'Installing' },
     ],
     messages: {
       statusUpdated: 'Task status updated.',
@@ -236,15 +237,15 @@ const copy = {
     criticalNotice: 'تجاوزت الوقت المسموح. تواصل مع الإدارة وسجل سبب التأخير قبل الإغلاق.',
     statusLabels: {
       pending: 'قيد الانتظار',
-      en_route: 'في الطريق',
-      in_progress: 'جاري التنفيذ',
+      scheduled: 'تم الإسناد',
+      in_transit: 'جاري التنفيذ',
       completed: 'مكتملة',
       suspended: 'معلقة',
     },
     statusFlow: [
       { value: 'pending', label: 'انتظار' },
-      { value: 'en_route', label: 'في الطريق' },
-      { value: 'in_progress', label: 'جاري التنفيذ' },
+      { value: 'scheduled', label: 'تم الإسناد' },
+      { value: 'in_transit', label: 'جاري التنفيذ' },
     ],
     messages: {
       statusUpdated: 'تم تحديث حالة المهمة.',
@@ -259,8 +260,8 @@ const copy = {
 
 const statusOrder = {
   pending: 0,
-  en_route: 1,
-  in_progress: 2,
+  scheduled: 1,
+  in_transit: 2,
   completed: 3,
   suspended: 4,
   canceled: 5,
@@ -384,10 +385,15 @@ export default function DailyTasks() {
       const nextLevel = order.timing?.escalationLevel || 0;
       if (nextLevel > previousLevel) {
         toast(nextLevel === 2 ? t.criticalNotice : t.warningNotice, { duration: 4500 });
+        sendAppNotification({
+          key: `task-escalation-${order.id}-${nextLevel}`,
+          title: nextLevel === 2 ? (lang === 'ar' ? 'تنبيه حرج' : 'Critical alert') : lang === 'ar' ? 'تنبيه ميداني' : 'Field warning',
+          body: `${order.customerName} - ${nextLevel === 2 ? t.criticalNotice : t.warningNotice}`,
+        });
       }
       escalationLevelsRef.current.set(String(order.id), nextLevel);
     });
-  }, [t.criticalNotice, t.warningNotice, todayOrders]);
+  }, [lang, t.criticalNotice, t.warningNotice, todayOrders]);
 
   const withAction = async (key, action) => {
     try {
@@ -402,6 +408,7 @@ export default function DailyTasks() {
     try {
       setMessage('');
       await operationsService.updateTechnicianStatus(orderId, status);
+      await notificationHaptic('success');
       setMessage(t.messages.statusUpdated);
       await loadOrders({ silently: true });
     } catch (error) {
@@ -417,6 +424,7 @@ export default function DailyTasks() {
     try {
       const url = await fileToDataUrl(file);
       await operationsService.uploadPhoto(orderId, { name: file.name, url });
+      await notificationHaptic('success');
       setMessage(t.messages.photoUploaded);
       await loadOrders({ silently: true });
     } catch (error) {
@@ -429,6 +437,7 @@ export default function DailyTasks() {
       await operationsService.updateOrder(order.id, {
         clientSignature: signatureDrafts[order.id] ?? order.clientSignature ?? '',
       });
+      await notificationHaptic('success');
       setMessage(t.messages.signatureSaved);
       await loadOrders({ silently: true });
     } catch (error) {
@@ -455,6 +464,7 @@ export default function DailyTasks() {
           delayNote,
         });
       });
+      await notificationHaptic('success');
       setMessage(t.messages.closureRequested);
       await loadOrders({ silently: true });
     } catch (error) {
@@ -475,6 +485,7 @@ export default function DailyTasks() {
       await withAction(`otp-${order.id}`, async () => {
         await operationsService.submitClosureOtp(order.id, otpCode);
       });
+      await notificationHaptic('success');
       setOtpDrafts((current) => ({ ...current, [order.id]: '' }));
       setMessage(t.messages.otpSubmitted);
       await loadOrders({ silently: true });
@@ -517,6 +528,7 @@ export default function DailyTasks() {
         ],
       });
 
+      await notificationHaptic('warning');
       setSuspendDrafts((current) => ({ ...current, [order.id]: { reason: '', note: '' } }));
       setSuspendFiles((current) => ({ ...current, [order.id]: null }));
       setMessage(t.messages.suspended);
@@ -534,6 +546,7 @@ export default function DailyTasks() {
     try {
       setUpdatingAvailability(true);
       await operationsService.updateTechnicianAvailability(technician.id, status);
+      await notificationHaptic('success');
       await loadOrders({ silently: true });
     } finally {
       setUpdatingAvailability(false);
@@ -714,7 +727,10 @@ export default function DailyTasks() {
                       className={`status-step ${selectedOrder.status === step.value ? 'active' : ''}`}
                       key={step.value}
                       type="button"
-                      onClick={() => updateStatus(selectedOrder.id, step.value)}
+                      onClick={async () => {
+                        await selectionHaptic();
+                        updateStatus(selectedOrder.id, step.value);
+                      }}
                     >
                       <span>{index + 1}</span>
                       <strong>{step.label}</strong>
@@ -730,7 +746,7 @@ export default function DailyTasks() {
                   </div>
                   <label className="upload-box">
                     <span>{t.photoPrompt}</span>
-                    <input type="file" accept="image/*" onChange={(event) => uploadPhoto(selectedOrder.id, event.target.files?.[0])} />
+                    <input type="file" accept="image/*" capture="environment" onChange={(event) => uploadPhoto(selectedOrder.id, event.target.files?.[0])} />
                   </label>
                   <div className="photo-grid">
                     {(selectedOrder.photos || []).map((photo) => (
@@ -892,7 +908,10 @@ export default function DailyTasks() {
                       className="btn-primary"
                       disabled={!selectedOrder.hasProof || activeAction === `request-${selectedOrder.id}`}
                       type="button"
-                      onClick={() => requestClosure(selectedOrder)}
+                      onClick={async () => {
+                        await selectionHaptic();
+                        requestClosure(selectedOrder);
+                      }}
                     >
                       {t.requestOtp}
                     </button>
@@ -924,7 +943,10 @@ export default function DailyTasks() {
                         className="btn-primary"
                         disabled={activeAction === `otp-${selectedOrder.id}`}
                         type="button"
-                        onClick={() => submitOtp(selectedOrder)}
+                        onClick={async () => {
+                          await selectionHaptic();
+                          submitOtp(selectedOrder);
+                        }}
                       >
                         {t.submitOtp}
                       </button>
@@ -932,7 +954,10 @@ export default function DailyTasks() {
                         className="btn-light"
                         disabled={activeAction === `request-${selectedOrder.id}`}
                         type="button"
-                        onClick={() => requestClosure(selectedOrder)}
+                        onClick={async () => {
+                          await selectionHaptic();
+                          requestClosure(selectedOrder);
+                        }}
                       >
                         {t.requestOtpAgain}
                       </button>
@@ -999,6 +1024,7 @@ export default function DailyTasks() {
                       className="input"
                       type="file"
                       accept="image/*"
+                      capture="environment"
                       onChange={(event) =>
                         setSuspendFiles((current) => ({
                           ...current,
@@ -1028,7 +1054,10 @@ export default function DailyTasks() {
                   />
                 </label>
 
-                <button className="btn-danger" type="button" onClick={() => suspendOrder(selectedOrder)}>
+                <button className="btn-danger" type="button" onClick={async () => {
+                  await selectionHaptic();
+                  suspendOrder(selectedOrder);
+                }}>
                   {t.suspendAction}
                 </button>
               </div>

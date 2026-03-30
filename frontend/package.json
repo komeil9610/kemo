@@ -5,24 +5,28 @@
   "homepage": ".",
   "private": true,
   "dependencies": {
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/local-notifications": "^8.0.2",
+    "@hello-pangea/dnd": "^18.0.1",
+    "@stripe/react-stripe-js": "^1.13.0",
+    "axios": "^1.4.0",
+    "date-fns": "^2.29.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.10.0",
-    "axios": "^1.4.0",
     "react-hook-form": "^7.43.0",
-    "zustand": "^4.3.7",
-    "tailwindcss": "^3.3.0",
-    "react-icons": "^4.8.0",
     "react-hot-toast": "^2.4.0",
-    "date-fns": "^2.29.3",
+    "react-icons": "^4.8.0",
+    "react-query": "^3.39.3",
+    "react-router-dom": "^6.10.0",
     "stripe": "^12.0.0",
-    "@stripe/react-stripe-js": "^1.13.0",
-    "react-query": "^3.39.3"
+    "tailwindcss": "^3.3.0",
+    "zustand": "^4.3.7"
   },
   "devDependencies": {
-    "react-scripts": "5.0.1",
     "eslint": "^8.40.0",
     "prettier": "^2.8.8",
+    "react-scripts": "5.0.1",
     "wrangler": "^4.39.0"
   },
   "scripts": {

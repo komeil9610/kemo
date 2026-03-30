@@ -12,6 +12,7 @@ import {
   operationsService,
   technicianStatusOptions,
 } from '../services/api';
+import { notificationHaptic, sendAppNotification, selectionHaptic } from '../utils/mobileNative';
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -107,16 +108,16 @@ const copy = {
     notificationsTitle: 'Live notifications',
     statusLabels: {
       pending: 'Pending',
-      en_route: 'On the way',
-      in_progress: 'In progress',
+      scheduled: 'Assigned',
+      in_transit: 'In progress',
       completed: 'Completed',
       suspended: 'Suspended',
       canceled: 'Canceled',
     },
     statusFlow: [
       { value: 'pending', label: 'Pending' },
-      { value: 'en_route', label: 'Traveling' },
-      { value: 'in_progress', label: 'Installing' },
+      { value: 'scheduled', label: 'Assigned' },
+      { value: 'in_transit', label: 'Installing' },
     ],
     proofBadgePending: 'Need upload',
     proofBadgeDone: 'Proof uploaded',
@@ -182,16 +183,16 @@ const copy = {
     notificationsTitle: 'تنبيهات مباشرة',
     statusLabels: {
       pending: 'قيد الانتظار',
-      en_route: 'في الطريق',
-      in_progress: 'جاري العمل',
+      scheduled: 'تم الإسناد',
+      in_transit: 'جاري العمل',
       completed: 'مكتملة',
       suspended: 'معلقة',
       canceled: 'ملغاة',
     },
     statusFlow: [
       { value: 'pending', label: 'انتظار' },
-      { value: 'en_route', label: 'في الطريق' },
-      { value: 'in_progress', label: 'جاري التنفيذ' },
+      { value: 'scheduled', label: 'تم الإسناد' },
+      { value: 'in_transit', label: 'جاري التنفيذ' },
     ],
     proofBadgePending: 'بحاجة لتوثيق',
     proofBadgeDone: 'تم رفع الإثبات',
@@ -216,8 +217,8 @@ const copy = {
 
 const statusOrder = {
   pending: 0,
-  en_route: 1,
-  in_progress: 2,
+  scheduled: 1,
+  in_transit: 2,
   completed: 3,
   suspended: 4,
   canceled: 5,
@@ -304,7 +305,10 @@ export default function Orders() {
         bootstrappedOrdersRef.current = true;
 
         if (overdueAlerts.length) {
-          overdueAlerts.forEach((alert) => toast(alert.title, { duration: 4500 }));
+          overdueAlerts.forEach((alert) => {
+            toast(alert.title, { duration: 4500 });
+            sendAppNotification(alert);
+          });
         }
       } finally {
         if (!silent) {
@@ -331,7 +335,10 @@ export default function Orders() {
         const freshItems = nextNotifications.filter((item) => !seenNotificationIdsRef.current.has(String(item.id)));
 
         if (bootstrappedNotificationsRef.current && freshItems.length) {
-          freshItems.forEach((item) => toast(item.title, { duration: 4500 }));
+          freshItems.forEach((item) => {
+            toast(item.title, { duration: 4500 });
+            sendAppNotification({ key: `notification-${item.id}`, title: item.title, body: item.body });
+          });
         }
 
         seenNotificationIdsRef.current = nextIds;
@@ -434,13 +441,14 @@ export default function Orders() {
     [ordersWithMeta, selectedOrderId]
   );
 
-  const activeCount = ordersWithMeta.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length;
+  const activeCount = ordersWithMeta.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length;
   const completedCount = ordersWithMeta.filter((order) => order.status === 'completed').length;
   const attentionCount = ordersWithMeta.filter((order) => order.overdue || order.status === 'pending').length;
 
   const updateStatus = async (orderId, status) => {
     setMessage('');
     await operationsService.updateTechnicianStatus(orderId, status);
+    await notificationHaptic('success');
     setMessage(t.messages.statusUpdated);
     await loadOrders();
   };
@@ -454,6 +462,7 @@ export default function Orders() {
       setUpdatingAvailability(true);
       setMessage('');
       await operationsService.updateTechnicianAvailability(technician.id, status);
+      await notificationHaptic('success');
       await loadOrders();
     } finally {
       setUpdatingAvailability(false);
@@ -467,6 +476,7 @@ export default function Orders() {
 
     const url = await fileToDataUrl(file);
     await operationsService.uploadPhoto(orderId, { name: file.name, url });
+    await notificationHaptic('success');
     setMessage(t.messages.photoUploaded);
     await loadOrders();
   };
@@ -474,6 +484,7 @@ export default function Orders() {
   const saveSignature = async (order) => {
     const value = signatureDrafts[order.id];
     await operationsService.updateOrder(order.id, { clientSignature: value || order.clientSignature || '' });
+    await notificationHaptic('success');
     await loadOrders();
   };
 
@@ -678,7 +689,10 @@ export default function Orders() {
                           disabled={selectedOrder.status === 'canceled'}
                           key={step.value}
                           type="button"
-                          onClick={() => updateStatus(selectedOrder.id, step.value)}
+                          onClick={async () => {
+                            await selectionHaptic();
+                            updateStatus(selectedOrder.id, step.value);
+                          }}
                         >
                           <span>{index + 1}</span>
                           <strong>{step.label}</strong>
@@ -695,7 +709,7 @@ export default function Orders() {
                       </div>
                       <label className="upload-box">
                         <span>{t.photoPrompt}</span>
-                        <input type="file" accept="image/*" onChange={(event) => uploadPhoto(selectedOrder.id, event.target.files?.[0])} />
+                        <input type="file" accept="image/*" capture="environment" onChange={(event) => uploadPhoto(selectedOrder.id, event.target.files?.[0])} />
                       </label>
                       <div className="photo-grid">
                         {(selectedOrder.photos || []).map((photo) => (
@@ -849,7 +863,10 @@ export default function Orders() {
             className={activeTab === item.id ? 'active' : ''}
             key={item.id}
             type="button"
-            onClick={() => setActiveTab(item.id)}
+            onClick={async () => {
+              await selectionHaptic();
+              setActiveTab(item.id);
+            }}
           >
             <strong>{item.label}</strong>
             {item.count ? <span>{item.count}</span> : null}

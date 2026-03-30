@@ -1541,7 +1541,7 @@ async function deleteTechnician(request, technicianId, env) {
   }
 
   const activeOrder = await env.DB.prepare(
-    "SELECT id FROM service_orders WHERE technician_id = ? AND status IN ('pending', 'en_route', 'in_progress') LIMIT 1"
+    "SELECT id FROM service_orders WHERE technician_id = ? AND status IN ('pending', 'scheduled', 'in_transit') LIMIT 1"
   )
     .bind(id)
     .first();
@@ -1562,12 +1562,13 @@ async function deleteTechnician(request, technicianId, env) {
 }
 
 async function updateServiceOrder(request, id, env) {
-  const actor = await requireRoles(request, env, ["customer_service", "operations_manager"]);
+  const actor = await requireRoles(request, env, ["customer_service", "operations_manager", "technician"]);
   if (!actor) {
-    return json({ message: "Customer service or operations manager access required" }, 403, request, env);
+    return json({ message: "Customer service, operations manager, or technician access required" }, 403, request, env);
   }
   const isOperationsManager = actor.role === "operations_manager";
   const isCustomerService = actor.role === "customer_service";
+  const isTechnician = actor.role === "technician";
 
   const orderId = Number(id);
   if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -1594,6 +1595,28 @@ async function updateServiceOrder(request, id, env) {
   }
 
   const body = await readJson(request);
+  const technicianAllowedKeys = ["clientSignature"];
+  const technicianTouchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
+
+  if (isTechnician) {
+    if (technicianTouchedKeys.some((key) => !technicianAllowedKeys.includes(key))) {
+      return json({ message: "Technicians can only update the client signature from this endpoint" }, 403, request, env);
+    }
+
+    const assignedTechnician =
+      existing.technician_id === null
+        ? null
+        : await env.DB.prepare("SELECT id, user_id FROM technicians WHERE id = ?").bind(Number(existing.technician_id)).first();
+
+    if (!assignedTechnician || Number(assignedTechnician.user_id || 0) !== Number(actor.id || 0)) {
+      return json({ message: "This order is not assigned to the active technician" }, 403, request, env);
+    }
+
+    if (body.clientSignature === undefined) {
+      return json({ message: "Client signature is required" }, 400, request, env);
+    }
+  }
+
   const requestNumber =
     body.requestNumber !== undefined ? String(body.requestNumber || "").trim() : String(existing.request_number || "").trim();
   const customerName =
@@ -1827,15 +1850,17 @@ async function updateServiceOrder(request, id, env) {
   const nextAuditLog = normalizeAuditLogEntries([
     ...auditLog,
     {
-      type: isOperationsManager ? "coordination" : "customer_action",
-      actor: isOperationsManager ? "operations_manager" : "customer_service",
+      type: isOperationsManager ? "coordination" : isTechnician ? "signature" : "customer_action",
+      actor: isOperationsManager ? "operations_manager" : isTechnician ? "technician" : "customer_service",
       message: isOperationsManager
         ? "قام مدير العمليات بتحديث الموعد أو حالة الطلب."
-        : status === "canceled"
-          ? `تم إلغاء الطلب من خدمة العملاء.${cancellationReason ? ` السبب: ${cancellationReason}` : ""}`
-          : customerAction === "reschedule_requested"
-            ? `تم طلب إعادة جدولة من خدمة العملاء.${rescheduleReason ? ` السبب: ${rescheduleReason}` : ""}`
-            : "تم تحديث بيانات الطلب من خدمة العملاء.",
+        : isTechnician
+          ? "قام الفني بتحديث توقيع العميل."
+          : status === "canceled"
+            ? `تم إلغاء الطلب من خدمة العملاء.${cancellationReason ? ` السبب: ${cancellationReason}` : ""}`
+            : customerAction === "reschedule_requested"
+              ? `تم طلب إعادة جدولة من خدمة العملاء.${rescheduleReason ? ` السبب: ${rescheduleReason}` : ""}`
+              : "تم تحديث بيانات الطلب من خدمة العملاء.",
       createdAt: new Date().toISOString(),
     },
   ]);
@@ -2145,10 +2170,11 @@ async function cancelServiceOrder(request, id, env) {
 }
 
 async function updateServiceOrderStatus(request, id, env) {
-  const user = await requireRoles(request, env, ["operations_manager"]);
+  const user = await requireRoles(request, env, ["operations_manager", "technician"]);
   if (!user) {
-    return json({ message: "Operations manager access required" }, 401, request, env);
+    return json({ message: "Operations manager or technician access required" }, 401, request, env);
   }
+  const isTechnician = user.role === "technician";
 
   const orderId = Number(id);
   if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -2157,15 +2183,21 @@ async function updateServiceOrderStatus(request, id, env) {
 
   const body = await readJson(request);
   const status = String(body.status || "").trim();
+  const allowedStatuses = isTechnician
+    ? ["pending", "scheduled", "in_transit", "suspended"]
+    : ["pending", "scheduled", "in_transit", "completed"];
 
-  if (!["pending", "scheduled", "in_transit", "completed"].includes(status)) {
+  if (!allowedStatuses.includes(status)) {
     return json({ message: "Invalid order status" }, 400, request, env);
   }
 
   const order = await env.DB.prepare(
     `SELECT
-      o.id, o.customer_name, o.request_number, o.audit_log_json
+      o.id, o.customer_name, o.request_number, o.status, o.audit_log_json,
+      o.suspension_reason, o.suspension_note, o.suspended_at, o.exception_status,
+      t.user_id AS technician_user_id
      FROM service_orders o
+     LEFT JOIN technicians t ON t.id = o.technician_id
      WHERE o.id = ?`
   )
     .bind(orderId)
@@ -2175,21 +2207,34 @@ async function updateServiceOrderStatus(request, id, env) {
     return json({ message: "Order not found" }, 404, request, env);
   }
 
+  if (isTechnician && Number(order.technician_user_id) !== Number(user.sub)) {
+    return json({ message: "This order is not assigned to you" }, 403, request, env);
+  }
+
   const baseAuditLog = normalizeAuditLogEntries(parseJsonArray(order.audit_log_json));
   const nextAuditLog = normalizeAuditLogEntries([
     ...baseAuditLog,
     {
       type: "status",
-      actor: "operations_manager",
-      message: `تم تحديث الطلب إلى حالة ${mapOrderStatusLabel(status)}`,
+      actor: isTechnician ? "technician" : "operations_manager",
+      message: isTechnician
+        ? `قام الفني بتحديث المهمة إلى حالة ${mapOrderStatusLabel(status)}`
+        : `تم تحديث الطلب إلى حالة ${mapOrderStatusLabel(status)}`,
       createdAt: new Date().toISOString(),
     },
   ]);
+  const suspendedAt = status === "suspended" ? new Date().toISOString() : null;
+  const suspensionReason = status === "suspended" ? String(body.suspensionReason || "").trim() : "";
+  const suspensionNote = status === "suspended" ? String(body.suspensionNote || "").trim() : "";
+  const exceptionStatus = status === "suspended" ? String(body.exceptionStatus || "open").trim() || "open" : "none";
 
   await env.DB.prepare(
-    "UPDATE service_orders SET status = ?, audit_log_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    `UPDATE service_orders
+     SET status = ?, suspension_reason = ?, suspension_note = ?, suspended_at = ?, exception_status = ?,
+         audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
   )
-    .bind(status, JSON.stringify(nextAuditLog), orderId)
+    .bind(status, suspensionReason, suspensionNote, suspendedAt, exceptionStatus, JSON.stringify(nextAuditLog), orderId)
     .run();
 
   if (status === "in_transit") {
@@ -2208,6 +2253,16 @@ async function updateServiceOrderStatus(request, id, env) {
       ["customer_service"],
       "تم إنهاء الطلب",
       `تم الانتهاء من الطلب رقم ${order.request_number || order.customer_name} بنجاح.`,
+      orderId
+    );
+  }
+
+  if (status === "suspended") {
+    await notifyUsersByRoles(
+      env,
+      ["operations_manager"],
+      "تم تعليق مهمة ميدانية",
+      `قام الفني بتعليق الطلب رقم ${order.request_number || order.customer_name}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`,
       orderId
     );
   }
@@ -2292,7 +2347,7 @@ async function requestServiceOrderClosure(request, id, env) {
      WHERE id = ?`
   )
     .bind(
-      ["pending", "en_route"].includes(String(order.status || "")) ? "in_progress" : String(order.status || "in_progress"),
+      ["pending", "scheduled"].includes(String(order.status || "")) ? "in_transit" : String(order.status || "in_transit"),
       workStartedAt,
       completionNote,
       delayReason,
@@ -3101,6 +3156,7 @@ function mapOrderStatusLabel(status) {
       scheduled: "تمت الجدولة",
       in_transit: "في الطريق",
       completed: "مكتمل",
+      suspended: "معلقة",
       canceled: "ملغي",
     }[status] || status
   );

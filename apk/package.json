@@ -1,25 +1,32 @@
 {
-  "name": "rentit-apk",
+  "name": "tarkeeb-pro-apk",
   "version": "1.0.0",
   "private": true,
   "description": "Android APK wrapper for RentIT using Capacitor",
   "scripts": {
-    "build:web": "cross-env REACT_APP_API_URL=https://rentit-edge-api.bobkumeel.workers.dev/api npm --prefix ../frontend run build",
+    "build:web": "cross-env REACT_APP_API_URL=/api npm --prefix ../frontend run build",
     "use:admin": "node scripts/use-capacitor-config.mjs admin",
     "use:technician": "node scripts/use-capacitor-config.mjs technician",
     "prepare:assets": "node scripts/prepare-web-assets.mjs",
+    "ensure:android-sdk": "node scripts/ensure-android-sdk.mjs",
+    "check:build-env": "node scripts/check-build-env.mjs",
+    "collect:apks:admin": "node scripts/collect-apks.mjs admin",
+    "collect:apks:technician": "node scripts/collect-apks.mjs technician",
     "sync": "npm run build:web && npm run use:admin && npm run prepare:assets && npx cap sync android",
     "sync:admin": "npm run build:web && npm run use:admin && npm run prepare:assets && npx cap sync android",
     "sync:technician": "npm run build:web && npm run use:technician && npm run prepare:assets && npx cap sync android",
     "open:android": "npx cap open android",
-    "build:apk": "npm run sync:admin && cd android && ./gradlew assembleDebug",
-    "build:apk:admin": "npm run sync:admin && cd android && ./gradlew assembleDebug",
-    "build:apk:technician": "npm run sync:technician && cd android && ./gradlew assembleDebug"
+    "build:apk": "npm run build:apk:all",
+    "build:apk:admin": "npm run check:build-env && npm run sync:admin && npm run ensure:android-sdk && cd android && node ../scripts/run-gradle.mjs :app:assembleAdminDebug && node ../scripts/collect-apks.mjs admin",
+    "build:apk:technician": "npm run check:build-env && npm run sync:technician && npm run ensure:android-sdk && cd android && node ../scripts/run-gradle.mjs :app:assembleTechnicianDebug && node ../scripts/collect-apks.mjs technician",
+    "build:apk:all": "npm run build:apk:admin && npm run build:apk:technician"
   },
   "dependencies": {
     "@capacitor/android": "^7.2.0",
     "@capacitor/cli": "^7.2.0",
-    "@capacitor/core": "^7.2.0"
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/haptics": "^7.0.5",
+    "@capacitor/local-notifications": "^7.0.6"
   },
   "devDependencies": {
     "cross-env": "^7.0.3"

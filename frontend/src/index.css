@@ -59,6 +59,19 @@ textarea {
   flex: 1;
 }
 
+.mobile-route-layout {
+  min-height: 100svh;
+  background:
+    radial-gradient(circle at top left, rgba(17, 120, 100, 0.14), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(217, 107, 39, 0.14), transparent 32%),
+    linear-gradient(180deg, #f7f4ec 0%, #efe7d9 100%);
+}
+
+.mobile-route-shell {
+  width: min(100%, 100%);
+  padding: max(14px, env(safe-area-inset-top)) 0 max(24px, env(safe-area-inset-bottom));
+}
+
 .nav-wrap {
   position: sticky;
   top: 0;
@@ -1085,6 +1098,31 @@ h1 {
   gap: 14px;
 }
 
+.mobile-entry-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.mobile-entry-feature {
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow);
+}
+
+.mobile-entry-feature strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.mobile-entry-feature p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .mobile-entry-actions {
   display: flex;
   gap: 12px;
@@ -1123,6 +1161,16 @@ html[dir='rtl'] .notification-card {
 .auth-card {
   display: grid;
   gap: 12px;
+}
+
+.mobile-auth-page .auth-layout {
+  width: min(720px, calc(100% - 24px));
+  margin: 0 auto;
+}
+
+.mobile-auth-page .auth-card button,
+.mobile-auth-page .auth-card .input {
+  min-height: 52px;
 }
 
 .demo-grid {
@@ -1603,12 +1651,17 @@ html[dir='rtl'] .coverage-chip {
 }
 
 .tech-job-card.en_route,
-.tech-job-card.in_progress {
+.tech-job-card.in_progress,
+.tech-job-card.scheduled {
   background: rgba(17, 120, 100, 0.08);
 }
 
-.tech-job-card.completed {
+.tech-job-card.in_transit {
   background: rgba(29, 78, 216, 0.08);
+}
+
+.tech-job-card.completed {
+  background: rgba(10, 132, 85, 0.08);
 }
 
 .tech-job-time {
@@ -1806,12 +1859,15 @@ html[dir='rtl'] .coverage-chip {
 
 .bottom-tab-bar button {
   flex: 1 1 0;
-  padding: 12px 10px;
+  min-height: 64px;
+  padding: 14px 12px;
   border-radius: 18px;
   background: transparent;
   color: var(--muted);
   display: grid;
   gap: 4px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .bottom-tab-bar button.active {
@@ -2464,6 +2520,33 @@ html[dir='rtl'] .coverage-chip {
   cursor: pointer;
 }
 
+.technician-app-shell button,
+.technician-app-shell a.btn-primary,
+.technician-app-shell a.btn-secondary,
+.technician-app-shell a.btn-light,
+.technician-app-shell .status-step,
+.technician-app-shell .tech-job-card,
+.mobile-entry .btn-primary,
+.mobile-entry .btn-secondary,
+.mobile-entry .btn-light {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.technician-app-shell .btn-primary,
+.technician-app-shell .btn-secondary,
+.technician-app-shell .btn-light,
+.technician-app-shell .input,
+.technician-app-shell select.input,
+.technician-app-shell textarea.input {
+  min-height: 52px;
+}
+
+.technician-app-shell .status-step,
+.technician-app-shell .tech-job-card {
+  min-height: 72px;
+}
+
 .daily-task-list {
   gap: 16px;
 }
@@ -2644,6 +2727,11 @@ html[dir='rtl'] .coverage-chip {
     padding-top: 20px;
   }
 
+  .mobile-route-shell {
+    width: 100%;
+    padding-inline: 0;
+  }
+
   .nav {
     width: min(100% - 20px, 1180px);
   }
@@ -2675,5 +2763,16 @@ html[dir='rtl'] .coverage-chip {
 
   .bottom-tab-bar {
     gap: 6px;
+  }
+
+  .mobile-entry-card,
+  .mobile-auth-page .auth-layout {
+    width: min(100% - 16px, 100%);
+  }
+
+  .mobile-entry .btn-primary,
+  .mobile-entry .btn-secondary,
+  .mobile-entry .btn-light {
+    width: 100%;
   }
 }

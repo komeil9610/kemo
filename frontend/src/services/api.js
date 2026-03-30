@@ -56,6 +56,18 @@ const ORDER_STATUS_AR_LABELS = {
   completed: 'مكتمل',
   canceled: 'ملغي',
 };
+export const technicianStatusOptions = [
+  { value: 'available', label: 'متاح', enLabel: 'Available' },
+  { value: 'busy', label: 'مشغول', enLabel: 'Busy' },
+  { value: 'offline', label: 'خارج الخدمة', enLabel: 'Offline' },
+];
+export const delayReasonOptions = [
+  { value: 'traffic', label: 'Traffic delay', arLabel: 'ازدحام مروري' },
+  { value: 'site_not_ready', label: 'Site not ready', arLabel: 'الموقع غير جاهز' },
+  { value: 'client_delay', label: 'Customer delay', arLabel: 'تأخر العميل' },
+  { value: 'material_issue', label: 'Material issue', arLabel: 'مشكلة في المواد أو القطع' },
+  { value: 'technical_issue', label: 'Technical issue', arLabel: 'عائق فني بالموقع' },
+];
 
 export const normalizeSaudiPhoneNumber = (value) => {
   const digits = String(value || '').replace(/\D/g, '');
@@ -83,10 +95,90 @@ export const buildWhatsAppUrl = (value, text = '') => {
   return international ? `https://wa.me/${international}${message}` : '#';
 };
 
+export const getAreaClusterLabel = (order = {}, lang = 'ar') => {
+  if (lang === 'ar') {
+    return order.internalAreaArLabel || order.internalAreaLabel || [order.district, order.city].filter(Boolean).join(' - ') || 'غير محدد';
+  }
+  return order.internalAreaLabel || order.internalAreaArLabel || [order.district, order.city].filter(Boolean).join(' - ') || 'Unassigned';
+};
+
+export const compareOrdersByInternalArea = (left = {}, right = {}) => {
+  const areaRank = (Number(left.internalAreaSortOrder) || 999) - (Number(right.internalAreaSortOrder) || 999);
+  if (areaRank !== 0) {
+    return areaRank;
+  }
+
+  const leftLabel = `${left.internalAreaLabel || left.internalAreaArLabel || left.city || ''} ${left.district || ''}`.trim();
+  const rightLabel = `${right.internalAreaLabel || right.internalAreaArLabel || right.city || ''} ${right.district || ''}`.trim();
+  const labelRank = leftLabel.localeCompare(rightLabel, 'ar');
+  if (labelRank !== 0) {
+    return labelRank;
+  }
+
+  const dateRank = `${left.scheduledDate || ''} ${left.scheduledTime || ''}`.localeCompare(
+    `${right.scheduledDate || ''} ${right.scheduledTime || ''}`
+  );
+  if (dateRank !== 0) {
+    return dateRank;
+  }
+
+  return `${left.customerName || ''}`.localeCompare(`${right.customerName || ''}`, 'ar');
+};
+
+export const getTimeStandardLabel = (standard, lang = 'ar') => {
+  if (!standard) {
+    return lang === 'ar' ? 'غير محدد' : 'Not assigned';
+  }
+
+  const label = lang === 'ar' ? standard.arLabel || standard.label : standard.label || standard.arLabel;
+  return `${label} - ${Number(standard.durationMinutes) || 0} min`;
+};
+
 const normalizeRole = (role) => (role === 'admin' ? 'operations_manager' : role || '');
 
 const todayString = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
+const calculateElapsedMinutes = (startedAt, endedAt = null) => {
+  const start = startedAt ? new Date(startedAt) : null;
+  if (!start || Number.isNaN(start.getTime())) {
+    return 0;
+  }
+
+  const end = endedAt ? new Date(endedAt) : new Date();
+  if (!end || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+};
+
+export const buildEscalationSnapshot = (order = {}, timeStandards = []) => {
+  const matchedStandard =
+    (timeStandards || []).find((entry) => entry.standardKey === order.serviceCategory || entry.standardKey === order.standardKey) || null;
+  const standardDurationMinutes =
+    Math.max(1, Number(order.standardDurationMinutes) || Number(matchedStandard?.durationMinutes) || 120);
+  const elapsedMinutes = calculateElapsedMinutes(
+    order.workStartedAt,
+    order.status === 'completed' ? order.completedAt || order.updatedAt : null
+  );
+  const warningThreshold = Math.round(standardDurationMinutes * 1.15);
+  const criticalThreshold = Math.round(standardDurationMinutes * 1.3);
+  const escalationLevel =
+    elapsedMinutes >= criticalThreshold ? 2 : elapsedMinutes >= warningThreshold ? 1 : 0;
+
+  return {
+    matchedStandard,
+    standardDurationMinutes,
+    elapsedMinutes,
+    warningThreshold,
+    criticalThreshold,
+    overtimeMinutes: Math.max(0, elapsedMinutes - standardDurationMinutes),
+    escalationLevel,
+    isWarning: escalationLevel === 1,
+    isCritical: escalationLevel === 2,
+    needsDelayReason: elapsedMinutes > standardDurationMinutes,
+  };
+};
 
 const normalizeAcDetails = (items = []) =>
   (Array.isArray(items) ? items : [])
@@ -283,12 +375,38 @@ const mapRemoteOrder = (order = {}) => ({
   coordinationNote: order.coordinationNote || order.coordination_note || '',
   notes: order.notes || '',
   acDetails: normalizeAcDetails(order.acDetails || order.serviceItems),
+  acType: order.acType || order.ac_type || '',
+  serviceCategory: order.serviceCategory || order.service_category || '',
+  standardDurationMinutes: Number(order.standardDurationMinutes || order.standard_duration_minutes) || 120,
+  workStartedAt: order.workStartedAt || order.work_started_at || null,
+  completionNote: order.completionNote || order.completion_note || '',
+  delayReason: order.delayReason || order.delay_reason || '',
+  delayNote: order.delayNote || order.delay_note || '',
   status: order.status || 'pending',
   customerAction: order.customerAction || order.customer_action || 'none',
   rescheduleReason: order.rescheduleReason || order.reschedule_reason || '',
   cancellationReason: order.cancellationReason || order.cancellation_reason || '',
   canceledAt: order.canceledAt || order.canceled_at || null,
   completedAt: order.completedAt || order.completed_at || null,
+  approvalStatus: order.approvalStatus || order.approval_status || 'pending',
+  proofStatus: order.proofStatus || order.proof_status || 'pending_review',
+  approvedAt: order.approvedAt || order.approved_at || null,
+  approvedBy: order.approvedBy || order.approved_by || '',
+  clientSignature: order.clientSignature || order.client_signature || '',
+  zamilClosureStatus: order.zamilClosureStatus || order.zamil_closure_status || 'idle',
+  zamilCloseRequestedAt: order.zamilCloseRequestedAt || order.zamil_close_requested_at || null,
+  zamilOtpCode: order.zamilOtpCode || order.zamil_otp_code || '',
+  zamilOtpSubmittedAt: order.zamilOtpSubmittedAt || order.zamil_otp_submitted_at || null,
+  zamilClosedAt: order.zamilClosedAt || order.zamil_closed_at || null,
+  suspensionReason: order.suspensionReason || order.suspension_reason || '',
+  suspensionNote: order.suspensionNote || order.suspension_note || '',
+  suspendedAt: order.suspendedAt || order.suspended_at || null,
+  exceptionStatus: order.exceptionStatus || order.exception_status || 'none',
+  technicianId: order.technicianId || order.technician_id || '',
+  technicianUserId: order.technicianUserId || order.technician_user_id || '',
+  technicianName: order.technicianName || order.technician_name || '',
+  photos: Array.isArray(order.photos) ? order.photos : [],
+  extras: order.extras || null,
   createdByUserId: order.createdByUserId || order.created_by_user_id || '',
   createdByName: order.createdByName || order.created_by_name || '',
   createdAt: order.createdAt || order.created_at || nowIso(),
@@ -626,6 +744,23 @@ const localOperationsService = {
       ];
     }
 
+    if (activeUser.role === 'technician') {
+      if (currentOrder.technicianUserId && String(currentOrder.technicianUserId) !== String(activeUser.id)) {
+        throw new Error('This task is not assigned to the active technician');
+      }
+
+      const touchedKeys = Object.keys(changes || {}).filter((key) => changes[key] !== undefined);
+      if (touchedKeys.some((key) => key !== 'clientSignature')) {
+        throw new Error('Technicians can only update the client signature from this screen');
+      }
+
+      nextOrder.clientSignature = String(changes.clientSignature || '').trim();
+      nextOrder.auditLog = [
+        ...(nextOrder.auditLog || []),
+        buildAuditEntry('technician', 'قام الفني بتحديث توقيع العميل.'),
+      ];
+    }
+
     nextOrder.updatedAt = nowIso();
 
     if (nextOrder.deliveryType === 'express_24h' && !isFastDeliveryCity(nextOrder.city)) {
@@ -679,10 +814,23 @@ const localOperationsService = {
 
 const remoteOperationsService = {
   getDashboard: () => apiClient.get('/operations/dashboard'),
+  getTechnicianOrders: (technicianId) => apiClient.get('/operations/technician/orders', { params: { technicianId } }),
   createOrder: (data) => apiClient.post('/operations/orders', data),
+  createTechnician: (data) => apiClient.post('/operations/technicians', data),
   updateOrder: (orderId, data) => apiClient.put(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}`, data),
   updateOrderStatus: (orderId, status) =>
     apiClient.put(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}/status`, { status }),
+  updateTechnicianStatus: (orderId, payload) =>
+    apiClient.put(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}/status`, payload),
+  updateTechnicianAvailability: (technicianId, status) =>
+    apiClient.put(`/operations/technicians/${String(technicianId)}/status`, { status }),
+  uploadPhoto: (orderId, data) => apiClient.post(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}/photos`, data),
+  requestClosure: (orderId, data) =>
+    apiClient.post(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}/close-request`, data),
+  submitClosureOtp: (orderId, otpCode) =>
+    apiClient.post(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}/close-otp`, { otpCode }),
+  approveClosure: (orderId) =>
+    apiClient.post(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}/close-approve`),
   getSummary: () => apiClient.get('/operations/summary'),
 };
 
@@ -720,6 +868,17 @@ export const operationsService = {
       },
       () => localOperationsService.createOrder(data)
     ),
+  createTechnician: (data) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.createTechnician(data);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Technician creation is unavailable in local mode');
+      }
+    ),
   updateOrder: (orderId, data) =>
     withFallback(
       async () => {
@@ -737,6 +896,88 @@ export const operationsService = {
         return response;
       },
       () => localOperationsService.updateOrderStatus(orderId, status)
+    ),
+  getTechnicianOrders: (technicianId) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.getTechnicianOrders(technicianId);
+        const orders = sortOrders((response.data?.orders || []).map(mapRemoteOrder));
+        return {
+          data: {
+            ...response.data,
+            orders,
+          },
+        };
+      },
+      async () => {
+        throw new Error('Technician orders are unavailable in local mode');
+      }
+    ),
+  updateTechnicianStatus: (orderId, status, extra = {}) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.updateTechnicianStatus(orderId, { status, ...extra });
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Technician status updates are unavailable in local mode');
+      }
+    ),
+  updateTechnicianAvailability: (technicianId, status) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.updateTechnicianAvailability(technicianId, status);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Technician availability updates are unavailable in local mode');
+      }
+    ),
+  uploadPhoto: (orderId, data) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.uploadPhoto(orderId, data);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Photo uploads are unavailable in local mode');
+      }
+    ),
+  requestClosure: (orderId, data) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.requestClosure(orderId, data);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Closure requests are unavailable in local mode');
+      }
+    ),
+  submitClosureOtp: (orderId, otpCode) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.submitClosureOtp(orderId, otpCode);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('OTP submission is unavailable in local mode');
+      }
+    ),
+  approveClosure: (orderId) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.approveClosure(orderId);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Closure approval is unavailable in local mode');
+      }
     ),
   getDailyTasks: (selectedDate) =>
     withFallback(

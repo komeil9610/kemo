@@ -12,8 +12,28 @@ if (!fs.existsSync(frontendBuildDir)) {
   throw new Error(`Frontend build not found: ${frontendBuildDir}`);
 }
 
+function copyRecursive(source, target) {
+  const stat = fs.lstatSync(source);
+  if (stat.isDirectory()) {
+    fs.mkdirSync(target, { recursive: true });
+    for (const entry of fs.readdirSync(source)) {
+      copyRecursive(path.join(source, entry), path.join(target, entry));
+    }
+    return;
+  }
+
+  if (stat.isSymbolicLink()) {
+    const linkTarget = fs.readlinkSync(source);
+    fs.symlinkSync(linkTarget, target);
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(source, target);
+  fs.chmodSync(target, stat.mode);
+}
+
 fs.rmSync(webDir, { recursive: true, force: true });
-fs.mkdirSync(webDir, { recursive: true });
-fs.cpSync(frontendBuildDir, webDir, { recursive: true });
+copyRecursive(frontendBuildDir, webDir);
 
 console.log(`Copied frontend build into ${webDir}`);

@@ -1,8 +1,6 @@
-// React Context for State Management
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import { authService } from '../services/api';
 
-// Create Auth Context
 const AuthContext = createContext();
 
 const readStorage = (key) => {
@@ -41,6 +39,24 @@ const removeStorage = (key) => {
   }
 };
 
+const normalizeRole = (role) => {
+  if (role === 'admin') {
+    return 'operations_manager';
+  }
+  return role || '';
+};
+
+const normalizeUser = (user) => {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    ...user,
+    role: normalizeRole(user.role),
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     const raw = readStorage('authUser');
@@ -49,7 +65,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      return JSON.parse(raw);
+      return normalizeUser(JSON.parse(raw));
     } catch {
       return null;
     }
@@ -58,33 +74,27 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const permissions = {
-    canManageSystem: user?.role === 'admin',
-    canManageOrders: user?.role === 'admin',
-    canEditSubmittedOrders: user?.role === 'admin',
-    canManageTechnicians: user?.role === 'admin',
-    canManageSettings: user?.role === 'admin',
-  };
-
   const login = async (email, password) => {
     try {
       setLoading(true);
       setError(null);
       const response = await authService.login(email, password);
       const nextToken = response.data?.token;
-      const nextUser = response.data?.user;
+      const nextUser = normalizeUser(response.data?.user);
+
       if (!nextToken || !nextUser) {
         throw new Error('Login response is incomplete');
       }
+
       setToken(nextToken);
       setUser(nextUser);
       writeStorage('authToken', nextToken);
       writeStorage('authUser', JSON.stringify(nextUser));
-      return true;
+      return nextUser;
     } catch (err) {
       const message = err?.response?.data?.message || err.message || 'Sign in failed';
       setError(message);
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }
@@ -93,51 +103,38 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setUser(null);
     setToken(null);
+    setError(null);
     removeStorage('authToken');
     removeStorage('authUser');
+    authService.logout();
   };
 
-  const register = async (userData) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await authService.register(userData);
-      const nextToken = response.data?.token;
-      const nextUser = response.data?.user;
-      if (!nextToken || !nextUser) {
-        throw new Error('Register response is incomplete');
-      }
-      setToken(nextToken);
-      setUser(nextUser);
-      writeStorage('authToken', nextToken);
-      writeStorage('authUser', JSON.stringify(nextUser));
-      return true;
-    } catch (err) {
-      const message = err?.response?.data?.message || err.message || 'Account creation failed';
-      setError(message);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        loading,
-        error,
-        login,
-        logout,
-        register,
-        isAdmin: user?.role === 'admin',
-        permissions,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const permissions = useMemo(
+    () => ({
+      canCreateOrders: user?.role === 'customer_service',
+      canManageStatuses: user?.role === 'operations_manager',
+      canViewBoard: ['customer_service', 'operations_manager'].includes(user?.role),
+      canManageSystem: user?.role === 'operations_manager',
+    }),
+    [user?.role]
   );
+
+  const value = useMemo(
+    () => ({
+      user,
+      token,
+      loading,
+      error,
+      login,
+      logout,
+      register: async () => false,
+      permissions,
+      isAdmin: user?.role === 'operations_manager',
+    }),
+    [error, loading, permissions, token, user]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

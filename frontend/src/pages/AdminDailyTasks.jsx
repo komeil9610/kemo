@@ -129,8 +129,8 @@ const copy = {
     scheduleFor: 'Schedule for',
     statusOptions: {
       pending: 'Pending',
-      en_route: 'En route',
-      in_progress: 'In progress',
+      scheduled: 'Scheduled',
+      in_transit: 'In transit',
       completed: 'Completed',
       suspended: 'Suspended',
       canceled: 'Canceled',
@@ -235,8 +235,8 @@ const copy = {
     scheduleFor: 'إعادة الجدولة إلى',
     statusOptions: {
       pending: 'قيد الانتظار',
-      en_route: 'في الطريق',
-      in_progress: 'جاري التنفيذ',
+      scheduled: 'تمت الجدولة',
+      in_transit: 'في الطريق',
       completed: 'مكتملة',
       suspended: 'معلقة',
       canceled: 'ملغاة',
@@ -475,7 +475,7 @@ export default function AdminDailyTasks() {
   const urgentEscalationOrders = useMemo(
     () =>
       orders
-        .filter((order) => ['en_route', 'in_progress'].includes(order.status) && (order.timing?.escalationLevel || 0) > 0 && searchMatches(order))
+        .filter((order) => ['scheduled', 'in_transit'].includes(order.status) && (order.timing?.escalationLevel || 0) > 0 && searchMatches(order))
         .sort((left, right) => (right.timing?.escalationLevel || 0) - (left.timing?.escalationLevel || 0) || (right.timing?.overtimeMinutes || 0) - (left.timing?.overtimeMinutes || 0)),
     [orders, searchMatches]
   );
@@ -483,7 +483,7 @@ export default function AdminDailyTasks() {
   const stats = useMemo(() => {
     const total = filteredDailyOrders.length;
     const unassigned = filteredDailyOrders.filter((order) => !order.technicianId).length;
-    const active = filteredDailyOrders.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length;
+    const active = filteredDailyOrders.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length;
     const completed = filteredDailyOrders.filter((order) => order.status === 'completed').length;
     const exceptions = exceptionOrders.length;
 
@@ -513,7 +513,7 @@ export default function AdminDailyTasks() {
         ...technician,
         assignedOrders,
         total: assignedOrders.length,
-        active: assignedOrders.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length,
+        active: assignedOrders.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length,
         done: assignedOrders.filter((order) => order.status === 'completed').length,
       };
     });

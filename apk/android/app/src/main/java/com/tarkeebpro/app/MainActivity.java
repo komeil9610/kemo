@@ -1,4 +1,4 @@
-package com.rentit.app;
+package com.tarkeebpro.app;
 
 import com.getcapacitor.BridgeActivity;
 
