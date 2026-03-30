@@ -215,6 +215,125 @@ const copy = {
   },
 };
 
+const regionalCopy = {
+  en: {
+    eyebrow: 'Regional handoff',
+    title: 'Regional orders inbox',
+    subtitle: 'Receive orders from operations, reschedule with a note when needed, or mark them completed.',
+    loading: 'Loading regional orders...',
+    generalTasksLink: 'Regional orders',
+    tabs: {
+      today: 'Active orders',
+      history: 'Completed',
+      notifications: 'Alerts',
+      account: 'Account',
+    },
+    emptyToday: 'No regional orders are assigned right now.',
+    emptyHistory: 'No completed regional orders yet.',
+    emptyNotifications: 'No notifications right now.',
+    dateFilter: 'Scheduled date',
+    allDates: 'All dates',
+    customer: 'Customer',
+    region: 'Region',
+    scheduled: 'Scheduled',
+    workType: 'Work required',
+    notes: 'Notes',
+    call: 'Call',
+    route: 'Route',
+    notificationsTitle: 'Regional notifications',
+    accountTitle: 'Regional account',
+    logout: 'Log out',
+    sync: 'Sync now',
+    statusLabels: {
+      pending: 'Pending',
+      scheduled: 'Scheduled',
+      in_transit: 'In progress',
+      completed: 'Completed',
+      suspended: 'Suspended',
+      canceled: 'Canceled',
+    },
+    metrics: {
+      today: 'Active orders',
+      active: 'Scheduled now',
+      done: 'Completed',
+      alerts: 'Needs follow-up',
+    },
+    rescheduleTitle: 'Reschedule order',
+    rescheduleDate: 'New date',
+    rescheduleTime: 'New time',
+    rescheduleNote: 'Reschedule note',
+    reschedulePlaceholder: 'Write the reason or coordination note for operations.',
+    saveReschedule: 'Save reschedule',
+    completionTitle: 'Complete order',
+    completionNote: 'Completion note',
+    completionPlaceholder: 'Optional completion note for operations and customer service.',
+    markCompleted: 'Mark completed',
+    messages: {
+      rescheduled: 'Order rescheduled successfully.',
+      completed: 'Order marked as completed.',
+      rescheduleValidation: 'Choose a date and write a coordination note first.',
+    },
+  },
+  ar: {
+    eyebrow: 'تسليم المناطق',
+    title: 'صندوق طلبات المنطقة',
+    subtitle: 'استلم الطلبات من مدير العمليات، أعد جدولتها مع ملاحظة عند الحاجة، أو علّمها كمكتملة.',
+    loading: 'جارٍ تحميل طلبات المنطقة...',
+    generalTasksLink: 'طلبات المنطقة',
+    tabs: {
+      today: 'الطلبات النشطة',
+      history: 'المكتملة',
+      notifications: 'التنبيهات',
+      account: 'الحساب',
+    },
+    emptyToday: 'لا توجد طلبات مسندة لهذه المنطقة حالياً.',
+    emptyHistory: 'لا توجد طلبات مكتملة لهذه المنطقة حتى الآن.',
+    emptyNotifications: 'لا توجد إشعارات حالياً.',
+    dateFilter: 'تاريخ الجدولة',
+    allDates: 'كل التواريخ',
+    customer: 'العميل',
+    region: 'المنطقة',
+    scheduled: 'الموعد',
+    workType: 'العمل المطلوب',
+    notes: 'ملاحظات',
+    call: 'اتصال',
+    route: 'الموقع',
+    notificationsTitle: 'تنبيهات المنطقة',
+    accountTitle: 'حساب المنطقة',
+    logout: 'تسجيل الخروج',
+    sync: 'مزامنة الآن',
+    statusLabels: {
+      pending: 'قيد الانتظار',
+      scheduled: 'تمت الجدولة',
+      in_transit: 'قيد التنفيذ',
+      completed: 'مكتمل',
+      suspended: 'معلق',
+      canceled: 'ملغي',
+    },
+    metrics: {
+      today: 'الطلبات النشطة',
+      active: 'المجدولة الآن',
+      done: 'المكتملة',
+      alerts: 'تحتاج متابعة',
+    },
+    rescheduleTitle: 'إعادة جدولة الطلب',
+    rescheduleDate: 'التاريخ الجديد',
+    rescheduleTime: 'الوقت الجديد',
+    rescheduleNote: 'ملاحظة إعادة الجدولة',
+    reschedulePlaceholder: 'اكتب سبب أو ملاحظة التنسيق لمدير العمليات.',
+    saveReschedule: 'حفظ إعادة الجدولة',
+    completionTitle: 'إكمال الطلب',
+    completionNote: 'ملاحظة الإكمال',
+    completionPlaceholder: 'ملاحظة اختيارية للإدارة وخدمة العملاء.',
+    markCompleted: 'تعليم كمكتمل',
+    messages: {
+      rescheduled: 'تمت إعادة جدولة الطلب بنجاح.',
+      completed: 'تم تعليم الطلب كمكتمل.',
+      rescheduleValidation: 'اختر التاريخ واكتب ملاحظة التنسيق أولاً.',
+    },
+  },
+};
+
 const statusOrder = {
   pending: 0,
   scheduled: 1,
@@ -250,6 +369,8 @@ export default function Orders() {
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState('all');
   const [signatureDrafts, setSignatureDrafts] = useState({});
+  const [regionalDrafts, setRegionalDrafts] = useState({});
+  const [regionalCompletionDrafts, setRegionalCompletionDrafts] = useState({});
 
   const seenOrderIdsRef = useRef(new Set());
   const seenOverdueIdsRef = useRef(new Set());
@@ -257,7 +378,10 @@ export default function Orders() {
   const bootstrappedOrdersRef = useRef(false);
   const bootstrappedNotificationsRef = useRef(false);
 
-  const t = useMemo(() => copy[lang] || copy.en, [lang]);
+  const isRegionalDispatcher = user?.role === 'regional_dispatcher';
+  const t = useMemo(() => (copy[lang] || copy.en), [lang]);
+  const regionalT = useMemo(() => regionalCopy[lang] || regionalCopy.en, [lang]);
+  const viewT = isRegionalDispatcher ? regionalT : t;
 
   const loadOrders = useCallback(
     async (silent = false) => {
@@ -353,7 +477,7 @@ export default function Orders() {
   );
 
   useEffect(() => {
-    if (user?.role !== 'technician' && !user?.technicianId) {
+    if (!['technician', 'regional_dispatcher'].includes(user?.role) && !user?.technicianId) {
       setLoading(false);
       return;
     }
@@ -425,8 +549,32 @@ export default function Orders() {
 
   const alertOrders = useMemo(() => ordersWithMeta.filter((order) => order.overdue || order.status === 'pending').slice(0, 6), [ordersWithMeta]);
 
+  const regionalActiveOrders = useMemo(
+    () =>
+      ordersWithMeta.filter((order) => {
+        if (['completed', 'canceled', 'suspended'].includes(order.status)) {
+          return false;
+        }
+
+        if (selectedDateFilter !== 'all' && order.scheduledDate !== selectedDateFilter) {
+          return false;
+        }
+
+        return true;
+      }),
+    [ordersWithMeta, selectedDateFilter]
+  );
+
+  const regionalHistoryOrders = useMemo(
+    () => ordersWithMeta.filter((order) => ['completed', 'canceled'].includes(order.status)),
+    [ordersWithMeta]
+  );
+
+  const visibleTodayOrders = isRegionalDispatcher ? regionalActiveOrders : todayOrders;
+  const visibleHistoryOrders = isRegionalDispatcher ? regionalHistoryOrders : historyOrders;
+
   useEffect(() => {
-    const visibleOrders = activeTab === 'history' ? historyOrders : todayOrders;
+    const visibleOrders = activeTab === 'history' ? visibleHistoryOrders : visibleTodayOrders;
     if (!visibleOrders.length) {
       setSelectedOrderId('');
       return;
@@ -434,7 +582,7 @@ export default function Orders() {
     if (!visibleOrders.some((order) => String(order.id) === String(selectedOrderId))) {
       setSelectedOrderId(String(visibleOrders[0].id));
     }
-  }, [activeTab, historyOrders, selectedOrderId, todayOrders]);
+  }, [activeTab, selectedOrderId, visibleHistoryOrders, visibleTodayOrders]);
 
   const selectedOrder = useMemo(
     () => ordersWithMeta.find((order) => String(order.id) === String(selectedOrderId)) || null,
@@ -488,14 +636,54 @@ export default function Orders() {
     await loadOrders();
   };
 
+  const saveRegionalReschedule = async (order) => {
+    const draft = regionalDrafts[order.id] || {};
+    const scheduledDate = String(draft.scheduledDate || order.scheduledDate || '').trim();
+    const scheduledTime = String(draft.scheduledTime || order.scheduledTime || '').trim();
+    const coordinationNote = String(draft.coordinationNote || '').trim();
+
+    if (!scheduledDate || !coordinationNote) {
+      toast.error(viewT.messages.rescheduleValidation);
+      return;
+    }
+
+    try {
+      await operationsService.updateOrder(order.id, {
+        scheduledDate,
+        scheduledTime,
+        coordinationNote,
+        status: 'scheduled',
+      });
+      await notificationHaptic('success');
+      setMessage(viewT.messages.rescheduled);
+      await loadOrders();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || viewT.messages.rescheduled);
+    }
+  };
+
+  const completeRegionalOrder = async (order) => {
+    try {
+      await operationsService.updateOrder(order.id, {
+        status: 'completed',
+        completionNote: String(regionalCompletionDrafts[order.id] || '').trim(),
+      });
+      await notificationHaptic('success');
+      setMessage(viewT.messages.completed);
+      await loadOrders();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || viewT.messages.completed);
+    }
+  };
+
   const tabItems = useMemo(
     () => [
-      { id: 'today', label: t.tabs.today, count: todayOrders.length },
-      { id: 'history', label: t.tabs.history, count: historyOrders.length },
-      { id: 'notifications', label: t.tabs.notifications, count: notifications.length + alertOrders.length },
-      { id: 'account', label: t.tabs.account, count: 0 },
+      { id: 'today', label: viewT.tabs.today, count: visibleTodayOrders.length },
+      { id: 'history', label: viewT.tabs.history, count: visibleHistoryOrders.length },
+      { id: 'notifications', label: viewT.tabs.notifications, count: notifications.length + alertOrders.length },
+      { id: 'account', label: viewT.tabs.account, count: 0 },
     ],
-    [alertOrders.length, historyOrders.length, notifications.length, t.tabs, todayOrders.length]
+    [alertOrders.length, notifications.length, viewT.tabs, visibleHistoryOrders.length, visibleTodayOrders.length]
   );
 
   const openMapsUrl = selectedOrder
@@ -503,27 +691,29 @@ export default function Orders() {
     : '#';
 
   if (loading) {
-    return <section className="page-shell">{t.loading}</section>;
+    return <section className="page-shell">{viewT.loading}</section>;
   }
 
   return (
     <section className="page-shell technician-app-shell" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="technician-app-header">
         <div>
-          <p className="eyebrow">{t.eyebrow}</p>
-          <h1>{t.title}</h1>
+          <p className="eyebrow">{viewT.eyebrow}</p>
+          <h1>{viewT.title}</h1>
           <p className="section-subtitle">
             {technician?.name} - {technician?.region || technician?.zone}
           </p>
-          <p className="section-subtitle">{t.subtitle}</p>
+          <p className="section-subtitle">{viewT.subtitle}</p>
         </div>
         <div className="status-actions">
           <Link className="btn-primary" to="/tasks">
-            {t.generalTasksLink}
+            {viewT.generalTasksLink}
           </Link>
-          <Link className="btn-light" to="/tasks/daily">
-            {t.dailyTasksLink}
-          </Link>
+          {!isRegionalDispatcher ? (
+            <Link className="btn-light" to="/tasks/daily">
+              {t.dailyTasksLink}
+            </Link>
+          ) : null}
           <button className="btn-secondary language-switch" onClick={toggleLang} type="button">
             {lang === 'ar' ? 'English' : 'العربية'}
           </button>
@@ -534,19 +724,19 @@ export default function Orders() {
 
       <div className="technician-summary-strip">
         <article className="tech-summary-card">
-          <span>{t.metrics.today}</span>
-          <strong>{todayOrders.length}</strong>
+          <span>{viewT.metrics.today}</span>
+          <strong>{visibleTodayOrders.length}</strong>
         </article>
         <article className="tech-summary-card">
-          <span>{t.metrics.active}</span>
+          <span>{viewT.metrics.active}</span>
           <strong>{activeCount}</strong>
         </article>
         <article className="tech-summary-card">
-          <span>{t.metrics.done}</span>
+          <span>{viewT.metrics.done}</span>
           <strong>{completedCount}</strong>
         </article>
         <article className="tech-summary-card attention">
-          <span>{t.metrics.alerts}</span>
+          <span>{viewT.metrics.alerts}</span>
           <strong>{attentionCount}</strong>
         </article>
       </div>
@@ -557,13 +747,13 @@ export default function Orders() {
             <section className="panel today-column">
               <div className="panel-header">
                 <div>
-                  <h2>{t.tabs.today}</h2>
-                  <p>{todayOrders.length ? `${todayOrders.length}` : t.emptyToday}</p>
+                  <h2>{viewT.tabs.today}</h2>
+                  <p>{visibleTodayOrders.length ? `${visibleTodayOrders.length}` : viewT.emptyToday}</p>
                 </div>
                 <label className="filter-field compact-filter">
-                  <span>{t.dateFilter}</span>
+                  <span>{viewT.dateFilter}</span>
                   <select className="input compact-input" value={selectedDateFilter} onChange={(event) => setSelectedDateFilter(event.target.value)}>
-                    <option value="all">{t.allDates}</option>
+                    <option value="all">{viewT.allDates}</option>
                     {assignedDateOptions.map((date) => (
                       <option key={date} value={date}>
                         {formatDate(date, lang)}
@@ -573,8 +763,8 @@ export default function Orders() {
                 </label>
               </div>
               <div className="tech-job-list">
-                {todayOrders.length ? (
-                  todayOrders.map((order) => (
+                {visibleTodayOrders.length ? (
+                  visibleTodayOrders.map((order) => (
                     <button
                       className={`tech-job-card ${order.status} ${String(selectedOrderId) === String(order.id) ? 'selected' : ''}`}
                       key={order.id}
@@ -583,20 +773,22 @@ export default function Orders() {
                     >
                       <div className="tech-job-top">
                         <span className="tech-job-time">{order.scheduledTime || order.scheduledDate || '—'}</span>
-                        <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
+                        <span className={`status-badge ${order.status}`}>{viewT.statusLabels[order.status] || order.status}</span>
                       </div>
                       <strong>{order.customerName}</strong>
                       <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
                       <span>{order.region}</span>
                       <span>{order.workType || order.acType}</span>
-                      <small>
-                        {t.standardTime}: {order.timing?.standardDurationMinutes || 0} min
-                      </small>
+                      {!isRegionalDispatcher ? (
+                        <small>
+                          {t.standardTime}: {order.timing?.standardDurationMinutes || 0} min
+                        </small>
+                      ) : null}
                       {order.overdue ? <small className="alert-pill">{lang === 'ar' ? 'متأخرة' : 'Overdue'}</small> : null}
                     </button>
                   ))
                 ) : (
-                  <p className="muted">{t.emptyToday}</p>
+                  <p className="muted">{viewT.emptyToday}</p>
                 )}
               </div>
             </section>
@@ -614,22 +806,22 @@ export default function Orders() {
                       <p>{formatSaudiPhoneDisplay(selectedOrder.phone)}</p>
                     </div>
                     <span className={`status-badge ${selectedOrder.status}`}>
-                      {t.statusLabels[selectedOrder.status] || selectedOrder.status}
+                      {viewT.statusLabels[selectedOrder.status] || selectedOrder.status}
                     </span>
                   </div>
 
                   <div className="task-quick-actions">
                     <a className="btn-light" href={`tel:${selectedOrder.phone}`}>
-                      {t.call}
+                      {viewT.call}
                     </a>
                     <a className="btn-primary" href={openMapsUrl} rel="noreferrer" target="_blank">
-                      {t.route}
+                      {viewT.route}
                     </a>
                   </div>
 
                   <div className="task-detail-grid">
                     <div className="detail-card">
-                      <span>{t.customer}</span>
+                      <span>{viewT.customer}</span>
                       <strong>{selectedOrder.customerName}</strong>
                     </div>
                     <div className="detail-card">
@@ -637,33 +829,37 @@ export default function Orders() {
                       <strong>{getAreaClusterLabel(selectedOrder, lang)}</strong>
                     </div>
                     <div className="detail-card">
-                      <span>{t.region}</span>
+                      <span>{viewT.region}</span>
                       <strong>{selectedOrder.region}</strong>
                     </div>
                     <div className="detail-card">
-                      <span>{t.scheduled}</span>
+                      <span>{viewT.scheduled}</span>
                       <strong>
                         {formatDate(selectedOrder.scheduledDate, lang)} {selectedOrder.scheduledTime ? `• ${selectedOrder.scheduledTime}` : ''}
                       </strong>
                     </div>
                     <div className="detail-card">
-                      <span>{t.workType}</span>
+                      <span>{viewT.workType}</span>
                       <strong>{selectedOrder.workType || selectedOrder.acType}</strong>
                     </div>
-                    <div className="detail-card">
-                      <span>{t.standardTime}</span>
-                      <strong>{selectedOrder.timing?.standardDurationMinutes || 0} min</strong>
-                    </div>
-                    <div className="detail-card">
-                      <span>{t.elapsedTime}</span>
-                      <strong>{selectedOrder.timing?.elapsedMinutes || 0} min</strong>
-                    </div>
+                    {!isRegionalDispatcher ? (
+                      <>
+                        <div className="detail-card">
+                          <span>{t.standardTime}</span>
+                          <strong>{selectedOrder.timing?.standardDurationMinutes || 0} min</strong>
+                        </div>
+                        <div className="detail-card">
+                          <span>{t.elapsedTime}</span>
+                          <strong>{selectedOrder.timing?.elapsedMinutes || 0} min</strong>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
 
                   <div className="panel inset-panel">
-                    <h3>{t.quickActions}</h3>
+                    <h3>{isRegionalDispatcher ? viewT.generalTasksLink : t.quickActions}</h3>
                     <p>{selectedOrder.address}</p>
-                    {selectedOrder.notes ? <p className="notes-box">{t.notes}: {selectedOrder.notes}</p> : null}
+                    {selectedOrder.notes ? <p className="notes-box">{viewT.notes}: {selectedOrder.notes}</p> : null}
                     {(selectedOrder.serviceItems || []).length ? (
                       <div className="task-service-list">
                         {selectedOrder.serviceItems.map((item) => (
@@ -678,76 +874,169 @@ export default function Orders() {
                     ) : null}
                   </div>
 
-                  <div className="mandatory-status-panel">
-                    <div className="panel-header">
-                      <h3>{t.statusRail}</h3>
-                    </div>
-                    <div className="status-rail">
-                      {t.statusFlow.map((step, index) => (
-                        <button
-                          className={`status-step ${selectedOrder.status === step.value ? 'active' : ''}`}
-                          disabled={selectedOrder.status === 'canceled'}
-                          key={step.value}
-                          type="button"
-                          onClick={async () => {
-                            await selectionHaptic();
-                            updateStatus(selectedOrder.id, step.value);
-                          }}
-                        >
-                          <span>{index + 1}</span>
-                          <strong>{step.label}</strong>
+                  {isRegionalDispatcher ? (
+                    <div className="proof-shell">
+                      <div className="panel inset-panel">
+                        <div className="panel-header">
+                          <h3>{viewT.rescheduleTitle}</h3>
+                        </div>
+                        <div className="grid-two">
+                          <label className="filter-field">
+                            <span>{viewT.rescheduleDate}</span>
+                            <input
+                              className="input"
+                              type="date"
+                              value={regionalDrafts[selectedOrder.id]?.scheduledDate ?? selectedOrder.scheduledDate ?? ''}
+                              onChange={(event) =>
+                                setRegionalDrafts((current) => ({
+                                  ...current,
+                                  [selectedOrder.id]: {
+                                    ...(current[selectedOrder.id] || {}),
+                                    scheduledDate: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="filter-field">
+                            <span>{viewT.rescheduleTime}</span>
+                            <input
+                              className="input"
+                              type="time"
+                              value={regionalDrafts[selectedOrder.id]?.scheduledTime ?? selectedOrder.scheduledTime ?? ''}
+                              onChange={(event) =>
+                                setRegionalDrafts((current) => ({
+                                  ...current,
+                                  [selectedOrder.id]: {
+                                    ...(current[selectedOrder.id] || {}),
+                                    scheduledTime: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                        </div>
+                        <label className="filter-field">
+                          <span>{viewT.rescheduleNote}</span>
+                          <textarea
+                            className="input"
+                            rows="3"
+                            placeholder={viewT.reschedulePlaceholder}
+                            value={regionalDrafts[selectedOrder.id]?.coordinationNote ?? selectedOrder.coordinationNote ?? ''}
+                            onChange={(event) =>
+                              setRegionalDrafts((current) => ({
+                                ...current,
+                                [selectedOrder.id]: {
+                                  ...(current[selectedOrder.id] || {}),
+                                  coordinationNote: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                        <button className="btn-primary" type="button" onClick={() => saveRegionalReschedule(selectedOrder)}>
+                          {viewT.saveReschedule}
                         </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="proof-shell">
-                    <div className="panel inset-panel">
-                      <div className="panel-header">
-                        <h3>{t.proofTitle}</h3>
-                        <p>{selectedOrder.hasProof ? t.proofBadgeDone : t.proofBadgePending}</p>
                       </div>
-                      <label className="upload-box">
-                        <span>{t.photoPrompt}</span>
-                        <input type="file" accept="image/*" capture="environment" onChange={(event) => uploadPhoto(selectedOrder.id, event.target.files?.[0])} />
-                      </label>
-                      <div className="photo-grid">
-                        {(selectedOrder.photos || []).map((photo) => (
-                          <img alt={photo.name} className="photo-thumb" key={photo.id} src={photo.url} />
-                        ))}
-                      </div>
-                    </div>
 
-                    <div className="panel inset-panel">
-                      <label className="filter-field">
-                        <span>{t.signature}</span>
-                        <input
-                          className="input"
-                          placeholder={t.signaturePlaceholder}
-                          value={signatureDrafts[selectedOrder.id] ?? selectedOrder.clientSignature ?? ''}
-                          onChange={(event) =>
-                            setSignatureDrafts((current) => ({
-                              ...current,
-                              [selectedOrder.id]: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                      <div className="status-actions">
-                        <button className="btn-light" type="button" onClick={() => saveSignature(selectedOrder)}>
-                          {t.saveStatus}
+                      <div className="panel inset-panel">
+                        <div className="panel-header">
+                          <h3>{viewT.completionTitle}</h3>
+                        </div>
+                        <label className="filter-field">
+                          <span>{viewT.completionNote}</span>
+                          <textarea
+                            className="input"
+                            rows="3"
+                            placeholder={viewT.completionPlaceholder}
+                            value={regionalCompletionDrafts[selectedOrder.id] ?? selectedOrder.completionNote ?? ''}
+                            onChange={(event) =>
+                              setRegionalCompletionDrafts((current) => ({
+                                ...current,
+                                [selectedOrder.id]: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <button className="btn-primary" type="button" onClick={() => completeRegionalOrder(selectedOrder)}>
+                          {viewT.markCompleted}
                         </button>
-                        <Link className="btn-danger" to="/tasks/daily">
-                          {t.openClosureFlow}
-                        </Link>
                       </div>
-                      <p className="notes-box">{t.closureGuide}</p>
-                      <p className="muted">{t.exceptionGuide}</p>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="mandatory-status-panel">
+                        <div className="panel-header">
+                          <h3>{t.statusRail}</h3>
+                        </div>
+                        <div className="status-rail">
+                          {t.statusFlow.map((step, index) => (
+                            <button
+                              className={`status-step ${selectedOrder.status === step.value ? 'active' : ''}`}
+                              disabled={selectedOrder.status === 'canceled'}
+                              key={step.value}
+                              type="button"
+                              onClick={async () => {
+                                await selectionHaptic();
+                                updateStatus(selectedOrder.id, step.value);
+                              }}
+                            >
+                              <span>{index + 1}</span>
+                              <strong>{step.label}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="proof-shell">
+                        <div className="panel inset-panel">
+                          <div className="panel-header">
+                            <h3>{t.proofTitle}</h3>
+                            <p>{selectedOrder.hasProof ? t.proofBadgeDone : t.proofBadgePending}</p>
+                          </div>
+                          <label className="upload-box">
+                            <span>{t.photoPrompt}</span>
+                            <input type="file" accept="image/*" capture="environment" onChange={(event) => uploadPhoto(selectedOrder.id, event.target.files?.[0])} />
+                          </label>
+                          <div className="photo-grid">
+                            {(selectedOrder.photos || []).map((photo) => (
+                              <img alt={photo.name} className="photo-thumb" key={photo.id} src={photo.url} />
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="panel inset-panel">
+                          <label className="filter-field">
+                            <span>{t.signature}</span>
+                            <input
+                              className="input"
+                              placeholder={t.signaturePlaceholder}
+                              value={signatureDrafts[selectedOrder.id] ?? selectedOrder.clientSignature ?? ''}
+                              onChange={(event) =>
+                                setSignatureDrafts((current) => ({
+                                  ...current,
+                                  [selectedOrder.id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                          <div className="status-actions">
+                            <button className="btn-light" type="button" onClick={() => saveSignature(selectedOrder)}>
+                              {t.saveStatus}
+                            </button>
+                            <Link className="btn-danger" to="/tasks/daily">
+                              {t.openClosureFlow}
+                            </Link>
+                          </div>
+                          <p className="notes-box">{t.closureGuide}</p>
+                          <p className="muted">{t.exceptionGuide}</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
-                <p className="muted">{t.emptyToday}</p>
+                <p className="muted">{viewT.emptyToday}</p>
               )}
             </section>
           </div>
@@ -756,11 +1045,11 @@ export default function Orders() {
         {activeTab === 'history' ? (
           <section className="panel history-panel">
             <div className="panel-header">
-              <h2>{t.tabs.history}</h2>
+              <h2>{viewT.tabs.history}</h2>
             </div>
             <div className="history-list">
-              {historyOrders.length ? (
-                historyOrders.map((order) => (
+              {visibleHistoryOrders.length ? (
+                visibleHistoryOrders.map((order) => (
                   <article className="history-card" key={order.id}>
                     <div className="task-head">
                       <div>
@@ -768,13 +1057,13 @@ export default function Orders() {
                         <p>{order.region}</p>
                         <p>{formatDate(order.scheduledDate, lang)}</p>
                       </div>
-                      <span className={`status-badge ${order.status}`}>{t.statusLabels[order.status] || order.status}</span>
+                      <span className={`status-badge ${order.status}`}>{viewT.statusLabels[order.status] || order.status}</span>
                     </div>
                     <p>{order.workType || order.acType}</p>
                   </article>
                 ))
               ) : (
-                <p className="muted">{t.emptyHistory}</p>
+                <p className="muted">{viewT.emptyHistory}</p>
               )}
             </div>
           </section>
@@ -783,14 +1072,14 @@ export default function Orders() {
         {activeTab === 'notifications' ? (
           <section className="panel notifications-panel">
             <div className="panel-header">
-              <h2>{t.notificationsTitle}</h2>
+              <h2>{viewT.notificationsTitle}</h2>
             </div>
             <div className="notification-stack">
               {alertOrders.map((order) => (
                 <article className="alert-card" key={`${order.id}-${order.status}`}>
                   <strong>{order.customerName}</strong>
                   <p>{order.address}</p>
-                  <span>{order.overdue ? (lang === 'ar' ? 'متأخرة' : 'Overdue') : t.statusLabels[order.status] || order.status}</span>
+                  <span>{order.overdue ? (lang === 'ar' ? 'متأخرة' : 'Overdue') : viewT.statusLabels[order.status] || order.status}</span>
                 </article>
               ))}
               {notifications.map((item) => (
@@ -799,7 +1088,7 @@ export default function Orders() {
                   <p>{item.body}</p>
                 </article>
               ))}
-              {!notifications.length && !alertOrders.length ? <p className="muted">{t.emptyNotifications}</p> : null}
+              {!notifications.length && !alertOrders.length ? <p className="muted">{viewT.emptyNotifications}</p> : null}
             </div>
           </section>
         ) : null}
@@ -807,57 +1096,72 @@ export default function Orders() {
         {activeTab === 'account' ? (
           <section className="panel account-panel">
             <div className="panel-header">
-              <h2>{t.accountTitle}</h2>
+              <h2>{viewT.accountTitle}</h2>
             </div>
-            <div className="technician-availability-card">
-              <div>
-                <span>{t.availability}</span>
-                <strong>
-                  {technician?.status === 'busy'
-                    ? lang === 'ar'
-                      ? 'مشغول'
-                      : 'Busy'
-                    : lang === 'ar'
-                      ? 'متاح'
-                      : 'Available'}
-                </strong>
-              </div>
-              <select
-                className="input compact-input"
-                disabled={updatingAvailability}
-                value={technician?.status === 'busy' ? 'busy' : 'available'}
-                onChange={(event) => updateAvailability(event.target.value)}
-              >
-                {technicianStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {lang === 'ar' ? option.arLabel : option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isRegionalDispatcher ? (
+              <>
+                <div className="technician-availability-card">
+                  <div>
+                    <span>{t.availability}</span>
+                    <strong>
+                      {technician?.status === 'busy'
+                        ? lang === 'ar'
+                          ? 'مشغول'
+                          : 'Busy'
+                        : lang === 'ar'
+                          ? 'متاح'
+                          : 'Available'}
+                    </strong>
+                  </div>
+                  <select
+                    className="input compact-input"
+                    disabled={updatingAvailability}
+                    value={technician?.status === 'busy' ? 'busy' : 'available'}
+                    onChange={(event) => updateAvailability(event.target.value)}
+                  >
+                    {technicianStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {lang === 'ar' ? option.arLabel : option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div className="checklist-list">
-              {t.checklistItems.map((item) => (
-                <article className="checklist-item" key={item}>
-                  <span className="check-icon">✓</span>
-                  <p>{item}</p>
-                </article>
-              ))}
-            </div>
+                <div className="checklist-list">
+                  {t.checklistItems.map((item) => (
+                    <article className="checklist-item" key={item}>
+                      <span className="check-icon">✓</span>
+                      <p>{item}</p>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="technician-availability-card">
+                <div>
+                  <span>{viewT.region}</span>
+                  <strong>{technician?.region || technician?.zone || '—'}</strong>
+                </div>
+                <div>
+                  <span>{lang === 'ar' ? 'نوع الحساب' : 'Account type'}</span>
+                  <strong>{lang === 'ar' ? 'حساب منطقة' : 'Regional account'}</strong>
+                </div>
+              </div>
+            )}
 
             <div className="status-actions">
               <button className="btn-light" type="button" onClick={() => loadOrders(false)}>
-                {t.sync}
+                {viewT.sync}
               </button>
               <button className="btn-danger" type="button" onClick={logout}>
-                {t.logout}
+                {viewT.logout}
               </button>
             </div>
           </section>
         ) : null}
       </div>
 
-      <nav className="bottom-tab-bar" aria-label="Technician navigation">
+      <nav className="bottom-tab-bar" aria-label={isRegionalDispatcher ? 'Regional navigation' : 'Technician navigation'}>
         {tabItems.map((item) => (
           <button
             className={activeTab === item.id ? 'active' : ''}

@@ -393,7 +393,7 @@ async function login(request, env) {
   }
 
   const technician =
-    user.role === "technician"
+    ["technician", "regional_dispatcher"].includes(normalizeServerRole(user.role))
       ? await env.DB.prepare(
           "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
         )
@@ -422,8 +422,8 @@ async function login(request, env) {
         role: normalizeServerRole(user.role),
         status: user.status || "active",
         technicianId: technician ? String(technician.id) : null,
-        region: technician?.zone || null,
-        zone: technician?.zone || null,
+        region: technician ? mapTechnician(technician).region : null,
+        zone: technician ? mapTechnician(technician).zone : null,
         technicianName: technician?.name || null,
         technician: technician ? mapTechnician({ ...technician, email: user.email }) : null,
       },
@@ -1145,6 +1145,58 @@ const OPERATIONS_PRICING = {
 };
 
 const FAST_DELIVERY_CITIES = ["الدمام", "جدة", "الرياض", "الخبر", "الظهران", "جازان", "رأس تنورة"];
+const OPERATIONS_REGIONS = [
+  {
+    key: "east",
+    ar: "المنطقة الشرقية",
+    en: "Eastern region",
+    cities: ["الدمام", "الخبر", "الظهران", "القطيف", "رأس تنورة", "الجبيل", "بقيق", "الأحساء"],
+  },
+  {
+    key: "west",
+    ar: "المنطقة الغربية",
+    en: "Western region",
+    cities: ["جدة", "مكة", "المدينة المنورة", "الطائف", "ينبع"],
+  },
+  {
+    key: "south",
+    ar: "المنطقة الجنوبية",
+    en: "Southern region",
+    cities: ["جازان", "أبو عريش"],
+  },
+  {
+    key: "central",
+    ar: "المنطقة الوسطى",
+    en: "Central region",
+    cities: ["الرياض", "القصيم"],
+  },
+];
+
+function normalizeRegionKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getOperationsRegionByKey(value) {
+  const normalized = normalizeRegionKey(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return OPERATIONS_REGIONS.find((region) => region.key === normalized) || null;
+}
+
+function getOperationsRegionByCity(city) {
+  const normalizedCity = String(city || "").trim();
+  if (!normalizedCity) {
+    return null;
+  }
+
+  return OPERATIONS_REGIONS.find((region) => region.cities.includes(normalizedCity)) || null;
+}
+
+function getOrderRegionKey(order = {}) {
+  return getOperationsRegionByCity(order.city)?.key || "";
+}
 
 async function getOperationsDashboard(request, env) {
   const user = await requireRoles(request, env, ["customer_service", "operations_manager"]);
@@ -1562,13 +1614,14 @@ async function deleteTechnician(request, technicianId, env) {
 }
 
 async function updateServiceOrder(request, id, env) {
-  const actor = await requireRoles(request, env, ["customer_service", "operations_manager", "technician"]);
+  const actor = await requireRoles(request, env, ["customer_service", "operations_manager", "technician", "regional_dispatcher"]);
   if (!actor) {
-    return json({ message: "Customer service, operations manager, or technician access required" }, 403, request, env);
+    return json({ message: "Internal access required" }, 403, request, env);
   }
   const isOperationsManager = actor.role === "operations_manager";
   const isCustomerService = actor.role === "customer_service";
   const isTechnician = actor.role === "technician";
+  const isRegionalDispatcher = actor.role === "regional_dispatcher";
 
   const orderId = Number(id);
   if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -1597,6 +1650,9 @@ async function updateServiceOrder(request, id, env) {
   const body = await readJson(request);
   const technicianAllowedKeys = ["clientSignature"];
   const technicianTouchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
+  const regionalAllowedKeys = ["scheduledDate", "scheduledTime", "coordinationNote", "status", "completionNote"];
+  const regionalTouchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
+  let regionalProfile = null;
 
   if (isTechnician) {
     if (technicianTouchedKeys.some((key) => !technicianAllowedKeys.includes(key))) {
@@ -1608,12 +1664,32 @@ async function updateServiceOrder(request, id, env) {
         ? null
         : await env.DB.prepare("SELECT id, user_id FROM technicians WHERE id = ?").bind(Number(existing.technician_id)).first();
 
-    if (!assignedTechnician || Number(assignedTechnician.user_id || 0) !== Number(actor.id || 0)) {
+    if (!assignedTechnician || Number(assignedTechnician.user_id || 0) !== Number(actor.sub || 0)) {
       return json({ message: "This order is not assigned to the active technician" }, 403, request, env);
     }
 
     if (body.clientSignature === undefined) {
       return json({ message: "Client signature is required" }, 400, request, env);
+    }
+  }
+
+  if (isRegionalDispatcher) {
+    if (regionalTouchedKeys.some((key) => !regionalAllowedKeys.includes(key))) {
+      return json({ message: "Regional accounts can only reschedule with a note or mark the order as completed" }, 403, request, env);
+    }
+
+    regionalProfile = await env.DB.prepare(
+      "SELECT id, user_id, name, zone FROM technicians WHERE user_id = ?"
+    )
+      .bind(Number(actor.sub))
+      .first();
+
+    if (!regionalProfile) {
+      return json({ message: "Regional profile not found" }, 404, request, env);
+    }
+
+    if (getOrderRegionKey({ city: existing.city }) !== normalizeRegionKey(regionalProfile.zone)) {
+      return json({ message: "This order does not belong to your assigned region" }, 403, request, env);
     }
   }
 
@@ -1843,6 +1919,18 @@ async function updateServiceOrder(request, id, env) {
     return json({ message: "Cancellation reason is required" }, 400, request, env);
   }
 
+  if (isRegionalDispatcher && body.status !== undefined && !["scheduled", "completed"].includes(status)) {
+    return json({ message: "Regional accounts can only keep the order scheduled or mark it as completed" }, 400, request, env);
+  }
+
+  if (
+    isRegionalDispatcher &&
+    (body.scheduledDate !== undefined || body.scheduledTime !== undefined) &&
+    !coordinationNote
+  ) {
+    return json({ message: "A coordination note is required when rescheduling an order" }, 400, request, env);
+  }
+
   const serviceItemsTotal = calculateServiceItemsTotal(body.serviceItems || []);
   const extrasTotal =
     calculateExtrasTotal(existing.copper_meters, Boolean(existing.base_included)) + serviceItemsTotal;
@@ -1850,15 +1938,31 @@ async function updateServiceOrder(request, id, env) {
   const nextAuditLog = normalizeAuditLogEntries([
     ...auditLog,
     {
-      type: isOperationsManager ? "coordination" : isTechnician ? "signature" : "customer_action",
-      actor: isOperationsManager ? "operations_manager" : isTechnician ? "technician" : "customer_service",
+      type: isOperationsManager
+        ? "coordination"
+        : isTechnician
+          ? "signature"
+          : isRegionalDispatcher
+            ? "regional_dispatch"
+            : "customer_action",
+      actor: isOperationsManager
+        ? "operations_manager"
+        : isTechnician
+          ? "technician"
+          : isRegionalDispatcher
+            ? "regional_dispatcher"
+            : "customer_service",
       message: isOperationsManager
         ? "قام مدير العمليات بتحديث الموعد أو حالة الطلب."
         : isTechnician
           ? "قام الفني بتحديث توقيع العميل."
-          : status === "canceled"
-            ? `تم إلغاء الطلب من خدمة العملاء.${cancellationReason ? ` السبب: ${cancellationReason}` : ""}`
-            : customerAction === "reschedule_requested"
+          : isRegionalDispatcher
+            ? status === "completed"
+              ? `أكملت جهة المنطقة الطلب.${completionNote ? ` ملاحظة الإكمال: ${completionNote}` : ""}`
+              : `أعادت جهة المنطقة جدولة الطلب.${coordinationNote ? ` الملاحظة: ${coordinationNote}` : ""}`
+            : status === "canceled"
+              ? `تم إلغاء الطلب من خدمة العملاء.${cancellationReason ? ` السبب: ${cancellationReason}` : ""}`
+              : customerAction === "reschedule_requested"
               ? `تم طلب إعادة جدولة من خدمة العملاء.${rescheduleReason ? ` السبب: ${rescheduleReason}` : ""}`
               : "تم تحديث بيانات الطلب من خدمة العملاء.",
       createdAt: new Date().toISOString(),
@@ -1986,6 +2090,14 @@ async function updateServiceOrder(request, id, env) {
       `تم تحديد موعد الطلب رقم ${requestNumber} بتاريخ ${scheduledDate || "-"} الساعة ${scheduledTime || "-"}.`,
       orderId
     );
+
+    await notifyRegionalDispatchersForOrder(
+      env,
+      { city },
+      "تم تسليم طلب جديد للمنطقة",
+      `قام مدير العمليات بتحديد موعد الطلب رقم ${requestNumber} لمنطقتك بتاريخ ${scheduledDate || "-"} الساعة ${scheduledTime || "-"}.`,
+      orderId
+    );
   }
 
   if (isOperationsManager && body.status !== undefined && status !== String(existing.status || "").trim()) {
@@ -1996,6 +2108,14 @@ async function updateServiceOrder(request, id, env) {
       `تم تحديث حالة الطلب رقم ${requestNumber} إلى ${mapOrderStatusLabel(status)}.`,
       orderId
     );
+
+    await notifyRegionalDispatchersForOrder(
+      env,
+      { city },
+      "تحديث على طلب المنطقة",
+      `قام مدير العمليات بتحديث الطلب رقم ${requestNumber} إلى ${mapOrderStatusLabel(status)} ضمن منطقتك.`,
+      orderId
+    );
   }
 
   if (isCustomerService && deliveryType !== "none") {
@@ -2004,6 +2124,26 @@ async function updateServiceOrder(request, id, env) {
       ["operations_manager"],
       "طلب توصيل بأولوية قصوى",
       `الطلب رقم ${requestNumber} مسجل كـ ${deliveryType === "express_24h" ? "توصيل سريع خلال 24 ساعة" : "طلب توصيل"} ويحتاج إلى متابعة عاجلة.`,
+      orderId
+    );
+  }
+
+  if (isRegionalDispatcher && (body.scheduledDate !== undefined || body.scheduledTime !== undefined)) {
+    await notifyUsersByRoles(
+      env,
+      ["operations_manager"],
+      "إعادة جدولة من حساب المنطقة",
+      `أعادت ${regionalProfile?.name || "جهة المنطقة"} جدولة الطلب رقم ${requestNumber}.${coordinationNote ? ` الملاحظة: ${coordinationNote}` : ""}`,
+      orderId
+    );
+  }
+
+  if (isRegionalDispatcher && status === "completed" && status !== String(existing.status || "").trim()) {
+    await notifyUsersByRoles(
+      env,
+      ["operations_manager", "customer_service"],
+      "تم إكمال الطلب من حساب المنطقة",
+      `أكملت ${regionalProfile?.name || "جهة المنطقة"} الطلب رقم ${requestNumber}.${completionNote ? ` الملاحظة: ${completionNote}` : ""}`,
       orderId
     );
   }
@@ -2054,9 +2194,9 @@ async function updateTechnicianAvailability(request, technicianId, env) {
 }
 
 async function getTechnicianOrders(request, env) {
-  const user = await requireRoles(request, env, ["technician"]);
+  const user = await requireRoles(request, env, ["technician", "regional_dispatcher"]);
   if (!user) {
-    return json({ message: "Technician access required" }, 403, request, env);
+    return json({ message: "Field access required" }, 403, request, env);
   }
 
   const technician = await env.DB.prepare(
@@ -2077,28 +2217,50 @@ async function getTechnicianOrders(request, env) {
     .first();
 
   if (!technician) {
-    return json({ message: "Technician profile not found" }, 404, request, env);
+    return json({ message: "Profile not found" }, 404, request, env);
   }
 
-  const { results } = await env.DB.prepare(
-    `SELECT
-      o.id, o.customer_name, o.phone, o.district, o.city, o.address, o.ac_type, o.service_category, o.standard_duration_minutes,
-      o.work_started_at, o.completion_note, o.delay_reason, o.delay_note, o.work_type, o.ac_count, o.status, o.scheduled_date,
-      o.scheduled_time, o.source, o.notes, o.approval_status, o.proof_status, o.approved_at, o.approved_by,
-      o.client_signature, o.zamil_closure_status, o.zamil_close_requested_at, o.zamil_otp_code, o.zamil_otp_submitted_at,
-      o.zamil_closed_at, o.suspension_reason, o.suspension_note, o.suspended_at, o.exception_status, o.audit_log_json,
-      o.copper_meters, o.base_included, o.extras_total, o.service_items_json, o.created_at, o.updated_at,
-      t.id AS technician_id, t.name AS technician_name
-     FROM service_orders o
-     LEFT JOIN technicians t ON t.id = o.technician_id
-     WHERE o.technician_id = ?
-     ORDER BY o.id DESC`
-  )
-    .bind(Number(technician.id))
-    .all();
+  const isRegionalDispatcher = normalizeServerRole(user.role) === "regional_dispatcher";
+  const statement = isRegionalDispatcher
+    ? env.DB.prepare(
+        `SELECT
+          o.id, o.customer_name, o.request_number, o.phone, o.secondary_phone, o.whatsapp_phone, o.district, o.city, o.address,
+          o.address_text, o.landmark, o.map_link, o.ac_type, o.service_category, o.standard_duration_minutes,
+          o.work_started_at, o.completion_note, o.delay_reason, o.delay_note, o.work_type, o.ac_count, o.status, o.priority,
+          o.delivery_type, o.preferred_date, o.preferred_time, o.scheduled_date, o.scheduled_time, o.coordination_note, o.source,
+          o.notes, o.customer_action, o.reschedule_reason, o.cancellation_reason, o.canceled_at, o.completed_at, o.approval_status,
+          o.proof_status, o.approved_at, o.approved_by, o.client_signature, o.zamil_closure_status, o.zamil_close_requested_at,
+          o.zamil_otp_code, o.zamil_otp_submitted_at, o.zamil_closed_at, o.suspension_reason, o.suspension_note, o.suspended_at,
+          o.exception_status, o.audit_log_json, o.copper_meters, o.base_included, o.extras_total, o.service_items_json,
+          o.created_at, o.updated_at, t.id AS technician_id, t.name AS technician_name, t.user_id AS technician_user_id
+         FROM service_orders o
+         LEFT JOIN technicians t ON t.id = o.technician_id
+         ORDER BY o.id DESC`
+      )
+    : env.DB.prepare(
+        `SELECT
+          o.id, o.customer_name, o.request_number, o.phone, o.secondary_phone, o.whatsapp_phone, o.district, o.city, o.address,
+          o.address_text, o.landmark, o.map_link, o.ac_type, o.service_category, o.standard_duration_minutes,
+          o.work_started_at, o.completion_note, o.delay_reason, o.delay_note, o.work_type, o.ac_count, o.status, o.priority,
+          o.delivery_type, o.preferred_date, o.preferred_time, o.scheduled_date, o.scheduled_time, o.coordination_note, o.source,
+          o.notes, o.customer_action, o.reschedule_reason, o.cancellation_reason, o.canceled_at, o.completed_at, o.approval_status,
+          o.proof_status, o.approved_at, o.approved_by, o.client_signature, o.zamil_closure_status, o.zamil_close_requested_at,
+          o.zamil_otp_code, o.zamil_otp_submitted_at, o.zamil_closed_at, o.suspension_reason, o.suspension_note, o.suspended_at,
+          o.exception_status, o.audit_log_json, o.copper_meters, o.base_included, o.extras_total, o.service_items_json,
+          o.created_at, o.updated_at, t.id AS technician_id, t.name AS technician_name, t.user_id AS technician_user_id
+         FROM service_orders o
+         LEFT JOIN technicians t ON t.id = o.technician_id
+         WHERE o.technician_id = ?
+         ORDER BY o.id DESC`
+      ).bind(Number(technician.id));
+
+  const { results } = await statement.all();
+  const scopedResults = isRegionalDispatcher
+    ? (results || []).filter((row) => getOrderRegionKey({ city: row.city }) === normalizeRegionKey(technician.zone))
+    : results || [];
 
   const areaClusters = await readInternalAreaClusters(env);
-  const orders = await Promise.all((results || []).map((row) => mapServiceOrderRow(env, row, areaClusters)));
+  const orders = await Promise.all(scopedResults.map((row) => mapServiceOrderRow(env, row, areaClusters)));
   const timeStandards = await readServiceTimeStandards(env);
 
   return json(
@@ -2697,14 +2859,16 @@ async function readTechnicians(env) {
 }
 
 function mapTechnician(row) {
+  const regionConfig = getOperationsRegionByKey(row.zone);
+
   return {
     id: String(row.id),
     userId: String(row.user_id),
     name: row.name,
     email: row.email || "",
     phone: row.phone,
-    region: row.zone,
-    zone: row.zone,
+    region: regionConfig ? regionConfig.ar : row.zone,
+    zone: regionConfig ? regionConfig.key : row.zone,
     status: row.status,
     notes: row.notes || "",
   };
@@ -3187,6 +3351,26 @@ async function notifyUsersByRoles(env, roles = [], title, body, relatedOrderId =
 
   for (const user of results || []) {
     await createNotification(env, user.id, title, body, "status_update", relatedOrderId);
+  }
+}
+
+async function notifyRegionalDispatchersForOrder(env, order = {}, title, body, relatedOrderId = null) {
+  const regionKey = getOrderRegionKey(order);
+  if (!regionKey) {
+    return;
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT u.id
+     FROM users u
+     JOIN technicians t ON t.user_id = u.id
+     WHERE u.role = 'regional_dispatcher' AND u.status = 'active' AND LOWER(TRIM(t.zone)) = ?`
+  )
+    .bind(regionKey)
+    .all();
+
+  for (const user of results || []) {
+    await createNotification(env, user.id, title, body, "assignment", relatedOrderId);
   }
 }
 

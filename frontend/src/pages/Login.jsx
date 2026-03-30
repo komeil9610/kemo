@@ -8,6 +8,7 @@ const roleRouteMap = {
   operations_manager: '/dashboard',
   customer_service: '/dashboard',
   technician: '/tasks/daily',
+  regional_dispatcher: '/tasks',
 };
 
 export default function Login({ appMode = 'operations' }) {
@@ -24,7 +25,7 @@ export default function Login({ appMode = 'operations' }) {
       eyebrow: 'Internal access',
       title: 'Sign in to the internal request room',
       subtitle:
-        'This version is restricted to customer service and the operations manager. No technician or public access is exposed here.',
+        'This version is restricted to customer service, the operations manager, and authorized regional accounts only.',
       email: 'Email address',
       password: 'Password',
       submit: 'Sign in',
@@ -45,7 +46,7 @@ export default function Login({ appMode = 'operations' }) {
       eyebrow: 'دخول داخلي',
       title: 'سجّل الدخول إلى غرفة الطلبات الداخلية',
       subtitle:
-        'هذه النسخة مخصصة فقط لخدمة العملاء ومدير العمليات. لا توجد هنا صلاحيات فنيين أو دخول عام.',
+        'هذه النسخة مخصصة فقط لخدمة العملاء ومدير العمليات وحسابات المناطق المعتمدة. لا يوجد هنا دخول عام.',
       email: 'البريد الإلكتروني',
       password: 'كلمة المرور',
       submit: 'دخول',

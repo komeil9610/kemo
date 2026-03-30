@@ -38,7 +38,7 @@ function AppChrome() {
           <Route path="/dashboard/:viewKey" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><Dashboard /></ProtectedRoute>} />
           <Route path="/register" element={<Navigate to="/login" replace />} />
           <Route path="/orders" element={<Navigate to="/tasks" replace />} />
-          <Route path="/tasks" element={<ProtectedRoute allowedRoles={['technician']}><Orders /></ProtectedRoute>} />
+          <Route path="/tasks" element={<ProtectedRoute allowedRoles={['technician', 'regional_dispatcher']}><Orders /></ProtectedRoute>} />
           <Route path="/tasks/daily" element={<ProtectedRoute allowedRoles={['technician']}><DailyTasks /></ProtectedRoute>} />
           <Route path="/mobile/admin" element={<MobileEntry mode="admin" />} />
           <Route path="/mobile/technician" element={<MobileEntry mode="technician" />} />
