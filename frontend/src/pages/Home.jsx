@@ -5,64 +5,138 @@ import { homeService, operationsService } from '../services/api';
 
 const copy = {
   en: {
-    heroKicker: 'Official workflow',
-    heroTitle: 'Build smarter installation operations.',
-    heroSubtitle: 'Manage technicians, jobs, and field execution across Saudi Arabia from one dashboard.',
+    heroKicker: 'Made for the handoff',
+    heroTitle: 'Built with care for customer service and the operations manager.',
+    heroSubtitle:
+      'This program exists to make their day lighter: fewer scattered updates, faster request intake, and one clear path from a new Zamil request to final completion.',
     primaryButton: 'Open dashboard',
-    secondaryButton: 'Open technician view',
-    note: 'SMS workflows and full automation are intentionally left for a later phase so the MVP stays fast and practical.',
-    summaryTitle: "Today's summary",
+    secondaryButton: 'Sign in',
+    note: 'When request volume grows, the system stays calm, readable, and easy to act on.',
+    summaryTitle: "Today's snapshot",
     stats: [
-      { label: 'Orders waiting for assignment' },
-      { label: 'Active jobs' },
-      { label: 'Completed orders' },
-      { label: 'Extras revenue' },
+      { label: 'Waiting for operations' },
+      { label: 'Active requests' },
+      { label: 'Completed requests' },
+      { label: 'In transit now' },
     ],
-    roadmapKicker: 'MVP roadmap',
-    roadmapTitle: 'How is the app structured?',
+    promiseKicker: 'Why it exists',
+    promiseTitle: 'A friendlier workflow for the two people carrying the operation every day',
+    promises: [
+      {
+        title: 'Built for trust',
+        text: 'Customer service and operations share one source of truth instead of chasing updates across calls and scattered notes.',
+      },
+      {
+        title: 'Built for heavy volume',
+        text: 'Large daily batches stay organized through clear statuses, visual grouping, and a board that highlights what needs action now.',
+      },
+      {
+        title: 'Built for speed',
+        text: 'The intake form stays simple, the next step is always obvious, and notifications return the important update instantly.',
+      },
+    ],
+    workflowKicker: 'Smooth flow',
+    workflowTitle: 'Everything is arranged to make huge order loads easier to manage',
     steps: [
       {
-        title: '1. Capture the order',
-        text: 'Log the customer name, location, and AC types from the admin dashboard in under a minute.',
+        title: '1. Fast intake from customer service',
+        text: 'Enter request number, customer mobile, AC details, map link, and notes in one quick action without extra screens.',
       },
       {
-        title: '2. Assign the technician',
-        text: 'Pick the right technician by region and availability so the task appears instantly in the technician view.',
+        title: '2. Clear movement for operations',
+        text: 'Move requests across pending, scheduled, in transit, and completed from one board designed for quick decisions.',
       },
       {
-        title: '3. Execute and document',
-        text: 'Update the status, calculate copper and base extras, then upload post-install photos to keep quality records.',
+        title: '3. Instant visibility back to customer service',
+        text: 'The moment the team is on the way or the work is done, customer service is updated without refreshing or manual follow-up.',
+      },
+    ],
+    featuresKicker: 'Operational value',
+    featuresTitle: 'Why this version works better for the new mission',
+    features: [
+      {
+        title: 'Role focus',
+        text: 'Only two roles are present, so every screen stays relevant and uncluttered.',
+      },
+      {
+        title: 'High-volume clarity',
+        text: 'The Kanban layout separates new, active, and archived requests for faster scanning.',
+      },
+      {
+        title: 'Direct communication',
+        text: 'The workflow is intentionally private between customer service and the operations manager.',
+      },
+      {
+        title: 'Status certainty',
+        text: 'Each request follows one controlled path, reducing confusion when many requests arrive together.',
       },
     ],
   },
   ar: {
-    heroKicker: 'الواجهة الرسمية',
-    heroTitle: 'إدارة عمليات التركيب بذكاء.',
-    heroSubtitle: 'إدارة الفنيين والطلبات والتنفيذ الميداني في السعودية من لوحة واحدة.',
-    primaryButton: 'فتح لوحة الإدارة',
-    secondaryButton: 'فتح صفحة الفني',
-    note: 'تم تأجيل الرسائل النصية والأتمتة الكاملة إلى مرحلة لاحقة حتى يبقى الإصدار الأول سريعًا وعمليًا.',
-    summaryTitle: 'ملخص اليوم',
+    heroKicker: 'مصمم من أجل رحلة الفريق',
+    heroTitle: 'هذا البرنامج صُمم بكل عناية لتسهيل رحلة خدمة العملاء ومدير العمليات.',
+    heroSubtitle:
+      'فكرته أن يخفف الضغط عنهما: إدخال أسرع للطلبات، متابعة أوضح للحالات، ومسار واحد مرتب من لحظة ورود طلب الزامل حتى اكتماله.',
+    primaryButton: 'فتح اللوحة',
+    secondaryButton: 'تسجيل الدخول',
+    note: 'حتى عندما تتضاعف الطلبات، يبقى النظام هادئاً وواضحاً وسهلاً في اتخاذ القرار.',
+    summaryTitle: 'ملخص سريع',
     stats: [
-      { label: 'طلبات بانتظار التعيين' },
-      { label: 'مهام نشطة' },
+      { label: 'بانتظار العمليات' },
+      { label: 'طلبات نشطة' },
       { label: 'طلبات مكتملة' },
-      { label: 'إيرادات الإضافات' },
+      { label: 'في الطريق الآن' },
     ],
-    roadmapKicker: 'خريطة MVP',
-    roadmapTitle: 'كيف تم تقسيم التطبيق؟',
+    promiseKicker: 'لماذا هذا النظام؟',
+    promiseTitle: 'تجربة أهدأ وأوضح للطرفين اللذين يحملان عبء التشغيل يومياً',
+    promises: [
+      {
+        title: 'مبني على الوضوح',
+        text: 'خدمة العملاء ومدير العمليات يشاهدان نفس الحقيقة من شاشة واحدة بدلاً من التشتت بين المكالمات والملاحظات المتفرقة.',
+      },
+      {
+        title: 'مبني للضغط العالي',
+        text: 'حتى مع تدفق الطلبات الكبير يومياً، تبقى الحالات منظمة واللوحة بصرية وما يحتاج تدخلاً يظهر بسرعة.',
+      },
+      {
+        title: 'مبني للسرعة',
+        text: 'نموذج الإدخال بسيط، والخطوة التالية واضحة دائماً، والتنبيه المهم يعود فوراً إلى خدمة العملاء.',
+      },
+    ],
+    workflowKicker: 'سلاسة التشغيل',
+    workflowTitle: 'كل شيء مرتب لتسهيل إدارة الطلبات الهائلة',
     steps: [
       {
-        title: '1. تسجيل الطلب',
-        text: 'سجّل اسم العميل والموقع وأنواع المكيفات من لوحة الإدارة في أقل من دقيقة.',
+        title: '1. إدخال سريع من خدمة العملاء',
+        text: 'رقم الطلب، جوال العميل، تفاصيل المكيفات، رابط الموقع، والملاحظات كلها من خطوة واحدة بلا تعقيد.',
       },
       {
-        title: '2. تعيين الفني',
-        text: 'اختر الفني المناسب حسب المنطقة والتوفر لتظهر المهمة فورًا في صفحة الفني.',
+        title: '2. تحريك واضح من مدير العمليات',
+        text: 'ينقل الطلب بين بانتظار العمليات، تمت الجدولة، في الطريق، ومكتمل من لوحة واحدة مصممة للقرار السريع.',
       },
       {
-        title: '3. التنفيذ والتوثيق',
-        text: 'حدّث الحالة، احسب الإضافات، وارفع صور ما بعد التركيب لحفظ السجل والجودة.',
+        title: '3. عودة فورية للمعلومة إلى خدمة العملاء',
+        text: 'عند تحرك الفريق أو انتهاء العمل تصل المعلومة مباشرة من غير تحديث يدوي أو متابعة مشتتة.',
+      },
+    ],
+    featuresKicker: 'قيمة تشغيلية',
+    featuresTitle: 'لماذا هذه النسخة أنسب لمهمة الموقع الجديدة',
+    features: [
+      {
+        title: 'تركيز كامل على الدورين',
+        text: 'وجود دورين فقط يجعل كل شاشة مرتبطة بالعمل الفعلي من دون عناصر زائدة.',
+      },
+      {
+        title: 'وضوح تحت الضغط',
+        text: 'تقسيم Kanban يفرز الطلبات الجديدة والنشطة والمكتملة لتسهيل القراءة عند ارتفاع العدد.',
+      },
+      {
+        title: 'تواصل مباشر',
+        text: 'سير العمل مقصود أن يكون خاصاً ومباشراً بين خدمة العملاء ومدير العمليات.',
+      },
+      {
+        title: 'يقين في الحالة',
+        text: 'كل طلب يسير في مسار واحد مضبوط، مما يقلل الارتباك عندما تتزاحم الطلبات.',
       },
     ],
   },
@@ -75,9 +149,14 @@ export default function Home() {
 
   useEffect(() => {
     const load = async () => {
-      const [homeResponse, dashboardResponse] = await Promise.all([homeService.get(), operationsService.getDashboard()]);
-      setHomeSettings(homeResponse.data?.homeSettings || null);
-      setSummary(dashboardResponse.data?.summary || null);
+      try {
+        const [homeResponse, summaryResponse] = await Promise.all([homeService.get(), operationsService.getSummary()]);
+        setHomeSettings(homeResponse.data?.homeSettings || null);
+        setSummary(summaryResponse.data?.summary || null);
+      } catch {
+        setHomeSettings(null);
+        setSummary(null);
+      }
     };
 
     load();
@@ -86,7 +165,7 @@ export default function Home() {
   }, []);
 
   const t = copy[lang] || copy.en;
-  const stats = lang === 'ar' ? t.stats : (homeSettings?.stats?.length ? homeSettings.stats : t.stats);
+  const stats = lang === 'ar' ? t.stats : homeSettings?.stats?.length ? homeSettings.stats : t.stats;
 
   return (
     <section className="home-page" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -96,10 +175,10 @@ export default function Home() {
           <h1>{lang === 'ar' ? t.heroTitle : homeSettings?.heroTitle || t.heroTitle}</h1>
           <p className="hero-text">{lang === 'ar' ? t.heroSubtitle : homeSettings?.heroSubtitle || t.heroSubtitle}</p>
           <div className="hero-actions">
-            <Link className="btn-primary" to={homeSettings?.primaryButtonUrl || '/dashboard'}>
+            <Link className="btn-primary" to="/dashboard">
               {lang === 'ar' ? t.primaryButton : homeSettings?.primaryButtonText || t.primaryButton}
             </Link>
-            <Link className="btn-light" to={homeSettings?.secondaryButtonUrl || '/tasks'}>
+            <Link className="btn-light" to="/login">
               {lang === 'ar' ? t.secondaryButton : homeSettings?.secondaryButtonText || t.secondaryButton}
             </Link>
           </div>
@@ -122,7 +201,7 @@ export default function Home() {
               <span>{t.stats[2].label}</span>
             </article>
             <article>
-              <strong>{summary?.extrasRevenue ?? 0} SAR</strong>
+              <strong>{summary?.inTransitOrders ?? 0}</strong>
               <span>{t.stats[3].label}</span>
             </article>
           </div>
@@ -140,14 +219,44 @@ export default function Home() {
 
       <div className="feature-section">
         <div className="section-heading">
-          <p className="eyebrow">{t.roadmapKicker}</p>
-          <h2>{t.roadmapTitle}</h2>
+          <p className="eyebrow">{t.promiseKicker}</p>
+          <h2>{t.promiseTitle}</h2>
+        </div>
+        <div className="home-value-grid">
+          {t.promises.map((item) => (
+            <article className="workflow-card home-value-card" key={item.title}>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="feature-section">
+        <div className="section-heading">
+          <p className="eyebrow">{t.workflowKicker}</p>
+          <h2>{t.workflowTitle}</h2>
         </div>
         <div className="workflow-grid">
           {t.steps.map((step) => (
             <article className="workflow-card" key={step.title}>
               <h3>{step.title}</h3>
               <p>{step.text}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="feature-section">
+        <div className="section-heading">
+          <p className="eyebrow">{t.featuresKicker}</p>
+          <h2>{t.featuresTitle}</h2>
+        </div>
+        <div className="home-feature-grid">
+          {t.features.map((item) => (
+            <article className="stat-card home-feature-card" key={item.title}>
+              <strong>{item.title}</strong>
+              <span>{item.text}</span>
             </article>
           ))}
         </div>

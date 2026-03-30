@@ -654,7 +654,7 @@ export default function DailyTasks() {
                   <p className="task-region">{getAreaClusterLabel(selectedOrder, lang)}</p>
                   <p className="task-region">{selectedOrder.region}</p>
                   <h2>
-                    #{formatOrderNumber(selectedOrder.id)} - {selectedOrder.customerName}
+                    {selectedOrder.customerName} - #{formatOrderNumber(selectedOrder.id)}
                   </h2>
                   <p>{formatSaudiPhoneDisplay(selectedOrder.phone)}</p>
                 </div>

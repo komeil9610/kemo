@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
+import OrderMasterDetail from '../components/OrderMasterDetail';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import {
@@ -128,6 +129,17 @@ const copy = {
     detailTitle: 'Focused task page',
     detailHint: 'A filtered page for the selected workload.',
     closeDetail: 'Back to full board',
+    compactList: {
+      search: 'Search orders',
+      searchPlaceholder: 'Search by order ID, customer, or city',
+      orderId: 'Order ID',
+      status: 'Status',
+      customer: 'Customer',
+      drawerTitle: 'Order details',
+      close: 'Close',
+      results: (shown, total) => `${shown} of ${total} orders`,
+      emptySearch: 'No orders match this search.',
+    },
     dailyTasks: 'Daily tasks',
     customerServicePanel: 'Customer service intake',
     operationsPanel: 'Operations coordination',
@@ -251,6 +263,17 @@ const copy = {
     detailTitle: 'صفحة مهام مركزة',
     detailHint: 'عرض مخصص للمهام التابعة للمربع الذي اخترته.',
     closeDetail: 'العودة إلى اللوحة الكاملة',
+    compactList: {
+      search: 'بحث الطلبات',
+      searchPlaceholder: 'ابحث برقم الطلب أو اسم العميل أو المدينة',
+      orderId: 'رقم الطلب',
+      status: 'الحالة',
+      customer: 'العميل',
+      drawerTitle: 'تفاصيل الطلب',
+      close: 'إغلاق',
+      results: (shown, total) => `${shown} من أصل ${total} طلب`,
+      emptySearch: 'لا توجد طلبات مطابقة لهذا البحث.',
+    },
     dailyTasks: 'المهام اليومية',
     customerServicePanel: 'إدخال خدمة العملاء',
     operationsPanel: 'تنسيق مدير العمليات',
@@ -834,32 +857,41 @@ export default function Dashboard() {
           </div>
 
           <div className="dashboard-detail-list">
-            {detailOrders.length ? (
-              detailOrders.map((order) => (
-                <TaskListCard
-                  key={`detail-${order.id}`}
-                  order={order}
-                  lang={lang}
-                  t={t}
-                  canManageStatuses={permissions.canManageStatuses}
-                  canCreateOrders={permissions.canCreateOrders}
-                  nextStatus={nextStatusFor(order.status)}
-                  onAdvanceStatus={onAdvanceStatus}
-                  onRequestReschedule={onRequestReschedule}
-                  onCancelOrder={onCancelOrder}
-                  onEditOrder={onEditOrder}
-                  onOpenSchedule={openScheduleEditor}
-                  scheduleDraft={scheduleDrafts[order.id]}
-                  updateScheduleDraft={updateScheduleDraft}
-                  onSaveSchedule={onSaveSchedule}
-                  expandedScheduleId={expandedScheduleId}
-                  updatingId={updatingId}
-                  schedulingId={schedulingId}
-                />
-              ))
-            ) : (
-              <p className="muted">{t.emptyDetail}</p>
-            )}
+            <OrderMasterDetail
+              emptySearchText={t.compactList.emptySearch}
+              emptyText={t.emptyDetail}
+              getCustomerName={(order) => order.customerName || '—'}
+              getOrderReference={(order) => order.requestNumber || order.id || '—'}
+              getStatusLabel={(order) => statusLabels[order.status]?.[lang] || t.labels[order.status] || order.status}
+              isRTL={isRTL}
+              labels={t.compactList}
+              orders={detailOrders}
+              renderOrderDetails={(order) => (
+                <div className="drawer-task-content">
+                  <TaskCardBody
+                    order={order}
+                    lang={lang}
+                    t={t}
+                    canManageStatuses={permissions.canManageStatuses}
+                    canCreateOrders={permissions.canCreateOrders}
+                    nextStatus={nextStatusFor(order.status)}
+                    onAdvanceStatus={onAdvanceStatus}
+                    onRequestReschedule={onRequestReschedule}
+                    onCancelOrder={onCancelOrder}
+                    onEditOrder={onEditOrder}
+                    onOpenSchedule={openScheduleEditor}
+                    scheduleDraft={scheduleDrafts[order.id]}
+                    updateScheduleDraft={updateScheduleDraft}
+                    onSaveSchedule={onSaveSchedule}
+                    expandedScheduleId={expandedScheduleId}
+                    updatingId={updatingId}
+                    schedulingId={schedulingId}
+                  />
+                </div>
+              )}
+              renderResultsSummary={t.compactList.results}
+              searchPlaceholder={t.compactList.searchPlaceholder}
+            />
           </div>
         </section>
       ) : null}
@@ -1417,14 +1449,6 @@ function OperationsRegionKanban({
         ))}
       </div>
     </div>
-  );
-}
-
-function TaskListCard(props) {
-  return (
-    <article className={`task-list-card ${props.order.status || ''}`}>
-      <TaskCardBody {...props} />
-    </article>
   );
 }
 

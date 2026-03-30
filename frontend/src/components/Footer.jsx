@@ -1,78 +1,48 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FaInstagram, FaLinkedinIn, FaTiktok, FaWhatsapp, FaXTwitter, FaYoutube } from 'react-icons/fa6';
-import { useAuth } from '../context/AuthContext';
+import { FaLinkedinIn, FaWhatsapp, FaXTwitter } from 'react-icons/fa6';
 import { useLang } from '../context/LangContext';
 import { footerService } from '../services/api';
 
 const socialIcons = {
-  instagram: FaInstagram,
   linkedin: FaLinkedinIn,
   whatsapp: FaWhatsapp,
   x: FaXTwitter,
   twitter: FaXTwitter,
-  tiktok: FaTiktok,
-  youtube: FaYoutube,
 };
 
 const isInternalLink = (url = '') => url.startsWith('/');
+
 const linkLabelMap = {
   Home: 'الرئيسية',
-  'Admin Dashboard': 'لوحة الإدارة',
-  'Technician Tasks': 'صفحة الفني',
-  Summary: 'الملخص',
-  Tasks: 'المهام',
-  Pricing: 'التسعير',
-  Checklist: 'المراجعة',
+  Login: 'تسجيل الدخول',
+  'Internal Dashboard': 'اللوحة الداخلية',
   Support: 'الدعم',
   'Call us': 'اتصل بنا',
-  'Call support': 'اتصل بالدعم',
-  Dispatch: 'الإسناد',
   WhatsApp: 'واتساب',
 };
 
-const defaultFooter = {
-  aboutText: 'Tarkeeb Pro keeps orders and field operations organized from one clear screen.',
+const fallbackFooter = {
+  aboutText: 'مساحة داخلية مبسطة لإدارة الطلبات بين خدمة العملاء ومدير العمليات فقط.',
   usefulLinks: [
     { label: 'Home', url: '/' },
-    { label: 'Admin Dashboard', url: '/dashboard' },
-    { label: 'Technician Tasks', url: '/tasks' },
+    { label: 'Internal Dashboard', url: '/dashboard' },
+    { label: 'Login', url: '/login' },
   ],
   customerServiceLinks: [
-    { label: 'Support', url: 'mailto:ops@tarkeebpro.sa' },
-    { label: 'WhatsApp', url: 'https://wa.me/966500000000' },
-    { label: 'Call us', url: 'tel:+966500000000' },
+    { label: 'Support', url: 'tel:+966558232644' },
+    { label: 'WhatsApp', url: 'https://wa.me/966558232644' },
+    { label: 'Call us', url: 'tel:+966558232644' },
   ],
   socialLinks: [
-    { platform: 'instagram', url: 'https://instagram.com/tarkeebpro' },
+    { platform: 'whatsapp', url: 'https://wa.me/966558232644' },
     { platform: 'x', url: 'https://x.com/tarkeebpro' },
     { platform: 'linkedin', url: 'https://linkedin.com/company/tarkeebpro' },
   ],
-  copyrightText: 'Tarkeeb Pro',
-};
-
-const technicianFooter = {
-  aboutText: 'The technician workspace is focused on today’s jobs, alerts, service pricing, and proof of work.',
-  usefulLinks: [
-    { label: 'Summary', url: '/tasks#technician-summary' },
-    { label: 'Tasks', url: '/tasks#technician-tasks' },
-    { label: 'Pricing', url: '/tasks#technician-pricing' },
-    { label: 'Checklist', url: '/tasks#technician-checklist' },
-  ],
-  customerServiceLinks: [
-    { label: 'Dispatch', url: 'mailto:ops@tarkeebpro.sa' },
-    { label: 'WhatsApp', url: 'https://wa.me/966500000000' },
-    { label: 'Call support', url: 'tel:+966500000000' },
-  ],
-  socialLinks: [
-    { platform: 'whatsapp', url: 'https://wa.me/966500000000' },
-    { platform: 'x', url: 'https://x.com/tarkeebpro' },
-  ],
-  copyrightText: 'Technician workspace - Tarkeeb Pro',
+  copyrightText: 'Tarkeeb Pro Internal',
 };
 
 export default function Footer() {
-  const { user } = useAuth();
   const { lang } = useLang();
   const [footer, setFooter] = useState(null);
 
@@ -93,43 +63,32 @@ export default function Footer() {
     };
 
     loadFooter();
-    window.addEventListener('footer-settings-updated', loadFooter);
     return () => {
       mounted = false;
-      window.removeEventListener('footer-settings-updated', loadFooter);
     };
   }, []);
 
-  const isTechnician = user?.role === 'technician';
-  const footerConfig = isTechnician
-    ? { ...(footer || {}), ...technicianFooter }
-    : { ...defaultFooter, ...(footer || {}) };
-
-  const usefulLinks = footerConfig.usefulLinks?.length ? footerConfig.usefulLinks : defaultFooter.usefulLinks;
+  const footerConfig = { ...fallbackFooter, ...(footer || {}) };
+  const usefulLinks = footerConfig.usefulLinks?.length ? footerConfig.usefulLinks : fallbackFooter.usefulLinks;
   const customerServiceLinks = footerConfig.customerServiceLinks?.length
     ? footerConfig.customerServiceLinks
-    : defaultFooter.customerServiceLinks;
-  const socialLinks = footerConfig.socialLinks?.length ? footerConfig.socialLinks : defaultFooter.socialLinks;
+    : fallbackFooter.customerServiceLinks;
+  const socialLinks = footerConfig.socialLinks?.length ? footerConfig.socialLinks : fallbackFooter.socialLinks;
 
   return (
     <footer className="site-footer">
       <div className="site-footer-inner">
         <div className="footer-brand-card">
-          <span className="footer-eyebrow">{isTechnician ? (lang === 'ar' ? 'مساحة الفني' : 'Technician space') : 'Tarkeeb Pro'}</span>
+          <span className="footer-eyebrow">{lang === 'ar' ? 'تشغيل داخلي' : 'Internal operations'}</span>
           <h3>
-            {isTechnician
-              ? lang === 'ar'
-                ? 'كل ما يحتاجه الفني في شاشة واحدة.'
-                : 'Everything a technician needs in one focused workspace.'
-              : lang === 'ar'
-                ? 'تشغيل أسرع، متابعة أوضح، وتسليم أنظف.'
-                : 'Faster operations, clearer tracking, cleaner handoffs.'}
+            {lang === 'ar'
+              ? 'إنشاء الطلب من خدمة العملاء وتحديثه حصراً من مدير العمليات.'
+              : 'Requests are created by customer service and updated only by the operations manager.'}
           </h3>
           <p>{footerConfig.aboutText}</p>
           <div className="footer-socials">
             {socialLinks.map((item, index) => {
-              const key = String(item.platform || '').toLowerCase();
-              const Icon = socialIcons[key] || FaLinkedinIn;
+              const Icon = socialIcons[String(item.platform || '').toLowerCase()] || FaLinkedinIn;
               return (
                 <a
                   key={`${item.platform}-${index}`}
@@ -148,12 +107,12 @@ export default function Footer() {
 
         <div className="footer-links-grid">
           <FooterColumn title={lang === 'ar' ? 'روابط مهمة' : 'Useful links'} links={usefulLinks} />
-          <FooterColumn title={lang === 'ar' ? 'خدمة العملاء' : 'Customer care'} links={customerServiceLinks} />
+          <FooterColumn title={lang === 'ar' ? 'التواصل' : 'Contact'} links={customerServiceLinks} />
         </div>
       </div>
 
       <div className="footer-bottom">
-        <span>{footerConfig.copyrightText || defaultFooter.copyrightText}</span>
+        <span>{footerConfig.copyrightText || fallbackFooter.copyrightText}</span>
       </div>
     </footer>
   );
@@ -161,11 +120,12 @@ export default function Footer() {
 
 function FooterColumn({ title, links }) {
   const { lang } = useLang();
+
   return (
     <div className="footer-column">
       <h4>{title}</h4>
       <div className="footer-column-links">
-        {links.map((item, index) => (
+        {links.map((item, index) =>
           isInternalLink(item.url) ? (
             <Link key={`${item.label}-${index}`} to={item.url}>
               {lang === 'ar' ? linkLabelMap[item.label] || item.label : item.label}
@@ -175,7 +135,7 @@ function FooterColumn({ title, links }) {
               {lang === 'ar' ? linkLabelMap[item.label] || item.label : item.label}
             </a>
           )
-        ))}
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, NavLink } from 'react-router-dom';
+import OrderMasterDetail from '../components/OrderMasterDetail';
 import { useLang } from '../context/LangContext';
 import { buildWhatsAppUrl, formatSaudiPhoneDisplay, operationsService } from '../services/api';
 import { buildCallUrl, exportOrdersCsv, formatDateTimeLabel, getOperationalDate, getOrderTaskDate, statusLabels } from '../utils/internalOrders';
@@ -182,6 +183,17 @@ const copy = {
       inTransit: 'In transit',
       completed: 'Completed',
     },
+    compactList: {
+      search: 'Search orders',
+      searchPlaceholder: 'Search by order ID, customer, or city',
+      orderId: 'Order ID',
+      status: 'Status',
+      customer: 'Customer',
+      drawerTitle: 'Order details',
+      close: 'Close',
+      results: (shown, total) => `${shown} of ${total} orders`,
+      emptySearch: 'No orders match this search.',
+    },
     empty: 'No tasks match this view yet.',
     requestNumber: 'Request number',
     preferred: 'Preferred slot',
@@ -246,6 +258,17 @@ const copy = {
       scheduled: 'تمت الجدولة',
       inTransit: 'في الطريق',
       completed: 'مكتملة',
+    },
+    compactList: {
+      search: 'بحث الطلبات',
+      searchPlaceholder: 'ابحث برقم الطلب أو اسم العميل أو المدينة',
+      orderId: 'رقم الطلب',
+      status: 'الحالة',
+      customer: 'العميل',
+      drawerTitle: 'تفاصيل الطلب',
+      close: 'إغلاق',
+      results: (shown, total) => `${shown} من أصل ${total} طلب`,
+      emptySearch: 'لا توجد طلبات مطابقة لهذا البحث.',
     },
     empty: 'لا توجد مهام مطابقة لهذه الفترة حالياً.',
     requestNumber: 'رقم الطلب',
@@ -492,68 +515,70 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       </section>
 
       <section className="panel print-panel">
-        <div className="daily-task-list">
-          {filteredOrders.length ? (
-            filteredOrders.map((order) => (
-              <article className={`daily-task-card ${order.status || ''}`} key={order.id}>
-                <div className="kanban-card-head">
-                  <div className="task-card-topline">
-                    <strong>{order.requestNumber}</strong>
-                    <span>{order.customerName}</span>
-                  </div>
-                  <span className={`status-badge ${order.status || ''}`}>{statusLabels[order.status]?.[lang] || order.status}</span>
-                </div>
-
-                <div className="task-timing-grid">
-                  <div className="task-mini-panel">
-                    <span>{t.preferred}</span>
-                    <strong>{formatDateTimeLabel(order.preferredDate, order.preferredTime, lang)}</strong>
-                  </div>
-                  <div className="task-mini-panel">
-                    <span>{t.scheduled}</span>
-                    <strong>{formatDateTimeLabel(order.scheduledDate, order.scheduledTime, lang)}</strong>
-                  </div>
-                </div>
-
-                <div className="task-rich-meta">
-                  <p>{`${getOrderRegionLabel(order, lang)}${order.city ? ` - ${order.city}` : ''}${order.district ? ` - ${order.district}` : ''}`}</p>
-                  <p>{order.addressText || order.address || '—'}</p>
-                  <p>{order.serviceSummary || order.workType || '—'}</p>
-                </div>
-
-                <div className="task-contact-actions print-hidden">
-                  <a className="btn-light" href={buildCallUrl(order.phone)}>
-                    {t.call}: {formatSaudiPhoneDisplay(order.phone)}
-                  </a>
-                  <a
-                    className="btn-light"
-                    href={buildWhatsAppUrl(order.whatsappPhone || order.phone, `${t.requestNumber}: ${order.requestNumber}`)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {t.whatsapp}
-                  </a>
-                  {order.mapLink ? (
-                    <a className="btn-light" href={order.mapLink} target="_blank" rel="noreferrer">
-                      {t.map}
-                    </a>
-                  ) : null}
-                </div>
-
-                {order.notes ? (
-                  <div className="task-mini-panel">
-                    <span>{t.notes}</span>
-                    <strong>{order.notes}</strong>
-                  </div>
-                ) : null}
-              </article>
-            ))
-          ) : (
-            <p className="muted">{t.empty}</p>
-          )}
-        </div>
+        <OrderMasterDetail
+          emptySearchText={t.compactList.emptySearch}
+          emptyText={t.empty}
+          getCustomerName={(order) => order.customerName || '—'}
+          getOrderReference={(order) => order.requestNumber || order.id || '—'}
+          getStatusLabel={(order) => statusLabels[order.status]?.[lang] || order.status}
+          isRTL={isRTL}
+          labels={t.compactList}
+          orders={filteredOrders}
+          renderOrderDetails={(order) => <DailyTaskDetailContent lang={lang} order={order} t={t} />}
+          renderResultsSummary={t.compactList.results}
+          searchPlaceholder={t.compactList.searchPlaceholder}
+        />
       </section>
     </section>
+  );
+}
+
+function DailyTaskDetailContent({ order, lang, t }) {
+  return (
+    <div className="daily-task-card drawer-task-content">
+      <div className="task-timing-grid">
+        <div className="task-mini-panel">
+          <span>{t.preferred}</span>
+          <strong>{formatDateTimeLabel(order.preferredDate, order.preferredTime, lang)}</strong>
+        </div>
+        <div className="task-mini-panel">
+          <span>{t.scheduled}</span>
+          <strong>{formatDateTimeLabel(order.scheduledDate, order.scheduledTime, lang)}</strong>
+        </div>
+      </div>
+
+      <div className="task-rich-meta">
+        <p>{`${getOrderRegionLabel(order, lang)}${order.city ? ` - ${order.city}` : ''}${order.district ? ` - ${order.district}` : ''}`}</p>
+        <p>{order.addressText || order.address || '—'}</p>
+        <p>{order.serviceSummary || order.workType || '—'}</p>
+      </div>
+
+      <div className="task-contact-actions">
+        <a className="btn-light" href={buildCallUrl(order.phone)}>
+          {t.call}: {formatSaudiPhoneDisplay(order.phone)}
+        </a>
+        <a
+          className="btn-light"
+          href={buildWhatsAppUrl(order.whatsappPhone || order.phone, `${t.requestNumber}: ${order.requestNumber}`)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t.whatsapp}
+        </a>
+        {order.mapLink ? (
+          <a className="btn-light" href={order.mapLink} target="_blank" rel="noreferrer">
+            {t.map}
+          </a>
+        ) : null}
+      </div>
+
+      {order.notes ? (
+        <div className="task-mini-panel">
+          <span>{t.notes}</span>
+          <strong>{order.notes}</strong>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
