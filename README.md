@@ -1,178 +1,113 @@
-# تطبيق شركة تركيب برو - إدارة الطلبات والفنيين
-## Tarkeeb Pro - Installation Orders and Technician Management
+# تركيب برو الداخلي
+## Tarkeeb Pro Internal Workflow
 
-منصة موثوقة وآمنة لإدارة طلبات تركيب المكيفات والفنيين والخدمات الميدانية في السعودية.
+هذا المشروع لم يعد منصة عامة لإدارة منتجات أو فنيين متعددين، بل أصبح نظاماً داخلياً مخصصاً لتسهيل رحلة:
 
----
+- خدمة العملاء
+- مدير العمليات
 
-## 🎯 المميزات الرئيسية | Key Features
-
-- ✅ **نظام المستخدمين** - تسجيل وتحقق آمن
-- ✅ **إدارة الطلبات** - تنظيم وتعيين ومتابعة التنفيذ
-- ✅ **نظام التسعير** - حساب النحاس والقواعد الإضافية
-- ✅ **إدارة الفنيين** - إنشاء حسابات الفنيين وتحديد المناطق
-- ✅ **لوحة التحكم** - لإدارة المشروع
-- ✅ **تطبيق موبايل** - متوفر على iOS و Android
+فكرة النظام بسيطة وواضحة:
+خدمة العملاء تنشئ الطلب، ثم ينتقل الطلب حصراً إلى مدير العمليات ليقوم بجدولته وتحريك حالته حتى الإغلاق. الهدف من ذلك هو جعل إدارة الطلبات الهائلة أكثر سلاسة، وأقل تشتتاً، وأسهل في المتابعة اليومية.
 
 ---
 
-## 📁 بنية المشروع | Project Structure
+## ما الذي يقدمه النظام؟
 
-```
-tarkeeb-pro/
-├── backend/              # Legacy Node.js + Express API Server
-├── edge-api/             # Cloudflare Worker API + D1
-├── frontend/             # React app + Workers Static Assets frontend worker
-├── mobile/               # React Native Mobile App
-├── database/             # Legacy database notes
-├── docs/                 # Project Documentation
-└── .github/              # GitHub & Config Files
+- نموذج سريع لإدخال طلبات الزامل
+- تفاصيل مكيفات متعددة داخل نفس الطلب
+- لوحة `Kanban` بصرية لفرز الطلبات
+- أربع حالات تشغيل واضحة:
+  - `pending`
+  - `scheduled`
+  - `in_transit`
+  - `completed`
+- إشعارات مباشرة تعود إلى خدمة العملاء عند:
+  - انتقال الطلب إلى `in_transit`
+  - انتقال الطلب إلى `completed`
+
+---
+
+## الأدوار
+
+### خدمة العملاء
+
+- إنشاء الطلب
+- متابعة حالة الطلب
+- استقبال الإشعارات
+- لا تستطيع تعديل حالة الطلب بعد الإرسال
+
+### مدير العمليات
+
+- مشاهدة جميع الطلبات
+- تحديث حالة الطلب
+- إدارة تدفق الطلبات الكبير من لوحة واحدة
+
+---
+
+## بنية المشروع
+
+```text
+rentit/
+├── edge-api/      # Cloudflare Worker API + D1
+├── frontend/      # React frontend for the internal workflow
+├── backend/       # Legacy backend files kept in repo
+├── mobile/        # Legacy mobile files kept in repo
+├── docs/          # Existing documentation set
+└── apk/           # Legacy Android packaging files
 ```
 
 ---
 
-## 🚀 البدء | Getting Started
+## التشغيل المحلي
 
-### المتطلبات | Requirements
-- Node.js v16+ 
-- npm أو yarn
-- Cloudflare account + Wrangler
-- Git
+### الواجهة
 
-### الإعداد | Setup
-
-#### 1. استنساخ المشروع | Clone the repository
-```bash
-git clone <repository-url>
-cd tarkeeb-pro
-```
-
-#### 2. تثبيت البيئة | Install dependencies
-
-**Edge API:**
-```bash
-cd edge-api
-npm install
-```
-
-**Frontend:**
-```bash
-cd ../frontend
-npm install
-```
-
-**Legacy Backend:**
-```bash
-cd backend
-npm install
-```
-
-**Mobile:**
-```bash
-cd mobile
-npm install
-```
-
-#### 3. إعداد متغيرات البيئة | Configure environment variables
-```bash
-# في كل مجلد انسخ .env.example إلى .env
-cp .env.example .env
-```
-
-#### 4. إعداد Cloudflare | Cloudflare setup
-
-**D1 Database**
-```bash
-cd edge-api
-npx wrangler d1 create tarkeeb_pro_db
-npm run db:migrate:remote
-```
-
-**JWT Secret**
-```bash
-cd edge-api
-npx wrangler secret put JWT_SECRET
-```
-
-**أول حساب أدمن**
-```bash
-cd edge-api
-npm run admin:sql -- "Tarkeeb Pro Admin" "admin@tarkeebpro.sa" "your-strong-password"
-# ثم نفّذ SQL الناتج على D1 عبر wrangler d1 execute
-```
-
-#### 5. تشغيل المشروع | Run the project
-
-**Edge API Worker**
-```bash
-cd edge-api
-npm run dev
-```
-
-**Frontend Worker + Static Assets**
 ```bash
 cd frontend
-npm run cf:dev
-```
-
-**Mobile (iOS/Android Emulator):**
-```bash
-cd mobile
+npm install
 npm start
 ```
 
----
+### بناء الواجهة
 
-## 📚 التوثيق | Documentation
+```bash
+cd frontend
+npm run build
+```
 
-- [Backend API Documentation](./docs/API.md)
-- [Database Schema](./docs/DATABASE.md)
-- [Architecture Overview](./docs/ARCHITECTURE.md)
-- [Development Guide](./docs/DEVELOPMENT.md)
-- [Deployment Guide](./docs/DEPLOYMENT.md)
+### فحص الخادم
 
----
-
-## ☁️ البنية الحالية | Current Cloudflare Architecture
-
-- `Workers Static Assets`: الواجهة الأمامية React مع Worker يقدّم الملفات الثابتة ويتعامل مع SPA fallback
-- `Service Bindings`: الواجهة تستدعي `EDGE_API` مباشرة عند توفر الربط
-- `D1 Database`: تخزين المستخدمين، المنتجات، والحجوزات/الطلبات
-- `Auth`: تسجيل جديد وتسجيل دخول عبر JWT داخل Worker
-- `Orders`: صفحة طلبات مستقلة للعملاء عبر `/orders`
-
-## 📊 الصلاحيات | Roles
-
-**Admin**
-
-- إضافة وتعديل وحذف الفنيين
-- إدارة المستخدمين والطلبات
-- متابعة الطلبات وتحديث حالتها
-- لوحة تحكم كاملة
-
-**Technician**
-
-- تسجيل الدخول بحساب مخصص
-- عرض المهام المخصصة حسب المنطقة
-- تحديث حالة المهمة
-- رفع صور التوثيق بعد التنفيذ
+```bash
+node --check edge-api/src/index.js
+```
 
 ---
 
-## 👥 المساهمة | Contributing
+## حسابات التشغيل
 
-نرحب بمساهماتك! يرجى اتباع خطوات المساهمة في [CONTRIBUTING.md](./docs/CONTRIBUTING.md)
+لا توجد بيانات دخول تجريبية ثابتة داخل المستودع. أنشئ حسابات التشغيل الفعلية عبر أداة SQL ثم نفّذ الناتج على `Cloudflare D1`.
+
+```bash
+cd edge-api
+npm run admin:sql -- "مسؤول تركيب برو" "admin@tarkeebpro.sa" "your-strong-password" admin
+npm run admin:sql -- "خدمة العملاء" "customer-service@tarkeebpro.sa" "your-strong-password" customer_service
+npm run admin:sql -- "مدير العمليات" "operations@tarkeebpro.sa" "your-strong-password" operations_manager
+```
 
 ---
 
-## 📄 الترخيص | License
+## قاعدة البيانات والنشر
 
-هذا المشروع مرخص تحت MIT License
+إذا كنت تستخدم `Cloudflare D1` فعليك تطبيق المايجريشن الخاصة بالأدوار الداخلية الجديدة:
+
+```bash
+edge-api/migrations/0013_internal_ticket_roles.sql
+```
+
+هذه المايجريشن تضيف أو تحدّث حسابي خدمة العملاء ومدير العمليات ليتوافقا مع النظام الجديد.
 
 ---
 
-## 📞 التواصل | Contact
+## ملاحظة مهمة
 
-للأسئلة والدعم، يرجى فتح issue على GitHub.
-
-**تم الإنشاء بـ ❤️ في المنطقة الشرقية**
+ما زالت بعض المجلدات القديمة موجودة داخل المستودع لأغراض الرجوع أو التوافق، لكن الواجهة الفعلية الحالية والرحلة الأساسية للموقع أصبحت متمحورة حول إدارة الطلبات الداخلية بين خدمة العملاء ومدير العمليات فقط.

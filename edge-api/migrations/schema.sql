@@ -175,10 +175,16 @@ ON CONFLICT(city, district) DO UPDATE SET
 CREATE TABLE IF NOT EXISTS service_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_name TEXT NOT NULL,
+  request_number TEXT NOT NULL DEFAULT '',
   phone TEXT NOT NULL,
+  secondary_phone TEXT NOT NULL DEFAULT '',
+  whatsapp_phone TEXT NOT NULL DEFAULT '',
   district TEXT NOT NULL DEFAULT '',
   city TEXT NOT NULL DEFAULT '',
   address TEXT NOT NULL,
+  address_text TEXT NOT NULL DEFAULT '',
+  landmark TEXT NOT NULL DEFAULT '',
+  map_link TEXT NOT NULL DEFAULT '',
   ac_type TEXT NOT NULL,
   service_category TEXT NOT NULL DEFAULT 'split_installation',
   standard_duration_minutes INTEGER NOT NULL DEFAULT 120,
@@ -189,10 +195,20 @@ CREATE TABLE IF NOT EXISTS service_orders (
   work_type TEXT NOT NULL DEFAULT '',
   ac_count INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'pending',
+  priority TEXT NOT NULL DEFAULT 'normal',
+  delivery_type TEXT NOT NULL DEFAULT 'none',
+  preferred_date TEXT NOT NULL DEFAULT '',
+  preferred_time TEXT NOT NULL DEFAULT '',
   scheduled_date TEXT NOT NULL,
   scheduled_time TEXT NOT NULL DEFAULT '',
+  coordination_note TEXT NOT NULL DEFAULT '',
   source TEXT NOT NULL DEFAULT 'manual',
   notes TEXT NOT NULL DEFAULT '',
+  customer_action TEXT NOT NULL DEFAULT 'none',
+  reschedule_reason TEXT NOT NULL DEFAULT '',
+  cancellation_reason TEXT NOT NULL DEFAULT '',
+  canceled_at TEXT,
+  completed_at TEXT,
   approval_status TEXT NOT NULL DEFAULT 'pending',
   proof_status TEXT NOT NULL DEFAULT 'pending_review',
   approved_at TEXT,
@@ -265,7 +281,7 @@ ON CONFLICT(email) DO UPDATE SET
   status = excluded.status;
 
 INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'فهد القحطاني', '+966500001111', 'شرق الرياض', 'available', 'فني تجريبي لتغطية شرق الرياض.'
+SELECT id, 'فهد القحطاني', '+966500001111', 'شرق الرياض', 'available', 'تغطية ميدانية لمنطقة شرق الرياض.'
 FROM users
 WHERE email = 'fahad@tarkeebpro.sa'
 ON CONFLICT(user_id) DO UPDATE SET
@@ -276,7 +292,7 @@ ON CONFLICT(user_id) DO UPDATE SET
   notes = excluded.notes;
 
 INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'سلمان الدوسري', '+966500002222', 'شمال الرياض', 'busy', 'فني تجريبي لتغطية شمال الرياض.'
+SELECT id, 'سلمان الدوسري', '+966500002222', 'شمال الرياض', 'busy', 'تغطية ميدانية لمنطقة شمال الرياض.'
 FROM users
 WHERE email = 'salman@tarkeebpro.sa'
 ON CONFLICT(user_id) DO UPDATE SET
@@ -296,74 +312,6 @@ ON CONFLICT(user_id) DO UPDATE SET
   zone = excluded.zone,
   status = excluded.status,
   notes = excluded.notes;
-
-INSERT INTO service_orders (
-  customer_name,
-  phone,
-  address,
-  ac_type,
-  status,
-  scheduled_date,
-  notes,
-  technician_id,
-  copper_meters,
-  base_included,
-  extras_total,
-  service_items_json,
-  created_by_user_id
-)
-SELECT
-  'أبو خالد',
-  '+966555000111',
-  'حي الياسمين - الرياض',
-  'سبليت 24 ألف وحدة',
-  'pending',
-  '2026-03-29',
-  'الدور الثاني - يوجد مصعد',
-  t.id,
-  2,
-  1,
-  350,
-  '[]',
-  u.id
-FROM users u
-JOIN technicians t ON t.user_id = (SELECT id FROM users WHERE email = 'fahad@tarkeebpro.sa')
-WHERE u.email = 'admin@tarkeebpro.sa'
-  AND NOT EXISTS (SELECT 1 FROM service_orders WHERE customer_name = 'أبو خالد' AND phone = '+966555000111');
-
-INSERT INTO service_orders (
-  customer_name,
-  phone,
-  address,
-  ac_type,
-  status,
-  scheduled_date,
-  notes,
-  technician_id,
-  copper_meters,
-  base_included,
-  extras_total,
-  service_items_json,
-  created_by_user_id
-)
-SELECT
-  'أم ناصر',
-  '+966555000222',
-  'حي النرجس - الرياض',
-  'شباك 18 ألف وحدة',
-  'in_progress',
-  '2026-03-28',
-  'الموقع يحتاج تواصل قبل الوصول بـ 30 دقيقة',
-  t.id,
-  4,
-  0,
-  340,
-  '[]',
-  u.id
-FROM users u
-JOIN technicians t ON t.user_id = (SELECT id FROM users WHERE email = 'salman@tarkeebpro.sa')
-WHERE u.email = 'admin@tarkeebpro.sa'
-  AND NOT EXISTS (SELECT 1 FROM service_orders WHERE customer_name = 'أم ناصر' AND phone = '+966555000222');
 
 -- Push Notification Subscriptions
 CREATE TABLE IF NOT EXISTS push_subscriptions (

@@ -471,8 +471,44 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.home-value-grid,
+.home-feature-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.home-value-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.home-feature-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .workflow-card {
   padding: 22px;
+}
+
+.home-value-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 246, 239, 0.92)),
+    var(--panel);
+}
+
+.home-feature-card {
+  display: grid;
+  gap: 12px;
+  min-height: 180px;
+}
+
+.home-feature-card strong {
+  font-size: 1.2rem;
+  color: var(--brand-dark);
+}
+
+.home-feature-card span {
+  color: var(--muted);
+  line-height: 1.7;
 }
 
 .dashboard-grid {
@@ -574,6 +610,7 @@ h1 {
   color: var(--brand-dark);
 }
 
+.status-badge.scheduled,
 .status-badge.en_route,
 .status-badge.in_progress,
 .status-badge.busy {
@@ -581,10 +618,15 @@ h1 {
   color: var(--accent);
 }
 
+.status-badge.in_transit {
+  background: rgba(29, 78, 216, 0.12);
+  color: #1d4ed8;
+}
+
 .status-badge.completed,
 .status-badge.available {
-  background: rgba(41, 121, 255, 0.12);
-  color: #1d4ed8;
+  background: rgba(10, 132, 85, 0.12);
+  color: #047857;
 }
 
 .order-card,
@@ -1924,6 +1966,570 @@ html[dir='rtl'] .coverage-chip {
   color: var(--muted);
 }
 
+.internal-dashboard {
+  gap: 20px;
+}
+
+.internal-stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-stats-links {
+  display: grid;
+  gap: 18px;
+}
+
+.dashboard-toolbar-links,
+.daily-toolbar,
+.daily-summary-grid,
+.daily-task-list,
+.task-rich-meta,
+.task-timing-grid,
+.schedule-editor,
+.task-contact-actions {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-toolbar-links {
+  grid-template-columns: repeat(2, max-content);
+  justify-content: flex-start;
+}
+
+.dashboard-stat-link {
+  padding: 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.dashboard-stat-link:hover,
+.dashboard-stat-link.active {
+  transform: translateY(-2px);
+  border-color: rgba(217, 107, 39, 0.28);
+  box-shadow: 0 18px 30px rgba(84, 57, 33, 0.12);
+}
+
+.dashboard-stat-link strong {
+  font-size: 2rem;
+  color: var(--brand-dark);
+}
+
+.dashboard-stat-link span {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.dashboard-stat-link small {
+  color: var(--muted);
+}
+
+.internal-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.intake-form {
+  gap: 16px;
+}
+
+.operations-date-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) max-content max-content;
+  gap: 12px;
+  align-items: end;
+  margin: 0 0 16px;
+}
+
+.operations-date-panel .muted {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.order-reference-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.reference-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: linear-gradient(135deg, rgba(255, 248, 235, 0.94), rgba(255, 255, 255, 0.98));
+}
+
+.reference-card h3,
+.reference-card p,
+.reference-card small {
+  margin: 0;
+}
+
+.reference-label {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.coverage-list {
+  display: grid;
+  gap: 6px;
+}
+
+.coverage-list p {
+  margin: 0;
+  color: var(--ink);
+}
+
+.grid-three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.internal-board-panel {
+  min-height: 100%;
+}
+
+.dashboard-detail-panel,
+.dashboard-detail-list {
+  display: grid;
+  gap: 16px;
+}
+
+.compact-panel-header {
+  margin-bottom: 12px;
+}
+
+.ac-details-panel,
+.ac-details-list,
+.kanban-grid,
+.kanban-column,
+.kanban-card-list,
+.kanban-meta-list {
+  display: grid;
+  gap: 12px;
+}
+
+.ac-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) 140px auto;
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+}
+
+.ac-detail-remove {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.kanban-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.kanban-grid-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.kanban-column {
+  min-height: 100%;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(244, 239, 230, 0.78);
+  border: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.region-kanban-column {
+  align-content: start;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.region-kanban-column:hover,
+.region-kanban-column.active {
+  transform: translateY(-2px);
+  border-color: rgba(17, 120, 100, 0.18);
+  box-shadow: 0 12px 24px rgba(84, 57, 33, 0.1);
+}
+
+.kanban-column.drag-over {
+  outline: 2px dashed rgba(17, 120, 100, 0.3);
+  outline-offset: -10px;
+}
+
+.kanban-column-head,
+.kanban-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-card-topline {
+  display: grid;
+  gap: 4px;
+}
+
+.task-card-topline span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.kanban-column-head span {
+  display: inline-flex;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 120, 100, 0.08);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.region-kanban-counter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.region-status-counter,
+.region-kanban-section {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.region-status-counter small,
+.region-kanban-hint {
+  margin: 0;
+}
+
+.region-status-counter strong {
+  font-size: 1.05rem;
+}
+
+.region-status-counter.pending {
+  border-color: rgba(217, 107, 39, 0.18);
+}
+
+.region-status-counter.scheduled {
+  border-color: rgba(17, 120, 100, 0.18);
+}
+
+.region-status-counter.in_transit {
+  border-color: rgba(29, 78, 216, 0.18);
+}
+
+.region-status-counter.completed {
+  border-color: rgba(4, 120, 87, 0.18);
+}
+
+.region-kanban-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.region-kanban-section.drag-over {
+  outline: 2px dashed rgba(17, 120, 100, 0.24);
+  outline-offset: -8px;
+}
+
+.region-kanban-section {
+  cursor: pointer;
+}
+
+.region-kanban-section.active {
+  border-color: rgba(17, 120, 100, 0.18);
+  background: rgba(241, 250, 247, 0.92);
+}
+
+.region-kanban-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.region-kanban-section-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.region-kanban-section-head span {
+  display: inline-flex;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 24, 39, 0.06);
+  font-weight: 700;
+}
+
+.kanban-card {
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 22px rgba(84, 57, 33, 0.08);
+  display: grid;
+  gap: 12px;
+}
+
+.kanban-card.pending {
+  border-color: rgba(217, 107, 39, 0.18);
+}
+
+.kanban-card.scheduled {
+  border-color: rgba(17, 120, 100, 0.18);
+  background: rgba(241, 250, 247, 0.98);
+}
+
+.kanban-card.in_transit {
+  border-color: rgba(29, 78, 216, 0.18);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.kanban-card.completed {
+  border-color: rgba(4, 120, 87, 0.18);
+  background: rgba(240, 253, 244, 0.96);
+}
+
+.task-list-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 22px rgba(84, 57, 33, 0.08);
+  display: grid;
+  gap: 12px;
+}
+
+.task-list-card.pending {
+  border-color: rgba(217, 107, 39, 0.18);
+}
+
+.task-list-card.scheduled {
+  border-color: rgba(17, 120, 100, 0.18);
+}
+
+.task-list-card.in_transit {
+  border-color: rgba(29, 78, 216, 0.18);
+}
+
+.task-list-card.completed {
+  border-color: rgba(4, 120, 87, 0.18);
+}
+
+.kanban-meta-list p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.task-rich-meta p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.task-timing-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.task-mini-panel {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(17, 24, 39, 0.04);
+}
+
+.task-mini-panel span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.task-mini-panel strong,
+.task-mini-panel small {
+  margin: 0;
+}
+
+.attention-panel {
+  background: rgba(217, 107, 39, 0.08);
+  border: 1px solid rgba(217, 107, 39, 0.18);
+}
+
+.delivery-help-block {
+  display: grid;
+  gap: 8px;
+}
+
+.delivery-alert {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(17, 24, 39, 0.04);
+  border: 1px solid transparent;
+}
+
+.delivery-alert strong,
+.delivery-alert small {
+  margin: 0;
+}
+
+.delivery-alert-active {
+  background: rgba(217, 107, 39, 0.08);
+  border-color: rgba(217, 107, 39, 0.18);
+}
+
+.kanban-ac-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.task-contact-actions {
+  grid-template-columns: repeat(auto-fit, minmax(130px, max-content));
+}
+
+.task-action-row {
+  align-items: center;
+}
+
+.schedule-editor {
+  padding-top: 10px;
+  border-top: 1px dashed rgba(17, 24, 39, 0.12);
+}
+
+.daily-summary-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.planning-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.planning-tabs a {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.planning-tabs a.active {
+  background: rgba(17, 120, 100, 0.1);
+  border-color: rgba(17, 120, 100, 0.18);
+  color: var(--accent);
+}
+
+.planning-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.daily-region-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.region-entry-card {
+  width: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+
+.daily-task-list {
+  gap: 16px;
+}
+
+.daily-task-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 22px rgba(84, 57, 33, 0.08);
+}
+
+.daily-task-card.pending {
+  border-color: rgba(217, 107, 39, 0.18);
+}
+
+.daily-task-card.scheduled {
+  border-color: rgba(17, 120, 100, 0.18);
+}
+
+.daily-task-card.in_transit {
+  border-color: rgba(29, 78, 216, 0.18);
+}
+
+.daily-task-card.completed,
+.daily-task-card.canceled {
+  border-color: rgba(4, 120, 87, 0.18);
+}
+
+@media print {
+  .nav-wrap,
+  .site-footer,
+  .print-hidden,
+  .notification-wrap,
+  .btn-language,
+  .dashboard-toolbar-links,
+  .planning-tabs {
+    display: none !important;
+  }
+
+  .app-shell,
+  .page-shell {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .panel,
+  .daily-task-card {
+    box-shadow: none;
+    border-color: rgba(17, 24, 39, 0.15);
+    break-inside: avoid;
+  }
+
+  .section-heading {
+    margin-bottom: 16px;
+  }
+
+  .print-panel {
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+}
+
 @media (max-width: 960px) {
   .hero-panel,
   .dashboard-grid,
@@ -1931,6 +2537,8 @@ html[dir='rtl'] .coverage-chip {
   .task-grid,
   .site-footer-inner,
   .workflow-grid,
+  .home-value-grid,
+  .home-feature-grid,
   .finance-grid,
   .mini-stats,
   .stats-grid {
@@ -1956,6 +2564,17 @@ html[dir='rtl'] .coverage-chip {
   }
 
   .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-three,
+  .task-timing-grid,
+  .planning-controls,
+  .daily-summary-grid,
+  .daily-region-grid,
+  .dashboard-toolbar-links,
+  .operations-date-panel,
+  .task-contact-actions {
     grid-template-columns: 1fr;
   }
 
@@ -1991,6 +2610,11 @@ html[dir='rtl'] .coverage-chip {
   .admin-daily-filters,
   .bulk-import-grid,
   .dispatch-board,
+  .internal-dashboard-grid,
+  .internal-stats-grid,
+  .kanban-grid,
+  .kanban-grid-four,
+  .ac-detail-row,
   .zamil-room-grid,
   .technician-workspace,
   .proof-shell,

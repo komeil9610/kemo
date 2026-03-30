@@ -36,15 +36,16 @@ function NotificationMenu() {
           return;
         }
 
-        const freshItems = notifications.filter((item) => !seenIdsRef.current.has(item.id));
-        freshItems.forEach((item) => {
-          seenIdsRef.current.add(item.id);
-          toast(item.title, { duration: 4500 });
+        notifications
+          .filter((item) => !seenIdsRef.current.has(item.id))
+          .forEach((item) => {
+            seenIdsRef.current.add(item.id);
+            toast(item.title, { duration: 4500 });
 
-          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification(item.title, { body: item.body });
-          }
-        });
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+              new Notification(item.title, { body: item.body });
+            }
+          });
       } catch {
         return null;
       }
@@ -53,7 +54,7 @@ function NotificationMenu() {
     };
 
     pollNotifications();
-    const intervalId = window.setInterval(pollNotifications, 10000);
+    const intervalId = window.setInterval(pollNotifications, 8000);
 
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => null);
@@ -80,14 +81,14 @@ function NotificationMenu() {
   return (
     <div className="notification-wrap">
       <button className="notification-button" onClick={toggleOpen} type="button">
-        {lang === 'ar' ? 'التنبيهات' : 'Notifications'}
+        {lang === 'ar' ? 'الإشعارات' : 'Notifications'}
         {unreadCount ? <span className="notification-count">{unreadCount}</span> : null}
       </button>
 
       {open ? (
         <div className="notification-panel">
           {!items.length ? (
-            <p className="muted">{lang === 'ar' ? 'لا توجد تنبيهات حاليًا.' : 'No notifications right now.'}</p>
+            <p className="muted">{lang === 'ar' ? 'لا توجد إشعارات حالياً.' : 'No notifications right now.'}</p>
           ) : (
             items.map((item) => (
               <article className={`notification-item ${item.isRead ? 'read' : 'unread'}`} key={item.id}>
@@ -105,8 +106,16 @@ function NotificationMenu() {
 export default function Navbar() {
   const { token, user, logout } = useAuth();
   const { lang, toggleLang, t } = useLang();
-  const isAdmin = user?.role === 'admin';
-  const isTechnician = user?.role === 'technician';
+  const roleLabel =
+    user?.role === 'operations_manager'
+      ? lang === 'ar'
+        ? 'مدير العمليات'
+        : 'Operations manager'
+      : user?.role === 'customer_service'
+        ? lang === 'ar'
+          ? 'خدمة العملاء'
+          : 'Customer service'
+        : '';
 
   return (
     <header className="nav-wrap" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -118,8 +127,11 @@ export default function Navbar() {
 
         <div className="nav-links">
           <NavLink to="/">{t('home')}</NavLink>
-          {isAdmin ? <NavLink to="/dashboard">{t('dashboard')}</NavLink> : null}
-          {isTechnician ? <NavLink to="/tasks">{t('orders')}</NavLink> : null}
+          {token ? <NavLink to="/dashboard">{t('dashboard')}</NavLink> : null}
+          {token ? <NavLink to="/dashboard/daily">{lang === 'ar' ? 'المهام اليومية' : 'Daily tasks'}</NavLink> : null}
+          {token ? <NavLink to="/dashboard/weekly">{t('weeklyTasks')}</NavLink> : null}
+          {token ? <NavLink to="/dashboard/monthly">{t('monthlyTasks')}</NavLink> : null}
+          {token ? <NavLink to="/dashboard/operations-date">{t('operationsDay')}</NavLink> : null}
         </div>
 
         <div className="nav-actions">
@@ -128,14 +140,15 @@ export default function Navbar() {
           </button>
           <NotificationMenu />
           {!token ? (
-            <>
-              <Link className="btn-light" to="/login">{t('login')}</Link>
-              <Link className="btn-secondary" to="/register">{t('register')}</Link>
-            </>
+            <Link className="btn-primary" to="/login">
+              {t('login')}
+            </Link>
           ) : (
             <>
-              <span className="user-chip">{isAdmin ? (lang === 'ar' ? 'المسؤول' : 'Administrator') : user?.name}</span>
-              <button className="btn-danger" onClick={logout} type="button">{t('logout')}</button>
+              <span className="user-chip">{roleLabel || user?.name}</span>
+              <button className="btn-danger" onClick={logout} type="button">
+                {t('logout')}
+              </button>
             </>
           )}
         </div>

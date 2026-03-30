@@ -1,0 +1,15 @@
+ALTER TABLE service_orders ADD COLUMN request_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN secondary_phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN whatsapp_phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN address_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN landmark TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN map_link TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal';
+ALTER TABLE service_orders ADD COLUMN preferred_date TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN preferred_time TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN coordination_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN customer_action TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE service_orders ADD COLUMN reschedule_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN cancellation_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN canceled_at TEXT;
+ALTER TABLE service_orders ADD COLUMN completed_at TEXT;

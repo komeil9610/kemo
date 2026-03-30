@@ -49,6 +49,8 @@ npx wrangler secret put JWT_SECRET
 ### Variables
 
 - `CORS_ALLOWED_ORIGINS`: موجود في [edge-api/wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml)
+- `ACCESS_AUD`: موجود في [edge-api/wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml) إذا كان الـ edge API محميًا عبر Cloudflare Access
+- `ACCESS_JWKS_URL`: موجود في [edge-api/wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml) للتحقق من توقيع Cloudflare Access JWT
 - `API_ORIGIN`: موجود في [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml)
 - `DB`: binding قاعدة D1 داخل [edge-api/wrangler.toml](/home/bobby/Desktop/rentit/edge-api/wrangler.toml)
 
@@ -56,15 +58,18 @@ npx wrangler secret put JWT_SECRET
 
 - `JWT_SECRET`: اتركه Secret داخل Cloudflare ولا تضعه في الملف
 - `CORS_ALLOWED_ORIGINS`: أضف دومين الواجهة النهائي بعد النشر إذا كان مخصصًا
+- `ACCESS_AUD`: طابقه مع Audience الخاص بتطبيق Cloudflare Access الذي يحمي رابط الـ edge API المباشر
 - `API_ORIGIN`: استخدم رابط الـ edge-api المنشور أو دومين `api` المخصص
 
-## 4. إنشاء أول حساب Admin
+## 4. إنشاء حسابات التشغيل
 
-ولّد SQL آمنًا من نفس منطق التشفير المستخدم داخل الـ Worker:
+ولّد SQL آمنًا من نفس منطق التشفير المستخدم داخل الـ Worker. الصيغة تدعم الدور كوسيط رابع:
 
 ```bash
 cd edge-api
-npm run admin:sql -- "مسؤول تركيب برو" "admin@tarkeebpro.sa" "your-strong-password"
+npm run admin:sql -- "مسؤول تركيب برو" "admin@tarkeebpro.sa" "your-strong-password" admin
+npm run admin:sql -- "خدمة العملاء" "customer-service@tarkeebpro.sa" "your-strong-password" customer_service
+npm run admin:sql -- "مدير العمليات" "operations@tarkeebpro.sa" "your-strong-password" operations_manager
 ```
 
 انسخ ناتج SQL ثم نفّذه على D1:
@@ -116,7 +121,7 @@ npm run cf:deploy
 
 ## 7. التحقق بعد النشر
 
-- افتح `/api/health`
+- افتح `https://tarkeeb-pro-frontend.bobkumeel.workers.dev/api/health`
 - أنشئ حساب عميل
 - سجّل دخول
 - أضف منتجًا من حساب أدمن
@@ -137,4 +142,5 @@ npm run cf:deploy
 
 - ملف [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml) يستخدم `EDGE_API` كـ `Service Binding`
 - ملف [frontend/cloudflare/worker.js](/home/bobby/Desktop/rentit/frontend/cloudflare/worker.js) يحتوي fallback على `API_ORIGIN`
+- رابط [edge-api](https://tarkeeb-pro-edge-api.bobkumeel.workers.dev/) المباشر قد يرجع خطأ Access إذا كان محميًا في Cloudflare، وهذا متوقع؛ المسار العام المقصود للمتصفح هو `/api` عبر الواجهة
 - ملف [edge-api/migrations/schema.sql](/home/bobby/Desktop/rentit/edge-api/migrations/schema.sql) هو المخطط الكامل الحالي
