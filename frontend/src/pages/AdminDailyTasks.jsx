@@ -11,7 +11,7 @@ import {
   notificationsService,
   operationsService,
 } from '../services/api';
-import { getOrderDisplayStatus, orderMatchesDisplayStatus } from '../utils/internalOrders';
+import { getOrderDeviceCount, getOrderDisplayStatus, orderMatchesDisplayStatus } from '../utils/internalOrders';
 import { sendAppNotification } from '../utils/mobileNative';
 
 const todayString = () => new Date().toISOString().slice(0, 10);
@@ -90,9 +90,6 @@ const copy = {
     },
     elapsedTime: 'Elapsed',
     standardTime: 'Standard',
-    editOrder: 'Reschedule and location',
-    saveOrderChanges: 'Save date and location',
-    locationDetails: 'Location details',
     zamilRoomTitle: 'Zamil closure room',
     zamilRoomHint: 'This is the handoff lane between the field technician and the Zamil portal you operate manually.',
     closeRequestsTitle: 'Ready for Zamil OTP request',
@@ -142,9 +139,12 @@ const copy = {
       customer: 'Customer',
       location: 'Location',
       time: 'Time',
+      devices: 'Devices',
       proof: 'Proof',
       source: 'Source',
     },
+    contactCustomer: 'Called customer',
+    contactPrompt: 'Write the customer call note',
     proofPending: 'Needs proof review',
     proofApproved: 'Approved',
     latestAudit: 'Latest audit',
@@ -196,9 +196,6 @@ const copy = {
     },
     elapsedTime: 'المستغرق',
     standardTime: 'المعياري',
-    editOrder: 'إعادة الجدولة والموقع',
-    saveOrderChanges: 'حفظ التاريخ والموقع',
-    locationDetails: 'تفاصيل الموقع',
     zamilRoomTitle: 'غرفة إغلاق الزامل',
     zamilRoomHint: 'هذا هو مسار التسليم بين الفني الميداني وبين بوابة الزامل التي تديرها أنت يدوياً.',
     closeRequestsTitle: 'جاهز لطلب OTP من الزامل',
@@ -248,9 +245,12 @@ const copy = {
       customer: 'العميل',
       location: 'الموقع',
       time: 'الوقت',
+      devices: 'عدد الأجهزة',
       proof: 'الإثبات',
       source: 'المصدر',
     },
+    contactCustomer: 'تم التواصل مع العميل',
+    contactPrompt: 'اكتب ملاحظة الاتصال مع العميل',
     proofPending: 'بانتظار اعتماد الإثبات',
     proofApproved: 'الإثبات معتمد',
     latestAudit: 'آخر حركة',
@@ -269,8 +269,6 @@ export default function AdminDailyTasks() {
   const [selectedDate, setSelectedDate] = useState(todayString());
   const [draggingOrderId, setDraggingOrderId] = useState('');
   const [approvalOrderId, setApprovalOrderId] = useState('');
-  const [savingOrderId, setSavingOrderId] = useState('');
-  const [orderDrafts, setOrderDrafts] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [filters, setFilters] = useState({
     search: '',
@@ -620,47 +618,6 @@ export default function AdminDailyTasks() {
     await loadDashboard({ silently: true });
   };
 
-  const getOrderDraft = (order) =>
-    orderDrafts[order.id] || {
-      scheduledDate: order.scheduledDate || selectedDate,
-      scheduledTime: order.scheduledTime || '',
-      district: order.district || '',
-      city: order.city || '',
-      address: order.address || '',
-    };
-
-  const updateOrderDraft = (order, key, value) => {
-    setOrderDrafts((current) => ({
-      ...current,
-      [order.id]: {
-        ...getOrderDraft(order),
-        [key]: value,
-      },
-    }));
-  };
-
-  const saveOrderScheduleAndLocation = async (order) => {
-    const draft = getOrderDraft(order);
-    try {
-      setSavingOrderId(String(order.id));
-      await updateOrder(
-        order,
-        {
-          scheduledDate: draft.scheduledDate,
-          scheduledTime: draft.scheduledTime,
-          district: draft.district,
-          city: draft.city,
-          address: draft.address,
-        },
-        lang === 'ar' ? 'حدّث المنسق التاريخ أو الموقع' : 'Coordinator updated the schedule or location'
-      );
-    } catch (error) {
-      toast.error(resolveErrorMessage(error, t.saveMessage));
-    } finally {
-      setSavingOrderId('');
-    }
-  };
-
   const handleTechnicianChange = async (order, technicianId) => {
     const technician = technicians.find((entry) => String(entry.id) === String(technicianId));
     await updateOrder(
@@ -693,6 +650,23 @@ export default function AdminDailyTasks() {
       toast.error(resolveErrorMessage(error, t.approvedMessage));
     } finally {
       setApprovalOrderId('');
+    }
+  };
+
+  const handleContactCustomer = async (order) => {
+    const note = window.prompt(t.contactPrompt, '');
+    if (!note) {
+      return;
+    }
+
+    try {
+      await updateOrder(
+        order,
+        { contactCustomerNote: note },
+        lang === 'ar' ? `تم التواصل مع العميل. الملاحظة: ${note}` : `Customer was contacted. Note: ${note}`
+      );
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, t.contactCustomer));
     }
   };
 
@@ -894,6 +868,9 @@ export default function AdminDailyTasks() {
                       {t.elapsedTime}: {order.timing?.elapsedMinutes || 0} min
                     </small>
                     <small>
+                      {t.taskMeta.devices}: {getOrderDeviceCount(order)}
+                    </small>
+                    <small>
                       {t.standardTime}: {order.timing?.standardDurationMinutes || 0} min
                     </small>
                   </article>
@@ -932,6 +909,9 @@ export default function AdminDailyTasks() {
                       <p>{order.technicianName || t.unassignedLane}</p>
                       <small>{order.region}</small>
                       <small>
+                        {t.taskMeta.devices}: {getOrderDeviceCount(order)}
+                      </small>
+                      <small>
                         {t.closeRequestedAt}: {formatDateTime(order.zamilCloseRequestedAt, lang)}
                       </small>
                       <div className="portal-step-card">
@@ -963,6 +943,9 @@ export default function AdminDailyTasks() {
                       <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
                       <p>{order.technicianName || t.unassignedLane}</p>
                       <small>{order.region}</small>
+                      <small>
+                        {t.taskMeta.devices}: {getOrderDeviceCount(order)}
+                      </small>
                       <div className="otp-code-preview large">
                         <span>{t.submittedOtp}</span>
                         <strong>{order.zamilOtpCode || '—'}</strong>
@@ -1006,6 +989,9 @@ export default function AdminDailyTasks() {
                     <p>{order.customerName}</p>
                     <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
                     <p>{order.region}</p>
+                    <small>
+                      {t.taskMeta.devices}: {getOrderDeviceCount(order)}
+                    </small>
                     <small>{order.suspensionReason || order.suspensionNote || t.exceptionQueue}</small>
                     <small>
                       {t.scheduleFor}: {formatDate(selectedDate, lang)}
@@ -1080,65 +1066,13 @@ export default function AdminDailyTasks() {
                           <p>
                             {t.taskMeta.time}: {order.scheduledTime || '—'}
                           </p>
+                          <p>
+                            {t.taskMeta.devices}: {getOrderDeviceCount(order)}
+                          </p>
                           <small>
                             {t.standardTime}: {order.timing?.standardDurationMinutes || 0} min • {t.elapsedTime}:{' '}
                             {order.timing?.elapsedMinutes || 0} min
                           </small>
-                          <details className="audit-log-list">
-                            <summary>{t.editOrder}</summary>
-                            <div className="audit-log-body">
-                              <label className="filter-field">
-                                <span>{t.dateLabel}</span>
-                                <input
-                                  className="input"
-                                  type="date"
-                                  value={getOrderDraft(order).scheduledDate}
-                                  onChange={(event) => updateOrderDraft(order, 'scheduledDate', event.target.value)}
-                                />
-                              </label>
-                              <label className="filter-field">
-                                <span>{t.taskMeta.time}</span>
-                                <input
-                                  className="input"
-                                  type="time"
-                                  value={getOrderDraft(order).scheduledTime}
-                                  onChange={(event) => updateOrderDraft(order, 'scheduledTime', event.target.value)}
-                                />
-                              </label>
-                              <label className="filter-field">
-                                <span>{t.regionLabel}</span>
-                                <input
-                                  className="input"
-                                  value={getOrderDraft(order).district}
-                                  onChange={(event) => updateOrderDraft(order, 'district', event.target.value)}
-                                />
-                              </label>
-                              <label className="filter-field">
-                                <span>{t.technicianLabel}</span>
-                                <input
-                                  className="input"
-                                  value={getOrderDraft(order).city}
-                                  onChange={(event) => updateOrderDraft(order, 'city', event.target.value)}
-                                />
-                              </label>
-                              <label className="filter-field">
-                                <span>{t.locationDetails}</span>
-                                <input
-                                  className="input"
-                                  value={getOrderDraft(order).address}
-                                  onChange={(event) => updateOrderDraft(order, 'address', event.target.value)}
-                                />
-                              </label>
-                              <button
-                                className="btn-light"
-                                disabled={savingOrderId === String(order.id)}
-                                type="button"
-                                onClick={() => saveOrderScheduleAndLocation(order)}
-                              >
-                                {t.saveOrderChanges}
-                              </button>
-                            </div>
-                          </details>
                         </div>
                         <div className="admin-task-row-controls">
                           <select
@@ -1153,6 +1087,9 @@ export default function AdminDailyTasks() {
                               </option>
                             ))}
                           </select>
+                          <button className="btn-light" type="button" onClick={() => handleContactCustomer(order)}>
+                            {t.contactCustomer}
+                          </button>
                         </div>
                       </article>
                     ))
@@ -1230,6 +1167,9 @@ export default function AdminDailyTasks() {
                             <p>
                               {t.taskMeta.time}: {order.scheduledTime || '—'}
                             </p>
+                            <p>
+                              {t.taskMeta.devices}: {getOrderDeviceCount(order)}
+                            </p>
                             <p>{order.workType || order.acType}</p>
                             <small>{order.approvalStatus === 'approved' ? t.proofApproved : t.proofPending}</small>
                             <small>
@@ -1259,61 +1199,6 @@ export default function AdminDailyTasks() {
                               </details>
                             ) : null}
 
-                            <details className="audit-log-list">
-                              <summary>{t.editOrder}</summary>
-                              <div className="audit-log-body">
-                                <label className="filter-field">
-                                  <span>{t.dateLabel}</span>
-                                  <input
-                                    className="input"
-                                    type="date"
-                                    value={getOrderDraft(order).scheduledDate}
-                                    onChange={(event) => updateOrderDraft(order, 'scheduledDate', event.target.value)}
-                                  />
-                                </label>
-                                <label className="filter-field">
-                                  <span>{t.taskMeta.time}</span>
-                                  <input
-                                    className="input"
-                                    type="time"
-                                    value={getOrderDraft(order).scheduledTime}
-                                    onChange={(event) => updateOrderDraft(order, 'scheduledTime', event.target.value)}
-                                  />
-                                </label>
-                                <label className="filter-field">
-                                  <span>{t.regionLabel}</span>
-                                  <input
-                                    className="input"
-                                    value={getOrderDraft(order).district}
-                                    onChange={(event) => updateOrderDraft(order, 'district', event.target.value)}
-                                  />
-                                </label>
-                                <label className="filter-field">
-                                  <span>{t.technicianLabel}</span>
-                                  <input
-                                    className="input"
-                                    value={getOrderDraft(order).city}
-                                    onChange={(event) => updateOrderDraft(order, 'city', event.target.value)}
-                                  />
-                                </label>
-                                <label className="filter-field">
-                                  <span>{t.locationDetails}</span>
-                                  <input
-                                    className="input"
-                                    value={getOrderDraft(order).address}
-                                    onChange={(event) => updateOrderDraft(order, 'address', event.target.value)}
-                                  />
-                                </label>
-                                <button
-                                  className="btn-light"
-                                  disabled={savingOrderId === String(order.id)}
-                                  type="button"
-                                  onClick={() => saveOrderScheduleAndLocation(order)}
-                                >
-                                  {t.saveOrderChanges}
-                                </button>
-                              </div>
-                            </details>
                           </div>
 
                           <div className="admin-task-row-controls">
@@ -1341,6 +1226,9 @@ export default function AdminDailyTasks() {
                                 </option>
                               ))}
                             </select>
+                            <button className="btn-light" type="button" onClick={() => handleContactCustomer(order)}>
+                              {t.contactCustomer}
+                            </button>
                           </div>
                         </article>
                       ))

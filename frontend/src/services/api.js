@@ -63,7 +63,7 @@ const safeJson = (value, fallback) => {
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const FAST_DELIVERY_CITIES = ['الدمام', 'جدة', 'الرياض', 'الخبر', 'الظهران', 'جازان', 'رأس تنورة'];
 const ORDER_STATUS_AR_LABELS = {
-  pending: 'بانتظار العمليات',
+  pending: 'طلب جديد',
   scheduled: 'تمت الجدولة',
   in_transit: 'في الطريق',
   completed: 'مكتمل',
@@ -384,6 +384,12 @@ const mapRemoteOrder = (order = {}) => ({
   mapLink: order.mapLink || order.map_link || order.address || '',
   sourceChannel: order.sourceChannel || order.source || 'الزامل',
   serviceSummary: order.serviceSummary || order.workType || order.work_type || '',
+  acCount:
+    Math.max(
+      0,
+      Number(order.acCount || order.ac_count) ||
+        normalizeAcDetails(order.acDetails || order.serviceItems).reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
+    ) || 0,
   priority: order.priority || 'normal',
   deliveryType: normalizeDeliveryType(order.deliveryType || order.delivery_type),
   preferredDate: order.preferredDate || order.preferred_date || order.scheduledDate || order.scheduled_date || '',
@@ -777,9 +783,21 @@ const localOperationsService = {
         nextOrder.customerAction = String(changes.customerAction || 'none').trim();
       }
 
+      if (changes.contactCustomerNote !== undefined) {
+        const note = String(changes.contactCustomerNote || '').trim();
+        if (note) {
+          nextOrder.coordinationNote = [nextOrder.coordinationNote, `اتصل بالعميل: ${note}`].filter(Boolean).join('\n');
+        }
+      }
+
       nextOrder.auditLog = [
         ...(nextOrder.auditLog || []),
-        buildAuditEntry('operations_manager', 'قام مدير العمليات بتحديث تنسيق الموعد أو الحالة.'),
+        buildAuditEntry(
+          'operations_manager',
+          changes.contactCustomerNote
+            ? `سجل مدير العمليات تواصلاً مع العميل. ${String(changes.contactCustomerNote || '').trim()}`
+            : 'قام مدير العمليات بتحديث تنسيق الموعد أو الحالة.'
+        ),
       ];
     }
 
@@ -959,6 +977,24 @@ export const operationsService = {
         preview: preview.data || null,
       },
     };
+  },
+  uploadExcelSource: async (file) => {
+    if (!backendApiClient) {
+      throw new Error('Excel upload requires the local backend at :5000');
+    }
+
+    if (!file) {
+      throw new Error('Choose an Excel file first');
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return backendApiClient.post('/operations/excel-import/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
   },
   createTechnician: (data) =>
     withFallback(

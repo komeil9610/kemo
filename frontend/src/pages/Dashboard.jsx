@@ -18,6 +18,7 @@ import {
   exportOrdersCsv,
   formatDateTimeLabel,
   getOperationalDate,
+  getOrderDeviceCount,
   getOrderDisplayStatus,
   orderMatchesDisplayStatus,
   getOrdersForView,
@@ -92,34 +93,6 @@ const createEmptyForm = (preferredDate = todayString()) => ({
   acDetails: [{ id: `ac-${Date.now()}`, type: 'split', quantity: 1 }],
 });
 
-const createFormFromOrder = (order) => ({
-  requestNumber: String(order?.requestNumber || '').trim(),
-  customerName: String(order?.customerName || '').trim(),
-  phone: String(order?.phone || '').trim(),
-  secondaryPhone: String(order?.secondaryPhone || '').trim(),
-  whatsappPhone: String(order?.whatsappPhone || order?.phone || '').trim(),
-  region: getRegionByCity(order?.city)?.key || 'central',
-  city: String(order?.city || 'الرياض').trim(),
-  district: String(order?.district || '').trim(),
-  addressText: String(order?.addressText || order?.address || '').trim(),
-  landmark: String(order?.landmark || '').trim(),
-  mapLink: String(order?.mapLink || '').trim(),
-  sourceChannel: String(order?.sourceChannel || order?.source || 'الزامل').trim(),
-  serviceSummary: String(order?.serviceSummary || order?.workType || '').trim(),
-  priority: String(order?.priority || 'normal').trim(),
-  deliveryType: String(order?.deliveryType || 'none').trim(),
-  preferredDate: String(order?.preferredDate || order?.scheduledDate || getOperationalDate()).trim(),
-  preferredTime: String(order?.preferredTime || order?.scheduledTime || '').trim(),
-  notes: String(order?.notes || '').trim(),
-  acDetails: (order?.acDetails || []).length
-    ? order.acDetails.map((item, index) => ({
-        id: String(item?.id || `ac-edit-${Date.now()}-${index}`),
-        type: String(item?.type || 'split').trim(),
-        quantity: Math.max(1, Number(item?.quantity) || 1),
-      }))
-    : [{ id: `ac-${Date.now()}`, type: 'split', quantity: 1 }],
-});
-
 const copy = {
   en: {
     eyebrow: 'Internal workspace',
@@ -127,7 +100,7 @@ const copy = {
     subtitle: 'Detailed intake, smooth coordination, and one daily rhythm for a heavy request flow.',
     loading: 'Loading dashboard...',
     stats: {
-      pending: 'Waiting for operations',
+      pending: 'New requests',
       active: 'Active requests',
       completed: 'Archive',
       inTransit: 'In transit now',
@@ -195,15 +168,11 @@ const copy = {
     addAc: 'Add another AC type',
     remove: 'Remove',
     create: 'Create request',
+    uploadExcelSource: 'Upload new Excel file',
+    uploadingExcelSource: 'Uploading...',
     importExcel: 'Import Excel file',
     importingExcel: 'Importing...',
-    update: 'Update request',
     creating: 'Creating...',
-    updating: 'Updating...',
-    editOrder: 'Edit request',
-    cancelEdit: 'Cancel editing',
-    editingPanel: 'Editing request',
-    editingHint: 'Customer service can revise approved requests here after the customer calls back.',
     exportCsr: 'Export GM report',
     exportOps: 'Export team report',
     boardTitle: 'Kanban board',
@@ -228,6 +197,8 @@ const copy = {
     rejectTask: 'Reject request',
     reschedulePrompt: 'Write the reschedule reason for operations',
     cancelPrompt: 'Write the cancellation reason',
+    contactCustomer: 'Called customer',
+    contactPrompt: 'Write the call note for the customer',
     coordination: 'Coordination',
     coordinationNote: 'Coordination note',
     saveSchedule: 'Save schedule',
@@ -251,6 +222,8 @@ const copy = {
       completed: 'Completed',
     },
     regionTaskCount: 'Requests in this region',
+    deviceCount: 'Devices',
+    successExcelUpload: 'Excel source file updated successfully.',
     successCreate: 'Request created successfully.',
     successImport: (imported, skipped) =>
       `Imported ${imported} request${imported === 1 ? '' : 's'} from Excel${skipped ? ` and skipped ${skipped} duplicate or invalid row${skipped === 1 ? '' : 's'}` : ''}.`,
@@ -274,7 +247,7 @@ const copy = {
     subtitle: 'إدخال مفصل، تنسيق أوضح، ومسار يومي منظم للتعامل مع ضغط الطلبات الكبير بثقة وسلاسة.',
     loading: 'جارٍ تحميل اللوحة...',
     stats: {
-      pending: 'بانتظار العمليات',
+      pending: 'طلبات جديدة',
       active: 'طلبات نشطة',
       completed: 'سجل الطلبات',
       inTransit: 'في الطريق الآن',
@@ -342,15 +315,11 @@ const copy = {
     addAc: 'إضافة نوع مكيف آخر',
     remove: 'حذف',
     create: 'إنشاء الطلب',
+    uploadExcelSource: 'رفع ملف Excel جديد',
+    uploadingExcelSource: 'جارٍ الرفع...',
     importExcel: 'استيراد ملف Excel',
     importingExcel: 'جارٍ الاستيراد...',
-    update: 'تحديث الطلب',
     creating: 'جارٍ الإنشاء...',
-    updating: 'جارٍ التحديث...',
-    editOrder: 'تعديل الطلب',
-    cancelEdit: 'إلغاء التعديل',
-    editingPanel: 'تعديل طلب قائم',
-    editingHint: 'يمكن لخدمة العملاء تعديل الطلب المقبول هنا عندما يعود العميل للتواصل مرة أخرى.',
     exportCsr: 'تصدير تقرير للمدير العام',
     exportOps: 'تصدير تقرير تنسيق الفريق',
     boardTitle: 'لوحة Kanban',
@@ -375,6 +344,8 @@ const copy = {
     rejectTask: 'رفض الطلب',
     reschedulePrompt: 'اكتب سبب إعادة الجدولة ليطلع عليه مدير العمليات',
     cancelPrompt: 'اكتب سبب الإلغاء',
+    contactCustomer: 'تم التواصل مع العميل',
+    contactPrompt: 'اكتب ملاحظة الاتصال مع العميل',
     coordination: 'تنسيق الموعد',
     coordinationNote: 'ملاحظة التنسيق',
     saveSchedule: 'حفظ الموعد',
@@ -398,6 +369,8 @@ const copy = {
       completed: 'مكتمل',
     },
     regionTaskCount: 'طلبات هذه المنطقة',
+    deviceCount: 'عدد الأجهزة',
+    successExcelUpload: 'تم تحديث ملف Excel المصدر بنجاح.',
     successCreate: 'تم إنشاء الطلب بنجاح.',
     successImport: (imported, skipped) =>
       `تم استيراد ${imported} طلب${imported === 1 ? '' : 'ات'} من ملف Excel${skipped ? ` مع تجاوز ${skipped} صف${skipped === 1 ? '' : 'وف'} مكرر أو غير صالح` : ''}.`,
@@ -408,7 +381,7 @@ const copy = {
     successInlineRescheduled: 'تمت إعادة جدولة الطلب بنجاح.',
     confirmInlineStatus: (orderRef, nextStatus) => `هل تريد تغيير ${orderRef} إلى ${nextStatus}؟`,
     labels: {
-      pending: 'بانتظار العمليات',
+      pending: 'طلب جديد',
       scheduled: 'تمت الجدولة',
       in_transit: 'في الطريق',
       completed: 'مكتمل',
@@ -500,10 +473,11 @@ export default function Dashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingExcel, setUploadingExcel] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
   const [updatingId, setUpdatingId] = useState('');
   const [schedulingId, setSchedulingId] = useState('');
-  const [editingOrderId, setEditingOrderId] = useState('');
+  const [excelSourceFileName, setExcelSourceFileName] = useState('data.xlsx');
   const [selectedBoardRegion, setSelectedBoardRegion] = useState('');
   const [selectedBoardStatus, setSelectedBoardStatus] = useState('');
   const [operationalDate, setOperationalDateState] = useState(() => getOperationalDate());
@@ -512,7 +486,7 @@ export default function Dashboard() {
   const [expandedScheduleId, setExpandedScheduleId] = useState('');
   const [inlineStatusDrafts, setInlineStatusDrafts] = useState({});
   const formPanelRef = useRef(null);
-  const isEditingOrder = Boolean(editingOrderId);
+  const excelUploadInputRef = useRef(null);
   const effectivePriority = form.deliveryType === 'none' ? form.priority : 'urgent';
   const selectedRegion = getRegionConfig(form.region) || zamilCoverageByRegion[0];
   const cityOptions = selectedRegion?.cities || [];
@@ -525,6 +499,10 @@ export default function Dashboard() {
         }
         const response = await operationsService.getDashboard();
         setDashboard(response.data || null);
+        const importedExcelOrder = (response.data?.orders || []).find((order) => String(order?.notes || '').includes('Sheet:'));
+        if (importedExcelOrder) {
+          setExcelSourceFileName((current) => current || 'data.xlsx');
+        }
       } catch (error) {
         toast.error(error?.response?.data?.message || error.message || 'Unable to load dashboard');
       } finally {
@@ -560,7 +538,10 @@ export default function Dashboard() {
   }, [operationalDate]);
 
   const orders = useMemo(() => dashboard?.orders || [], [dashboard]);
-  const displayStatusBuckets = useMemo(() => buildDisplayStatusBuckets(orders, lang), [orders, lang]);
+  const displayStatusBuckets = useMemo(
+    () => buildDisplayStatusBuckets(orders, lang).filter((item) => item.key !== 'pending'),
+    [orders, lang]
+  );
   const detailOrders = useMemo(() => {
     const scopedOrders = displayStatusBuckets.some((item) => item.key === viewKey)
       ? orders.filter((order) => orderMatchesDisplayStatus(order, viewKey, lang))
@@ -583,7 +564,7 @@ export default function Dashboard() {
         return {
           ...region,
           orders: regionOrders,
-          displayStatusBuckets: buildDisplayStatusBuckets(regionOrders, lang),
+          displayStatusBuckets: buildDisplayStatusBuckets(regionOrders, lang).filter((item) => item.key !== 'pending'),
           counters: boardColumns.reduce(
             (result, statusKey) => ({
               ...result,
@@ -674,20 +655,6 @@ export default function Dashboard() {
     }));
   };
 
-  const onEditOrder = (order) => {
-    setEditingOrderId(order.id);
-    setForm(createFormFromOrder(order));
-    setExpandedScheduleId('');
-    window.setTimeout(() => {
-      formPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 10);
-  };
-
-  const onCancelEditOrder = () => {
-    setEditingOrderId('');
-    setForm(createEmptyForm(getOperationalDate()));
-  };
-
   const onCreateOrder = async (event) => {
     event.preventDefault();
     if (form.deliveryType === 'express_24h' && !isFastDeliveryCity(form.city)) {
@@ -708,14 +675,8 @@ export default function Dashboard() {
           quantity: Math.max(1, Number(item.quantity) || 1),
         })),
       };
-      if (editingOrderId) {
-        await operationsService.updateOrder(editingOrderId, payload);
-        setEditingOrderId('');
-        toast.success(t.successStatus);
-      } else {
-        await operationsService.createOrder(payload);
-        toast.success(t.successCreate);
-      }
+      await operationsService.createOrder(payload);
+      toast.success(t.successCreate);
       setForm(createEmptyForm(operationalDate));
     } catch (error) {
       toast.error(error?.response?.data?.message || error.message || 'Unable to save request');
@@ -724,10 +685,30 @@ export default function Dashboard() {
     }
   };
 
+  const onUploadExcelSource = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      setUploadingExcel(true);
+      const response = await operationsService.uploadExcelSource(file);
+      const savedFileName = response.data?.savedFileName || file.name || 'data.xlsx';
+      setExcelSourceFileName(savedFileName);
+      toast.success(t.successExcelUpload);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || 'Unable to upload Excel file');
+    } finally {
+      setUploadingExcel(false);
+      event.target.value = '';
+    }
+  };
+
   const onImportExcel = async () => {
     try {
       setImportingExcel(true);
-      const response = await operationsService.importOrdersFromExcel('data.xlsx');
+      const response = await operationsService.importOrdersFromExcel(excelSourceFileName);
       const importedCount = Number(response.data?.importedCount) || 0;
       const skippedCount = Number(response.data?.skippedCount) || 0;
 
@@ -892,6 +873,26 @@ export default function Dashboard() {
     }
   };
 
+  const onContactCustomer = async (order) => {
+    const note = window.prompt(t.contactPrompt, '');
+    if (!note) {
+      return;
+    }
+
+    try {
+      setUpdatingId(order.id);
+      const response = await operationsService.updateOrder(order.id, {
+        contactCustomerNote: note,
+      });
+      applyOrderUpdate(response.data?.order || null);
+      toast.success(t.successStatus);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || 'Unable to save customer call note');
+    } finally {
+      setUpdatingId('');
+    }
+  };
+
   const onExport = (scopeLabel) => {
     exportOrdersCsv({
       orders: reportOrders,
@@ -1023,7 +1024,7 @@ export default function Dashboard() {
                     onAdvanceStatus={onAdvanceStatus}
                     onRequestReschedule={onRequestReschedule}
                     onCancelOrder={onCancelOrder}
-                    onEditOrder={onEditOrder}
+                    onContactCustomer={onContactCustomer}
                     onOpenSchedule={openScheduleEditor}
                     scheduleDraft={scheduleDrafts[order.id]}
                     updateScheduleDraft={updateScheduleDraft}
@@ -1046,18 +1047,28 @@ export default function Dashboard() {
           <section className="panel" ref={formPanelRef}>
             <div className="panel-header">
               <div>
-                <h2>{isEditingOrder ? t.editingPanel : t.customerServicePanel}</h2>
-                <p>{isEditingOrder ? t.editingHint : t.formHint}</p>
+                <h2>{t.customerServicePanel}</h2>
+                <p>{t.formHint}</p>
               </div>
               <div className="helper-actions">
-                <button className="btn-light" type="button" disabled={importingExcel || saving} onClick={onImportExcel}>
+                <input
+                  accept=".xlsx,.xls"
+                  hidden
+                  onChange={onUploadExcelSource}
+                  ref={excelUploadInputRef}
+                  type="file"
+                />
+                <button
+                  className="btn-light"
+                  type="button"
+                  disabled={uploadingExcel || importingExcel || saving}
+                  onClick={() => excelUploadInputRef.current?.click()}
+                >
+                  {uploadingExcel ? t.uploadingExcelSource : t.uploadExcelSource}
+                </button>
+                <button className="btn-light" type="button" disabled={uploadingExcel || importingExcel || saving} onClick={onImportExcel}>
                   {importingExcel ? t.importingExcel : t.importExcel}
                 </button>
-                {isEditingOrder ? (
-                  <button className="btn-light" type="button" onClick={onCancelEditOrder}>
-                    {t.cancelEdit}
-                  </button>
-                ) : null}
                 <span className="user-chip">{t.roleBadges[user?.role]}</span>
               </div>
             </div>
@@ -1087,7 +1098,7 @@ export default function Dashboard() {
                 <span className="reference-label">{t.excelImportTitle}</span>
                 <h3>{t.importExcel}</h3>
                 <p>{t.excelImportHint}</p>
-                <small>{t.excelImportFile}</small>
+                <small>{`backend/data/${excelSourceFileName}`}</small>
               </div>
             </div>
 
@@ -1383,13 +1394,8 @@ export default function Dashboard() {
 
               <div className="helper-actions">
                 <button className="btn-primary" disabled={saving} type="submit">
-                  {saving ? (isEditingOrder ? t.updating : t.creating) : isEditingOrder ? t.update : t.create}
+                  {saving ? t.creating : t.create}
                 </button>
-                {isEditingOrder ? (
-                  <button className="btn-light" type="button" onClick={onCancelEditOrder}>
-                    {t.cancelEdit}
-                  </button>
-                ) : null}
               </div>
             </form>
           </section>
@@ -1439,7 +1445,7 @@ export default function Dashboard() {
                 onAdvanceStatus={onAdvanceStatus}
                 onRequestReschedule={onRequestReschedule}
                 onCancelOrder={onCancelOrder}
-                onEditOrder={onEditOrder}
+                onContactCustomer={onContactCustomer}
                 onOpenSchedule={openScheduleEditor}
                 scheduleDrafts={scheduleDrafts}
                 updateScheduleDraft={updateScheduleDraft}
@@ -1471,7 +1477,7 @@ function OperationsRegionKanban({
   onAdvanceStatus,
   onRequestReschedule,
   onCancelOrder,
-  onEditOrder,
+  onContactCustomer,
   onOpenSchedule,
   scheduleDrafts,
   updateScheduleDraft,
@@ -1579,7 +1585,7 @@ function OperationsRegionKanban({
                               onAdvanceStatus={onAdvanceStatus}
                               onRequestReschedule={onRequestReschedule}
                               onCancelOrder={onCancelOrder}
-                              onEditOrder={onEditOrder}
+                              onContactCustomer={onContactCustomer}
                               onOpenSchedule={onOpenSchedule}
                               scheduleDraft={scheduleDrafts[order.id]}
                               updateScheduleDraft={updateScheduleDraft}
@@ -1616,7 +1622,7 @@ function TaskCardBody({
   onAdvanceStatus,
   onRequestReschedule,
   onCancelOrder,
-  onEditOrder,
+  onContactCustomer,
   onOpenSchedule,
   scheduleDraft,
   updateScheduleDraft,
@@ -1664,6 +1670,11 @@ function TaskCardBody({
         <span>{t.serviceTitle}</span>
         <strong>{order.serviceSummary || order.workType || '—'}</strong>
         <small>{priorityLabel(order.priority, lang)}</small>
+      </div>
+
+      <div className="task-mini-panel">
+        <span>{t.deviceCount}</span>
+        <strong>{getOrderDeviceCount(order)}</strong>
       </div>
 
       {order.deliveryType && order.deliveryType !== 'none' ? (
@@ -1745,11 +1756,14 @@ function TaskCardBody({
           </button>
         ) : null}
 
+        {canManageStatuses && !['completed', 'canceled'].includes(order.status) ? (
+          <button className="btn-light" type="button" disabled={updatingId === order.id} onClick={() => onContactCustomer(order)}>
+            {t.contactCustomer}
+          </button>
+        ) : null}
+
         {showCustomerActions ? (
           <>
-            <button className="btn-secondary" type="button" disabled={updatingId === order.id} onClick={() => onEditOrder(order)}>
-              {t.editOrder}
-            </button>
             <button className="btn-light" type="button" disabled={updatingId === order.id} onClick={() => onRequestReschedule(order)}>
               {t.requestReschedule}
             </button>

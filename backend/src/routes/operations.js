@@ -1,5 +1,8 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
 const { body, param } = require('express-validator');
 const ServiceOrder = require('../models/ServiceOrder');
 const User = require('../models/User');
@@ -14,6 +17,35 @@ const {
 } = require('../middleware/validators');
 
 const router = express.Router();
+const EXCEL_DATA_DIR = path.resolve(__dirname, '../../data');
+const EXCEL_ALLOWED_EXTENSIONS = new Set(['.xlsx', '.xls']);
+
+const excelUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, callback) => {
+      fs.mkdirSync(EXCEL_DATA_DIR, { recursive: true });
+      callback(null, EXCEL_DATA_DIR);
+    },
+    filename: (req, file, callback) => {
+      const extension = path.extname(file.originalname || '').toLowerCase();
+      const safeExtension = EXCEL_ALLOWED_EXTENSIONS.has(extension) ? extension : '.xlsx';
+      callback(null, `data${safeExtension}`);
+    },
+  }),
+  fileFilter: (req, file, callback) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    if (!EXCEL_ALLOWED_EXTENSIONS.has(extension)) {
+      const error = new Error('يرجى رفع ملف Excel بصيغة xlsx أو xls');
+      error.status = 400;
+      callback(error);
+      return;
+    }
+    callback(null, true);
+  },
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+  },
+});
 
 const calculateExtrasTotal = (copperMeters, baseIncluded, pricing = {}) => {
   const meters = Math.max(0, Number(copperMeters) || 0);
@@ -152,6 +184,27 @@ router.get('/excel-import/preview', async (req, res, next) => {
   try {
     const preview = await loadExcelOrdersPreview(req.query.fileName || 'data.xlsx');
     return res.status(200).json(preview);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/excel-import/upload', excelUpload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'يرجى اختيار ملف Excel أولاً' });
+    }
+
+    const savedFileName = path.basename(req.file.filename);
+    const preview = await loadExcelOrdersPreview(savedFileName);
+
+    return res.status(200).json({
+      message: 'تم تحديث ملف Excel بنجاح',
+      originalFileName: req.file.originalname,
+      savedFileName,
+      filePath: req.file.path,
+      preview,
+    });
   } catch (error) {
     return next(error);
   }

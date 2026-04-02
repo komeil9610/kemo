@@ -3,7 +3,7 @@ import { normalizeSaudiPhoneNumber } from '../services/api';
 const OPERATIONAL_DATE_STORAGE_KEY = 'tarkeeb-pro-operational-date';
 
 export const statusLabels = {
-  pending: { ar: 'بانتظار العمليات', en: 'Pending' },
+  pending: { ar: 'طلب جديد', en: 'New request' },
   scheduled: { ar: 'تمت الجدولة', en: 'Scheduled' },
   in_transit: { ar: 'في الطريق', en: 'In transit' },
   completed: { ar: 'مكتمل', en: 'Completed' },
@@ -112,6 +112,20 @@ export const nextStatusFor = (status) => {
   const sequence = ['pending', 'scheduled', 'in_transit', 'completed'];
   const currentIndex = sequence.indexOf(status);
   return currentIndex === -1 ? null : sequence[currentIndex + 1] || null;
+};
+
+export const getOrderDeviceCount = (order = {}) => {
+  const explicitCount = Math.max(0, Number(order?.acCount) || 0);
+  if (explicitCount > 0) {
+    return explicitCount;
+  }
+
+  const derivedCount = (Array.isArray(order?.acDetails) ? order.acDetails : []).reduce(
+    (sum, item) => sum + Math.max(0, Number(item?.quantity) || 0),
+    0
+  );
+
+  return derivedCount || 0;
 };
 
 export const buildCallUrl = (value) => {

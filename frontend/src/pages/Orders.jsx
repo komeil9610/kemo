@@ -12,7 +12,7 @@ import {
   operationsService,
   technicianStatusOptions,
 } from '../services/api';
-import { getOrderDisplayStatus } from '../utils/internalOrders';
+import { getOrderDeviceCount, getOrderDisplayStatus } from '../utils/internalOrders';
 import { notificationHaptic, sendAppNotification, selectionHaptic } from '../utils/mobileNative';
 
 const fileToDataUrl = (file) =>
@@ -88,9 +88,12 @@ const copy = {
     region: 'District',
     scheduled: 'Scheduled',
     workType: 'Work required',
+    devices: 'Devices',
     notes: 'Notes',
     quickActions: 'Quick actions',
     call: 'Call',
+    contactCustomer: 'Called customer',
+    contactPrompt: 'Write the customer call note',
     route: 'Route',
     statusRail: 'Required status flow',
     proofTitle: 'Proof of completion',
@@ -163,9 +166,12 @@ const copy = {
     region: 'الحي',
     scheduled: 'الموعد',
     workType: 'العمل المطلوب',
+    devices: 'عدد الأجهزة',
     notes: 'ملاحظات',
     quickActions: 'إجراءات سريعة',
     call: 'اتصال',
+    contactCustomer: 'تم التواصل مع العميل',
+    contactPrompt: 'اكتب ملاحظة الاتصال مع العميل',
     route: 'الموقع',
     statusRail: 'شريط الحالة الإجباري',
     proofTitle: 'إثبات الإنجاز',
@@ -370,7 +376,6 @@ export default function Orders() {
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState('all');
   const [signatureDrafts, setSignatureDrafts] = useState({});
-  const [regionalDrafts, setRegionalDrafts] = useState({});
   const [regionalCompletionDrafts, setRegionalCompletionDrafts] = useState({});
 
   const seenOrderIdsRef = useRef(new Set());
@@ -642,32 +647,6 @@ export default function Orders() {
     await loadOrders();
   };
 
-  const saveRegionalReschedule = async (order) => {
-    const draft = regionalDrafts[order.id] || {};
-    const scheduledDate = String(draft.scheduledDate || order.scheduledDate || '').trim();
-    const scheduledTime = String(draft.scheduledTime || order.scheduledTime || '').trim();
-    const coordinationNote = String(draft.coordinationNote || '').trim();
-
-    if (!scheduledDate || !coordinationNote) {
-      toast.error(viewT.messages.rescheduleValidation);
-      return;
-    }
-
-    try {
-      await operationsService.updateOrder(order.id, {
-        scheduledDate,
-        scheduledTime,
-        coordinationNote,
-        status: 'scheduled',
-      });
-      await notificationHaptic('success');
-      setMessage(viewT.messages.rescheduled);
-      await loadOrders();
-    } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || viewT.messages.rescheduled);
-    }
-  };
-
   const completeRegionalOrder = async (order) => {
     try {
       await operationsService.updateOrder(order.id, {
@@ -679,6 +658,24 @@ export default function Orders() {
       await loadOrders();
     } catch (error) {
       toast.error(error?.response?.data?.message || error.message || viewT.messages.completed);
+    }
+  };
+
+  const saveRegionalContactNote = async (order) => {
+    const note = window.prompt(viewT.contactPrompt, '');
+    if (!note) {
+      return;
+    }
+
+    try {
+      await operationsService.updateOrder(order.id, {
+        contactCustomerNote: note,
+      });
+      await notificationHaptic('success');
+      setMessage(viewT.contactCustomer);
+      await loadOrders();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || viewT.contactCustomer);
     }
   };
 
@@ -789,6 +786,9 @@ export default function Orders() {
                       <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
                       <span>{order.region}</span>
                       <span>{order.workType || order.acType}</span>
+                      <small>
+                        {viewT.devices}: {getOrderDeviceCount(order)}
+                      </small>
                       {!isRegionalDispatcher ? (
                         <small>
                           {t.standardTime}: {order.timing?.standardDurationMinutes || 0} min
@@ -820,13 +820,18 @@ export default function Orders() {
                     </span>
                   </div>
 
-                  <div className="task-quick-actions">
-                    <a className="btn-light" href={`tel:${selectedOrder.phone}`}>
-                      {viewT.call}
-                    </a>
-                    <a className="btn-primary" href={openMapsUrl} rel="noreferrer" target="_blank">
-                      {viewT.route}
-                    </a>
+                    <div className="task-quick-actions">
+                      <a className="btn-light" href={`tel:${selectedOrder.phone}`}>
+                        {viewT.call}
+                      </a>
+                      {isRegionalDispatcher ? (
+                        <button className="btn-light" type="button" onClick={() => saveRegionalContactNote(selectedOrder)}>
+                          {viewT.contactCustomer}
+                        </button>
+                      ) : null}
+                      <a className="btn-primary" href={openMapsUrl} rel="noreferrer" target="_blank">
+                        {viewT.route}
+                      </a>
                   </div>
 
                   <div className="task-detail-grid">
@@ -851,6 +856,10 @@ export default function Orders() {
                     <div className="detail-card">
                       <span>{viewT.workType}</span>
                       <strong>{selectedOrder.workType || selectedOrder.acType}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>{viewT.devices}</span>
+                      <strong>{getOrderDeviceCount(selectedOrder)}</strong>
                     </div>
                     {!isRegionalDispatcher ? (
                       <>
@@ -886,69 +895,6 @@ export default function Orders() {
 
                   {isRegionalDispatcher ? (
                     <div className="proof-shell">
-                      <div className="panel inset-panel">
-                        <div className="panel-header">
-                          <h3>{viewT.rescheduleTitle}</h3>
-                        </div>
-                        <div className="grid-two">
-                          <label className="filter-field">
-                            <span>{viewT.rescheduleDate}</span>
-                            <input
-                              className="input"
-                              type="date"
-                              value={regionalDrafts[selectedOrder.id]?.scheduledDate ?? selectedOrder.scheduledDate ?? ''}
-                              onChange={(event) =>
-                                setRegionalDrafts((current) => ({
-                                  ...current,
-                                  [selectedOrder.id]: {
-                                    ...(current[selectedOrder.id] || {}),
-                                    scheduledDate: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </label>
-                          <label className="filter-field">
-                            <span>{viewT.rescheduleTime}</span>
-                            <input
-                              className="input"
-                              type="time"
-                              value={regionalDrafts[selectedOrder.id]?.scheduledTime ?? selectedOrder.scheduledTime ?? ''}
-                              onChange={(event) =>
-                                setRegionalDrafts((current) => ({
-                                  ...current,
-                                  [selectedOrder.id]: {
-                                    ...(current[selectedOrder.id] || {}),
-                                    scheduledTime: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </label>
-                        </div>
-                        <label className="filter-field">
-                          <span>{viewT.rescheduleNote}</span>
-                          <textarea
-                            className="input"
-                            rows="3"
-                            placeholder={viewT.reschedulePlaceholder}
-                            value={regionalDrafts[selectedOrder.id]?.coordinationNote ?? selectedOrder.coordinationNote ?? ''}
-                            onChange={(event) =>
-                              setRegionalDrafts((current) => ({
-                                ...current,
-                                [selectedOrder.id]: {
-                                  ...(current[selectedOrder.id] || {}),
-                                  coordinationNote: event.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-                        <button className="btn-primary" type="button" onClick={() => saveRegionalReschedule(selectedOrder)}>
-                          {viewT.saveReschedule}
-                        </button>
-                      </div>
-
                       <div className="panel inset-panel">
                         <div className="panel-header">
                           <h3>{viewT.completionTitle}</h3>

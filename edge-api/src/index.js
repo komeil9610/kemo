@@ -1899,7 +1899,7 @@ async function updateServiceOrder(request, id, env) {
   const body = await readJson(request);
   const technicianAllowedKeys = ["clientSignature"];
   const technicianTouchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
-  const regionalAllowedKeys = ["scheduledDate", "scheduledTime", "coordinationNote", "status", "completionNote"];
+  const regionalAllowedKeys = ["scheduledDate", "scheduledTime", "coordinationNote", "status", "completionNote", "contactCustomerNote"];
   const regionalTouchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
   let regionalProfile = null;
 
@@ -2030,6 +2030,10 @@ async function updateServiceOrder(request, id, env) {
     body.coordinationNote !== undefined
       ? String(body.coordinationNote || "").trim()
       : String(existing.coordination_note || "").trim();
+  const contactCustomerNote = String(body.contactCustomerNote || "").trim();
+  const nextCoordinationNote = contactCustomerNote
+    ? [coordinationNote, `اتصل بالعميل: ${contactCustomerNote}`].filter(Boolean).join("\n")
+    : coordinationNote;
   const workType =
     body.workType !== undefined
       ? String(body.workType || "").trim()
@@ -2202,11 +2206,15 @@ async function updateServiceOrder(request, id, env) {
             ? "regional_dispatcher"
             : "customer_service",
       message: isOperationsManager
-        ? "قام مدير العمليات بتحديث الموعد أو حالة الطلب."
+        ? contactCustomerNote
+          ? `سجل مدير العمليات تواصلاً مع العميل.${contactCustomerNote ? ` الملاحظة: ${contactCustomerNote}` : ""}`
+          : "قام مدير العمليات بتحديث الموعد أو حالة الطلب."
         : isTechnician
           ? "قام الفني بتحديث توقيع العميل."
           : isRegionalDispatcher
-            ? status === "completed"
+            ? contactCustomerNote
+              ? `سجلت جهة المنطقة تواصلاً مع العميل.${contactCustomerNote ? ` الملاحظة: ${contactCustomerNote}` : ""}`
+              : status === "completed"
               ? `أكملت جهة المنطقة الطلب.${completionNote ? ` ملاحظة الإكمال: ${completionNote}` : ""}`
               : `أعادت جهة المنطقة جدولة الطلب.${coordinationNote ? ` الملاحظة: ${coordinationNote}` : ""}`
             : status === "canceled"
@@ -2270,7 +2278,7 @@ async function updateServiceOrder(request, id, env) {
       preferredTime,
       scheduledDate,
       scheduledTime,
-      coordinationNote,
+      nextCoordinationNote,
       workType,
       acCount,
       source,
@@ -2382,7 +2390,17 @@ async function updateServiceOrder(request, id, env) {
       env,
       ["operations_manager"],
       "إعادة جدولة من حساب المنطقة",
-      `أعادت ${regionalProfile?.name || "جهة المنطقة"} جدولة الطلب رقم ${requestNumber}.${coordinationNote ? ` الملاحظة: ${coordinationNote}` : ""}`,
+      `أعادت ${regionalProfile?.name || "جهة المنطقة"} جدولة الطلب رقم ${requestNumber}.${nextCoordinationNote ? ` الملاحظة: ${nextCoordinationNote}` : ""}`,
+      orderId
+    );
+  }
+
+  if (isRegionalDispatcher && contactCustomerNote) {
+    await notifyUsersByRoles(
+      env,
+      ["operations_manager"],
+      "اتصال من حساب المنطقة",
+      `سجلت ${regionalProfile?.name || "جهة المنطقة"} تواصلاً مع العميل في الطلب رقم ${requestNumber}. الملاحظة: ${contactCustomerNote}`,
       orderId
     );
   }

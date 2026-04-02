@@ -11,6 +11,7 @@ import {
   exportOrdersCsv,
   formatDateTimeLabel,
   getOperationalDate,
+  getOrderDeviceCount,
   getOrderDisplayStatus,
   getOrderTaskDate,
   orderMatchesDisplayStatus,
@@ -223,6 +224,9 @@ const copy = {
     whatsapp: 'WhatsApp',
     map: 'Map',
     notes: 'Notes',
+    deviceCount: 'Devices',
+    contactCustomer: 'Called customer',
+    contactPrompt: 'Write the call note for the customer',
   },
   ar: {
     modes: {
@@ -267,7 +271,7 @@ const copy = {
     },
     statusOptions: {
       all: 'كل الحالات',
-      pending: 'بانتظار العمليات',
+      pending: 'طلب جديد',
       scheduled: 'تمت الجدولة',
       in_transit: 'في الطريق',
       completed: 'مكتمل',
@@ -275,7 +279,7 @@ const copy = {
     },
     summary: {
       total: 'إجمالي المهام',
-      pending: 'بانتظار العمليات',
+      pending: 'طلبات جديدة',
       scheduled: 'تمت الجدولة',
       inTransit: 'في الطريق',
       completed: 'مكتملة',
@@ -313,6 +317,9 @@ const copy = {
     whatsapp: 'واتساب',
     map: 'الموقع',
     notes: 'الملاحظات',
+    deviceCount: 'عدد الأجهزة',
+    contactCustomer: 'تم التواصل مع العميل',
+    contactPrompt: 'اكتب ملاحظة الاتصال مع العميل',
   },
 };
 
@@ -414,6 +421,10 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   }, [lang, rangeOrders, selectedRegion, selectedStatus, sortKey]);
 
   const summary = useMemo(() => getFilteredSummary(filteredOrders, lang), [filteredOrders, lang]);
+  const visibleSummaryBuckets = useMemo(
+    () => summary.buckets.filter((item) => item.key !== 'pending'),
+    [summary.buckets]
+  );
 
   const exportReport = () => {
     exportOrdersCsv({
@@ -467,6 +478,27 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
         ...current,
         [order.id]: '',
       }));
+    }
+  };
+
+  const handleContactCustomer = async (order) => {
+    const note = window.prompt(t.contactPrompt, '');
+    if (!note) {
+      return;
+    }
+
+    try {
+      setUpdatingOrderId(String(order.id));
+      await operationsService.updateOrder(order.id, {
+        contactCustomerNote: note,
+      });
+      toast.success(t.contactCustomer);
+      const response = await operationsService.getDashboard();
+      setOrders(response.data?.orders || []);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || t.contactCustomer);
+    } finally {
+      setUpdatingOrderId('');
     }
   };
 
@@ -551,7 +583,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
             <strong>{summary.total}</strong>
             <span>{t.summary.total}</span>
           </article>
-          {summary.buckets.map((statusItem) => (
+          {visibleSummaryBuckets.map((statusItem) => (
             <article className="dashboard-stat-link" key={statusItem.key}>
               <strong>{statusItem.count}</strong>
               <span>{statusItem.label}</span>
@@ -603,7 +635,15 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           isRTL={isRTL}
           labels={t.compactList}
           orders={filteredOrders}
-          renderOrderDetails={(order) => <DailyTaskDetailContent lang={lang} order={order} t={t} />}
+          renderOrderDetails={(order) => (
+            <DailyTaskDetailContent
+              canContactCustomer={isOperationsManager}
+              lang={lang}
+              onContactCustomer={handleContactCustomer}
+              order={order}
+              t={t}
+            />
+          )}
           renderRowActions={
             isOperationsManager
               ? (order) => (
@@ -640,7 +680,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   );
 }
 
-function DailyTaskDetailContent({ order, lang, t }) {
+function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactCustomer }) {
   return (
     <div className="daily-task-card drawer-task-content">
       <div className="task-timing-grid">
@@ -651,6 +691,10 @@ function DailyTaskDetailContent({ order, lang, t }) {
         <div className="task-mini-panel">
           <span>{t.scheduled}</span>
           <strong>{formatDateTimeLabel(order.scheduledDate, order.scheduledTime, lang)}</strong>
+        </div>
+        <div className="task-mini-panel">
+          <span>{t.deviceCount}</span>
+          <strong>{getOrderDeviceCount(order)}</strong>
         </div>
       </div>
 
@@ -676,6 +720,11 @@ function DailyTaskDetailContent({ order, lang, t }) {
           <a className="btn-light" href={order.mapLink} target="_blank" rel="noreferrer">
             {t.map}
           </a>
+        ) : null}
+        {canContactCustomer ? (
+          <button className="btn-light" type="button" onClick={() => onContactCustomer(order)}>
+            {t.contactCustomer}
+          </button>
         ) : null}
       </div>
 
