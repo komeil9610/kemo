@@ -486,9 +486,10 @@ async function register(request, env) {
 
   const userId = created.meta.last_row_id;
   const user = { id: userId, name, email, role: "member", status: "active" };
+  const jwtSecret = getJwtSecret(env, request);
   const token = await signJwt(
     { sub: String(userId), email, name, role: user.role, status: user.status },
-    env.JWT_SECRET || "dev-secret"
+    jwtSecret
   );
 
   return json({ token, user }, 201, request, env);
@@ -531,6 +532,7 @@ async function login(request, env) {
           .first()
       : null;
 
+  const jwtSecret = getJwtSecret(env, request);
   const token = await signJwt(
     {
       sub: String(user.id),
@@ -539,7 +541,7 @@ async function login(request, env) {
       role: normalizeServerRole(user.role),
       status: user.status || "active",
     },
-    env.JWT_SECRET || "dev-secret"
+    jwtSecret
   );
 
   return json(
@@ -1335,7 +1337,7 @@ async function getOperationsDashboard(request, env) {
   }
 
   const orders = await readServiceOrders(env);
-  const summary = buildOperationsSummary(orders, []);
+  const summary = await readOperationsSummary(env);
 
   return json(
     {
@@ -1350,8 +1352,7 @@ async function getOperationsDashboard(request, env) {
 }
 
 async function getOperationsSummary(request, env) {
-  const orders = await readServiceOrders(env);
-  const summary = buildOperationsSummary(orders, []);
+  const summary = await readOperationsSummary(env);
 
   return json({ summary }, 200, request, env);
 }
@@ -2573,7 +2574,13 @@ async function getTechnicianOrders(request, env) {
     : results || [];
 
   const areaClusters = await readInternalAreaClusters(env);
-  const orders = await Promise.all(scopedResults.map((row) => mapServiceOrderRow(env, row, areaClusters)));
+  const photosByOrderId = await readServiceOrderPhotosByOrderIds(
+    env,
+    scopedResults.map((row) => row.id)
+  );
+  const orders = scopedResults.map((row) =>
+    mapServiceOrderRow(row, areaClusters, photosByOrderId.get(Number(row.id)) || [])
+  );
   const timeStandards = await readServiceTimeStandards(env);
 
   return json(
@@ -3446,7 +3453,14 @@ async function readServiceOrders(env) {
      ORDER BY o.id DESC`
   ).all();
 
-  return Promise.all((results || []).map((row) => mapServiceOrderRow(env, row, areaClusters)));
+  const photosByOrderId = await readServiceOrderPhotosByOrderIds(
+    env,
+    (results || []).map((row) => row.id)
+  );
+
+  return (results || []).map((row) =>
+    mapServiceOrderRow(row, areaClusters, photosByOrderId.get(Number(row.id)) || [])
+  );
 }
 
 async function readServiceOrderById(env, orderId) {
@@ -3475,19 +3489,48 @@ async function readServiceOrderById(env, orderId) {
     return null;
   }
 
-  return mapServiceOrderRow(env, row, areaClusters);
+  const photosByOrderId = await readServiceOrderPhotosByOrderIds(env, [row.id]);
+  return mapServiceOrderRow(row, areaClusters, photosByOrderId.get(Number(row.id)) || []);
 }
 
-async function mapServiceOrderRow(env, row, areaClusters = []) {
-  const { results } = await env.DB.prepare(
-    `SELECT id, image_name, image_url, created_at
-     FROM service_order_photos
-     WHERE order_id = ?
-     ORDER BY id DESC`
-  )
-    .bind(Number(row.id))
-    .all();
+async function readServiceOrderPhotosByOrderIds(env, orderIds = []) {
+  const normalizedOrderIds = Array.from(
+    new Set(
+      (orderIds || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  );
 
+  const photosByOrderId = new Map();
+  if (!normalizedOrderIds.length) {
+    return photosByOrderId;
+  }
+
+  for (let index = 0; index < normalizedOrderIds.length; index += 50) {
+    const chunk = normalizedOrderIds.slice(index, index + 50);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const statement = env.DB.prepare(
+      `SELECT id, order_id, image_name, image_url, created_at
+       FROM service_order_photos
+       WHERE order_id IN (${placeholders})
+       ORDER BY id DESC`
+    ).bind(...chunk);
+    const { results } = await statement.all();
+
+    for (const photo of results || []) {
+      const orderId = Number(photo.order_id);
+      if (!photosByOrderId.has(orderId)) {
+        photosByOrderId.set(orderId, []);
+      }
+      photosByOrderId.get(orderId).push(photo);
+    }
+  }
+
+  return photosByOrderId;
+}
+
+function mapServiceOrderRow(row, areaClusters = [], photos = []) {
   return {
     id: `ORD-${row.id}`,
     numericId: row.id,
@@ -3573,12 +3616,34 @@ async function mapServiceOrderRow(env, row, areaClusters = []) {
         return [];
       }
     })(),
-    photos: (results || []).map((photo) => ({
+    photos: (photos || []).map((photo) => ({
       id: `photo-${photo.id}`,
       name: photo.image_name,
       url: photo.image_url,
       uploadedAt: photo.created_at,
     })),
+  };
+}
+
+async function readOperationsSummary(env) {
+  const row = await env.DB.prepare(
+    `SELECT
+      SUM(CASE WHEN status = 'canceled' THEN 0 ELSE 1 END) AS total_orders,
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_orders,
+      SUM(CASE WHEN status IN ('scheduled', 'in_transit') THEN 1 ELSE 0 END) AS active_orders,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,
+      SUM(CASE WHEN status = 'in_transit' THEN 1 ELSE 0 END) AS in_transit_orders,
+      SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) AS canceled_orders
+     FROM service_orders`
+  ).first();
+
+  return {
+    totalOrders: Number(row?.total_orders || 0),
+    pendingOrders: Number(row?.pending_orders || 0),
+    activeOrders: Number(row?.active_orders || 0),
+    completedOrders: Number(row?.completed_orders || 0),
+    inTransitOrders: Number(row?.in_transit_orders || 0),
+    canceledOrders: Number(row?.canceled_orders || 0),
   };
 }
 
@@ -4459,11 +4524,35 @@ function base64UrlFromBytes(bytes) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+function getJwtSecret(env, request) {
+  const configuredSecret = String(env.JWT_SECRET || "").trim();
+  if (configuredSecret) {
+    return configuredSecret;
+  }
+
+  try {
+    const hostname = new URL(request?.url || "").hostname;
+    if (["localhost", "127.0.0.1"].includes(hostname)) {
+      return "dev-secret";
+    }
+  } catch {}
+
+  throw new Error("JWT_SECRET is not configured");
+}
+
 async function readAuthUser(request, env) {
   const auth = request.headers.get("Authorization") || "";
   if (!auth.startsWith("Bearer ")) return null;
   const token = auth.slice("Bearer ".length);
-  return verifyJwt(token, env.JWT_SECRET || "dev-secret");
+
+  let jwtSecret;
+  try {
+    jwtSecret = getJwtSecret(env, request);
+  } catch {
+    return null;
+  }
+
+  return verifyJwt(token, jwtSecret);
 }
 
 async function readActiveUser(request, env) {
