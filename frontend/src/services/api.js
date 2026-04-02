@@ -479,6 +479,20 @@ const isLocalhost =
 
 const allowDemoFallback = process.env.REACT_APP_ALLOW_DEMO_FALLBACK === 'true';
 
+const shouldInvalidateSession = (error) => {
+  const status = Number(error?.response?.status || 0);
+  const message = String(error?.response?.data?.message || error?.message || '').toLowerCase();
+  return status === 401 || (status === 403 && /internal access required|unauthorized/.test(message));
+};
+
+const notifyInvalidSession = () => {
+  removeStorage('authToken');
+  removeStorage('authUser');
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth-invalidated'));
+  }
+};
+
 const normalizeLocalApiBaseUrl = (value, port) => {
   if (!isLocalhost || typeof window === 'undefined') {
     return value;
@@ -533,6 +547,15 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (shouldInvalidateSession(error)) {
+      notifyInvalidSession();
+    }
+    return Promise.reject(error);
+  }
+);
 if (backendApiClient) {
   backendApiClient.interceptors.request.use((config) => {
     const token = readStorage('authToken');
@@ -541,6 +564,15 @@ if (backendApiClient) {
     }
     return config;
   });
+  backendApiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (shouldInvalidateSession(error)) {
+        notifyInvalidSession();
+      }
+      return Promise.reject(error);
+    }
+  );
 }
 
 const withFallback = async (remoteAction, localAction) => {

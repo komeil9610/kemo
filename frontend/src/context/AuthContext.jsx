@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { authService } from '../services/api';
 
 const AuthContext = createContext();
@@ -73,6 +73,23 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => readStorage('authToken'));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleInvalidSession = () => {
+      setUser(null);
+      setToken(null);
+      setError('انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.');
+      removeStorage('authToken');
+      removeStorage('authUser');
+    };
+
+    window.addEventListener('auth-invalidated', handleInvalidSession);
+    return () => window.removeEventListener('auth-invalidated', handleInvalidSession);
+  }, []);
 
   const login = async (email, password) => {
     try {
