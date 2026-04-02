@@ -479,12 +479,35 @@ const isLocalhost =
 
 const allowDemoFallback = process.env.REACT_APP_ALLOW_DEMO_FALLBACK === 'true';
 
+const normalizeLocalApiBaseUrl = (value, port) => {
+  if (!isLocalhost || typeof window === 'undefined') {
+    return value;
+  }
+
+  const fallbackUrl = `http://${window.location.hostname}:${port}/api`;
+  if (!value) {
+    return fallbackUrl;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+      parsed.hostname = window.location.hostname;
+      return parsed.toString().replace(/\/$/, '');
+    }
+  } catch {
+    return value;
+  }
+
+  return value;
+};
+
 const API_BASE_URL =
-  process.env.REACT_APP_API_URL ||
-  (isLocalhost ? 'http://127.0.0.1:5000/api' : '/api');
+  normalizeLocalApiBaseUrl(process.env.REACT_APP_API_URL, 8787) ||
+  (isLocalhost ? `http://${window.location.hostname}:8787/api` : '/api');
 const BACKEND_API_BASE_URL =
-  process.env.REACT_APP_BACKEND_API_URL ||
-  (isLocalhost ? 'http://127.0.0.1:5000/api' : '');
+  normalizeLocalApiBaseUrl(process.env.REACT_APP_BACKEND_API_URL, 5000) ||
+  (isLocalhost ? `http://${window.location.hostname}:5000/api` : '');
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
