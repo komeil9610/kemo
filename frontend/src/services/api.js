@@ -74,6 +74,17 @@ const extractExcelStatusFromNotes = (notes) => {
   const match = text.match(/(?:^|\n)Excel status:\s*(.+?)(?:\n|$)/i);
   return String(match?.[1] || '').trim();
 };
+const extractImportReferenceValue = (order, label) => {
+  const directValue = String(order?.[label] || order?.[`${label}Id`] || order?.importMeta?.[label] || '').trim();
+  if (directValue) {
+    return directValue;
+  }
+
+  const text = String(order?.notes || '').trim();
+  const escapedLabel = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = text.match(new RegExp(`(?:^|\\n)${escapedLabel}\\s*:\\s*(.+?)(?:\\n|$)`, 'i'));
+  return String(match?.[1] || '').trim();
+};
 export const technicianStatusOptions = [
   { value: 'available', label: 'متاح', enLabel: 'Available' },
   { value: 'busy', label: 'مشغول', enLabel: 'Busy' },
@@ -373,6 +384,14 @@ const mapRemoteOrder = (order = {}) => ({
   id: order.id || `ORD-${order.numericId || Date.now()}`,
   numericId: Number(order.numericId) || Number(String(order.id || '').replace(/\D/g, '')) || Date.now(),
   requestNumber: order.requestNumber || order.request_number || order.source || order.id,
+  soId:
+    order.soId ||
+    extractImportReferenceValue(order, 'soId') ||
+    extractImportReferenceValue(order, 'SO ID') ||
+    order.requestNumber ||
+    order.request_number ||
+    '',
+  woId: order.woId || extractImportReferenceValue(order, 'woId') || extractImportReferenceValue(order, 'WO ID') || '',
   customerName: order.customerName || order.customer_name || '',
   phone: normalizeSaudiPhoneNumber(order.phone),
   secondaryPhone: normalizeSaudiPhoneNumber(order.secondaryPhone || order.secondary_phone || ''),
@@ -440,10 +459,10 @@ const mapRemoteOrder = (order = {}) => ({
 });
 
 const buildSummary = (orders = []) => ({
-  totalOrders: orders.filter((order) => order.status !== 'canceled').length,
+  totalOrders: orders.filter((order) => !['canceled', 'completed'].includes(order.status)).length,
   pendingOrders: orders.filter((order) => order.status === 'pending').length,
   activeOrders: orders.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length,
-  completedOrders: orders.filter((order) => order.status === 'completed').length,
+  completedOrders: 0,
   inTransitOrders: orders.filter((order) => order.status === 'in_transit').length,
   canceledOrders: orders.filter((order) => order.status === 'canceled').length,
 });
@@ -538,7 +557,7 @@ const backendApiClient = BACKEND_API_BASE_URL
     })
   : null;
 
-export const canUploadExcelSource = Boolean(backendApiClient);
+export const canUploadExcelSource = true;
 
 apiClient.interceptors.request.use((config) => {
   const token = readStorage('authToken');
@@ -623,7 +642,7 @@ const localAuthService = {
 const localOperationsService = {
   async getDashboard() {
     const state = getState();
-    const orders = sortOrders(state.orders || []);
+    const orders = sortOrders((state.orders || []).filter((order) => order.status !== 'completed'));
     return delay({
       data: {
         orders,
@@ -927,7 +946,7 @@ const localOperationsService = {
 
   async getSummary() {
     const state = getState();
-    return delay({ data: { summary: buildSummary(state.orders || []) } });
+    return delay({ data: { summary: buildSummary((state.orders || []).filter((order) => order.status !== 'completed')) } });
   },
 };
 
@@ -936,6 +955,12 @@ const remoteOperationsService = {
   getTechnicianOrders: (technicianId) => apiClient.get('/operations/technician/orders', { params: { technicianId } }),
   createOrder: (data) => apiClient.post('/operations/orders', data),
   importOrders: (data) => apiClient.post('/operations/orders/import', data),
+  uploadExcelSource: (formData) =>
+    apiClient.post('/operations/excel-import/preview-upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
   createTechnician: (data) => apiClient.post('/operations/technicians', data),
   updateOrder: (orderId, data) => apiClient.put(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}`, data),
   quickUpdateOrderStatus: (orderId, status) => apiClient.patch(`/orders/${String(orderId).replace(/^ORD-/, '')}`, { status }),
@@ -969,7 +994,7 @@ export const operationsService = {
     withFallback(
       async () => {
         const response = await remoteOperationsService.getDashboard();
-        const orders = sortOrders((response.data?.orders || []).map(mapRemoteOrder));
+        const orders = sortOrders((response.data?.orders || []).map(mapRemoteOrder).filter((order) => order.status !== 'completed'));
         return {
           data: {
             ...response.data,
@@ -989,13 +1014,16 @@ export const operationsService = {
       },
       () => localOperationsService.createOrder(data)
     ),
-  importOrdersFromExcel: async (fileName = 'data.xlsx') => {
-    const preview = backendApiClient
-      ? await backendApiClient.get('/operations/excel-import/preview', {
-          params: { fileName },
-        })
-      : await axios.get('/excel-import/orders.json');
-    const orders = Array.isArray(preview.data?.orders) ? preview.data.orders : [];
+  importOrdersFromExcel: async (fileName = 'data.xlsx', uploadedPreview = null) => {
+    const preview = uploadedPreview
+      ? { data: uploadedPreview }
+      : backendApiClient
+        ? await backendApiClient.get('/operations/excel-import/preview', {
+            params: { fileName },
+          })
+        : await axios.get('/excel-import/orders.json');
+    const previewData = preview.data || null;
+    const orders = Array.isArray(previewData?.orders) ? previewData.orders.filter((order) => order.importStatus !== 'completed') : [];
 
     if (!orders.length) {
       return {
@@ -1003,7 +1031,7 @@ export const operationsService = {
           importedCount: 0,
           skippedCount: 0,
           skippedOrders: [],
-          preview: preview.data || null,
+          preview: previewData,
         },
       };
     }
@@ -1031,27 +1059,34 @@ export const operationsService = {
         importedCount,
         skippedCount,
         skippedOrders,
-        preview: preview.data || null,
+        preview: previewData,
       },
     };
   },
   uploadExcelSource: async (file) => {
-    if (!backendApiClient) {
-      throw new Error('Excel upload requires the local backend at :5000');
-    }
-
     if (!file) {
       throw new Error('Choose an Excel file first');
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
+    const buildFormData = () => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return formData;
+    };
 
-    return backendApiClient.post('/operations/excel-import/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    try {
+      return await remoteOperationsService.uploadExcelSource(buildFormData());
+    } catch (error) {
+      if (!backendApiClient || (error?.response?.status && error.response.status < 500 && error.response.status !== 404)) {
+        throw error;
+      }
+
+      return backendApiClient.post('/operations/excel-import/upload', buildFormData(), {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    }
   },
   createTechnician: (data) =>
     withFallback(

@@ -15,6 +15,8 @@ const { loadExcelOrdersPreview } = require(path.join(repoRoot, 'backend/src/util
 const databaseName = process.env.D1_DATABASE_NAME || 'tarkeeb_pro_db';
 const isRemote = process.env.D1_IMPORT_REMOTE !== 'false';
 const batchSize = Math.max(1, Number(process.env.D1_IMPORT_BATCH_SIZE) || 100);
+const startBatch = Math.max(1, Number(process.env.D1_IMPORT_START_BATCH) || 1);
+const endBatch = Math.max(startBatch, Number(process.env.D1_IMPORT_END_BATCH) || Number.MAX_SAFE_INTEGER);
 
 const sqlEscape = (value) => `'${String(value ?? '').replace(/'/g, "''")}'`;
 const sqlNullable = (value) => {
@@ -119,7 +121,7 @@ const buildInsertStatement = (order) => {
 
 const runWrangler = async (sql, batchNumber, totalBatches) => {
   const tempFile = path.join(os.tmpdir(), `excel-import-batch-${batchNumber}.sql`);
-  await fs.writeFile(tempFile, `BEGIN TRANSACTION;\n${sql}\nCOMMIT;\n`, 'utf8');
+  await fs.writeFile(tempFile, `${sql}\n`, 'utf8');
   console.log(`Importing batch ${batchNumber}/${totalBatches}...`);
   const args = ['wrangler', 'd1', 'execute', databaseName];
   if (isRemote) {
@@ -151,9 +153,16 @@ if (!orders.length) {
 
 const totalBatches = Math.ceil(orders.length / batchSize);
 for (let index = 0; index < orders.length; index += batchSize) {
+  const currentBatch = Math.floor(index / batchSize) + 1;
+  if (currentBatch < startBatch) {
+    continue;
+  }
+  if (currentBatch > endBatch) {
+    break;
+  }
   const batchOrders = orders.slice(index, index + batchSize);
   const sql = batchOrders.map(buildInsertStatement).join('\n');
-  await runWrangler(sql, Math.floor(index / batchSize) + 1, totalBatches);
+  await runWrangler(sql, currentBatch, totalBatches);
 }
 
 console.log(`Excel import to D1 completed for ${orders.length} orders.`);

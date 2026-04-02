@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
 import OrderMasterDetail from '../components/OrderMasterDetail';
@@ -13,7 +12,6 @@ import {
   operationsService,
 } from '../services/api';
 import {
-  boardColumns,
   buildDisplayStatusBuckets,
   buildCallUrl,
   exportOrdersCsv,
@@ -21,6 +19,8 @@ import {
   getOperationalDate,
   getOrderDeviceCount,
   getOrderDisplayStatus,
+  getOrderPrimaryReference,
+  getOrderReferenceText,
   orderMatchesDisplayStatus,
   getOrdersForView,
   nextStatusFor,
@@ -112,7 +112,7 @@ const copy = {
     closeDetail: 'Back to full board',
     compactList: {
       search: 'Search orders',
-      searchPlaceholder: 'Search by order ID, customer, or city',
+      searchPlaceholder: 'Search by phone, SO ID, WO ID, customer, or city',
       orderId: 'Order ID',
       status: 'Status',
       customer: 'Customer',
@@ -127,10 +127,11 @@ const copy = {
     dailyTasks: 'Daily tasks',
     customerServicePanel: 'Customer service intake',
     operationsPanel: 'Operations coordination',
+    operationsHint: 'Review incoming requests, update statuses, and follow up with regional accounts from the filtered task lists.',
     formHint: 'Capture the request in full detail so the operations manager can coordinate clearly from the first touch.',
     excelImportTitle: 'Excel intake',
-    excelImportHint: 'Read all rows from the Excel file in backend/data/data.xlsx, keep the SO ID inside each request, and create the orders automatically.',
-    excelImportFile: 'Source file: backend/data/data.xlsx',
+    excelImportHint: 'Upload any Excel file from mobile or browser, ignore completed rows, keep each SO ID, and prepare valid orders for direct import.',
+    excelImportFile: 'Source file: latest uploaded Excel file',
     operationsDate: 'Operations date',
     saveOperationsDate: 'Update date',
     moveToNextDate: 'Export day and move forward',
@@ -176,10 +177,6 @@ const copy = {
     creating: 'Creating...',
     exportCsr: 'Export GM report',
     exportOps: 'Export team report',
-    boardTitle: 'Kanban board',
-    boardHint: 'Operations work is grouped by region here, with each regional box showing its own status counters and sorted request flow.',
-    boardRegionHint: 'Each region box keeps its own queue, status counters, and sorted cities for direct operations follow-up.',
-    resetBoardFocus: 'Show all regions',
     emptyColumn: 'No requests here yet.',
     emptyDetail: 'No tasks in this category right now.',
     preferredSlot: 'Preferred slot',
@@ -224,7 +221,7 @@ const copy = {
     },
     regionTaskCount: 'Requests in this region',
     deviceCount: 'Devices',
-    successExcelUpload: 'Excel source file updated successfully.',
+    successExcelUpload: 'Excel file parsed and prepared for import successfully.',
     successCreate: 'Request created successfully.',
     successImport: (imported, skipped) =>
       `Imported ${imported} request${imported === 1 ? '' : 's'} from Excel${skipped ? ` and skipped ${skipped} duplicate or invalid row${skipped === 1 ? '' : 's'}` : ''}.`,
@@ -259,7 +256,7 @@ const copy = {
     closeDetail: 'العودة إلى اللوحة الكاملة',
     compactList: {
       search: 'بحث الطلبات',
-      searchPlaceholder: 'ابحث برقم الطلب أو اسم العميل أو المدينة',
+      searchPlaceholder: 'ابحث بالجوال أو SO ID أو WO ID أو اسم العميل أو المدينة',
       orderId: 'رقم الطلب',
       status: 'الحالة',
       customer: 'العميل',
@@ -274,10 +271,11 @@ const copy = {
     dailyTasks: 'المهام اليومية',
     customerServicePanel: 'إدخال خدمة العملاء',
     operationsPanel: 'تنسيق مدير العمليات',
+    operationsHint: 'راجع الطلبات الواردة وحدّث حالاتها وتابع حسابات المناطق من قوائم المهام المفلترة.',
     formHint: 'اكتب الطلب كاملاً وبوضوح حتى يستطيع مدير العمليات فهم الحالة وتنسيق الموعد دون أي نقص.',
     excelImportTitle: 'استيراد Excel',
-    excelImportHint: 'يتم قراءة جميع صفوف ملف Excel الموجود داخل backend/data/data.xlsx مع حفظ SO ID داخل كل طلب وإنشاء الطلبات تلقائياً.',
-    excelImportFile: 'ملف المصدر: backend/data/data.xlsx',
+    excelImportHint: 'ارفع أي ملف Excel من الجوال أو المتصفح، وسيتم تجاهل الصفوف المكتملة، والحفاظ على SO ID، وتجهيز الطلبات الصالحة للاستيراد المباشر.',
+    excelImportFile: 'ملف المصدر: آخر ملف Excel تم رفعه',
     operationsDate: 'تاريخ التشغيل',
     saveOperationsDate: 'تحديث التاريخ',
     moveToNextDate: 'تصدير اليوم والانتقال لليوم التالي',
@@ -323,10 +321,6 @@ const copy = {
     creating: 'جارٍ الإنشاء...',
     exportCsr: 'تصدير تقرير للمدير العام',
     exportOps: 'تصدير تقرير تنسيق الفريق',
-    boardTitle: 'لوحة Kanban',
-    boardHint: 'هنا يتم تنظيم عمل مدير العمليات حسب المناطق، مع عداد حالات مستقل وفرز المدن والطلبات داخل كل مربع.',
-    boardRegionHint: 'كل مربع منطقة يعرض عداد حالاته الخاص، ومدنه التابعة، وترتيب الطلبات داخله بشكل تشغيلي واضح.',
-    resetBoardFocus: 'عرض كل المناطق',
     emptyColumn: 'لا توجد طلبات هنا حالياً.',
     emptyDetail: 'لا توجد مهام في هذا التصنيف حالياً.',
     preferredSlot: 'الموعد المفضل',
@@ -371,7 +365,7 @@ const copy = {
     },
     regionTaskCount: 'طلبات هذه المنطقة',
     deviceCount: 'عدد الأجهزة',
-    successExcelUpload: 'تم تحديث ملف Excel المصدر بنجاح.',
+    successExcelUpload: 'تمت قراءة ملف Excel وتجهيزه للاستيراد بنجاح.',
     successCreate: 'تم إنشاء الطلب بنجاح.',
     successImport: (imported, skipped) =>
       `تم استيراد ${imported} طلب${imported === 1 ? '' : 'ات'} من ملف Excel${skipped ? ` مع تجاوز ${skipped} صف${skipped === 1 ? '' : 'وف'} مكرر أو غير صالح` : ''}.`,
@@ -449,19 +443,11 @@ const customerActionLabel = (value, lang) =>
     }[value] || { ar: value, en: value }
   )[lang];
 
-const getBoardOrders = (orders, statusKey) => {
-  if (statusKey === 'completed') {
-    return orders.filter((order) => ['completed', 'canceled'].includes(order.status));
-  }
-
-  return orders.filter((order) => order.status === statusKey);
-};
-
 const buildDashboardSummary = (orders = []) => ({
-  totalOrders: orders.filter((order) => order.status !== 'canceled').length,
+  totalOrders: orders.filter((order) => !['canceled', 'completed'].includes(order.status)).length,
   pendingOrders: orders.filter((order) => order.status === 'pending').length,
   activeOrders: orders.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length,
-  completedOrders: orders.filter((order) => order.status === 'completed').length,
+  completedOrders: 0,
   inTransitOrders: orders.filter((order) => order.status === 'in_transit').length,
   canceledOrders: orders.filter((order) => order.status === 'canceled').length,
 });
@@ -479,8 +465,7 @@ export default function Dashboard() {
   const [updatingId, setUpdatingId] = useState('');
   const [schedulingId, setSchedulingId] = useState('');
   const [excelSourceFileName, setExcelSourceFileName] = useState('data.xlsx');
-  const [selectedBoardRegion, setSelectedBoardRegion] = useState('');
-  const [selectedBoardStatus, setSelectedBoardStatus] = useState('');
+  const [excelPreview, setExcelPreview] = useState(null);
   const [operationalDate, setOperationalDateState] = useState(() => getOperationalDate());
   const [form, setForm] = useState(() => createEmptyForm(getOperationalDate()));
   const [scheduleDrafts, setScheduleDrafts] = useState({});
@@ -505,7 +490,9 @@ export default function Dashboard() {
           setExcelSourceFileName((current) => current || 'data.xlsx');
         }
       } catch (error) {
-        toast.error(error?.response?.data?.message || error.message || 'Unable to load dashboard');
+        if (!silent) {
+          toast.error(error?.response?.data?.message || error.message || 'Unable to load dashboard');
+        }
       } finally {
         if (!silent) {
           setLoading(false);
@@ -514,7 +501,7 @@ export default function Dashboard() {
     };
 
     load();
-    const intervalId = window.setInterval(() => load(true), 12000);
+    const intervalId = window.setInterval(() => load(true), 30000);
     const reloadFromEvent = () => load(true);
     window.addEventListener('operations-updated', reloadFromEvent);
 
@@ -549,40 +536,6 @@ export default function Dashboard() {
       : getOrdersForView(orders, viewKey);
     return permissions.canManageStatuses ? scopedOrders.slice().sort(compareOrdersByOperationsRegion) : scopedOrders;
   }, [displayStatusBuckets, lang, orders, permissions.canManageStatuses, viewKey]);
-
-  const regionBoard = useMemo(
-    () =>
-      zamilCoverageByRegion.map((region) => {
-        const regionOrders = orders.filter((order) => getOrderRegionKey(order) === region.key).slice().sort(compareOrdersByOperationsRegion);
-        const sections = boardColumns.reduce(
-          (result, statusKey) => ({
-            ...result,
-            [statusKey]: getBoardOrders(regionOrders, statusKey),
-          }),
-          {}
-        );
-
-        return {
-          ...region,
-          orders: regionOrders,
-          displayStatusBuckets: buildDisplayStatusBuckets(regionOrders, lang).filter((item) => item.key !== 'pending'),
-          counters: boardColumns.reduce(
-            (result, statusKey) => ({
-              ...result,
-              [statusKey]: sections[statusKey]?.length || 0,
-            }),
-            {}
-          ),
-          sections,
-        };
-      }),
-    [lang, orders]
-  );
-  const visibleRegionBoard = useMemo(
-    () => (selectedBoardRegion ? regionBoard.filter((region) => region.key === selectedBoardRegion) : regionBoard),
-    [regionBoard, selectedBoardRegion]
-  );
-  const visibleBoardStatuses = selectedBoardStatus ? [selectedBoardStatus] : boardColumns;
 
   const statCards = useMemo(
     () => displayStatusBuckets,
@@ -695,8 +648,10 @@ export default function Dashboard() {
     try {
       setUploadingExcel(true);
       const response = await operationsService.uploadExcelSource(file);
-      const savedFileName = response.data?.savedFileName || file.name || 'data.xlsx';
+      const savedFileName = response.data?.savedFileName || response.data?.fileName || file.name || 'data.xlsx';
+      const nextPreview = response.data?.preview || null;
       setExcelSourceFileName(savedFileName);
+      setExcelPreview(nextPreview);
       toast.success(t.successExcelUpload);
     } catch (error) {
       toast.error(error?.response?.data?.message || error.message || 'Unable to upload Excel file');
@@ -709,7 +664,7 @@ export default function Dashboard() {
   const onImportExcel = async () => {
     try {
       setImportingExcel(true);
-      const response = await operationsService.importOrdersFromExcel(excelSourceFileName);
+      const response = await operationsService.importOrdersFromExcel(excelSourceFileName, excelPreview);
       const importedCount = Number(response.data?.importedCount) || 0;
       const skippedCount = Number(response.data?.skippedCount) || 0;
 
@@ -719,6 +674,7 @@ export default function Dashboard() {
       }
 
       toast.success(t.successImport(importedCount, skippedCount));
+      setExcelPreview(null);
     } catch (error) {
       toast.error(error?.response?.data?.message || error.message || 'Unable to import Excel orders');
     } finally {
@@ -753,7 +709,7 @@ export default function Dashboard() {
 
     const statusLabel =
       inlineStatusOptions.find((option) => option.value === nextStatus)?.[lang === 'ar' ? 'ar' : 'en'] || nextStatus;
-    const orderRef = order.requestNumber || order.id;
+    const orderRef = getOrderPrimaryReference(order) || order.id;
 
     onInlineStatusDraftChange(order.id, nextStatus);
 
@@ -781,32 +737,6 @@ export default function Dashboard() {
       return;
     }
     await moveOrderToStatus(order.id, nextStatus);
-  };
-
-  const onDragEnd = async (result) => {
-    if (!permissions.canManageStatuses) {
-      return;
-    }
-
-    const parseDroppable = (value) => {
-      const [regionKey = '', statusKey = ''] = String(value || '').split(':');
-      return { regionKey, statusKey };
-    };
-    const destination = parseDroppable(result.destination?.droppableId);
-    const source = parseDroppable(result.source?.droppableId);
-    const destinationStatus = destination.statusKey;
-    const sourceStatus = source.statusKey;
-    const orderId = result.draggableId;
-
-    if (!destinationStatus || !boardColumns.includes(destinationStatus) || !sourceStatus || !boardColumns.includes(sourceStatus)) {
-      return;
-    }
-
-    if (destination.regionKey !== source.regionKey || destinationStatus === sourceStatus) {
-      return;
-    }
-
-    await moveOrderToStatus(orderId, destinationStatus);
   };
 
   const onSaveSchedule = async (order) => {
@@ -903,22 +833,6 @@ export default function Dashboard() {
     toast.success(t.successReport);
   };
 
-  const onSelectBoardRegion = (regionKey) => {
-    setSelectedBoardRegion((current) => {
-      if (current === regionKey) {
-        setSelectedBoardStatus('');
-        return '';
-      }
-      return regionKey;
-    });
-    setSelectedBoardStatus('');
-  };
-
-  const onSelectBoardStatus = (regionKey, statusKey) => {
-    setSelectedBoardRegion(regionKey);
-    setSelectedBoardStatus((current) => (selectedBoardRegion === regionKey && current === statusKey ? '' : statusKey));
-  };
-
   if (loading) {
     return (
       <section className="page-shell" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -981,7 +895,7 @@ export default function Dashboard() {
               emptySearchText={t.compactList.emptySearch}
               emptyText={t.emptyDetail}
               getCustomerName={(order) => order.customerName || '—'}
-              getOrderReference={(order) => order.requestNumber || order.id || '—'}
+              getOrderReference={(order) => getOrderReferenceText(order, lang)}
               getStatusLabel={(order) => getOrderDisplayStatus(order, lang)}
               isRTL={isRTL}
               labels={t.compactList}
@@ -1101,7 +1015,13 @@ export default function Dashboard() {
                 <span className="reference-label">{t.excelImportTitle}</span>
                 <h3>{t.importExcel}</h3>
                 <p>{t.excelImportHint}</p>
-                <small>{`backend/data/${excelSourceFileName}`}</small>
+                <small>
+                  {excelPreview?.summary?.validOrders
+                    ? `${excelSourceFileName} • ${excelPreview.summary.validOrders} ${
+                        lang === 'ar' ? 'طلب صالح جاهز للاستيراد' : 'valid orders ready'
+                      }`
+                    : excelSourceFileName}
+                </small>
               </div>
             </div>
 
@@ -1407,7 +1327,7 @@ export default function Dashboard() {
             <div className="panel-header">
               <div>
                 <h2>{t.operationsPanel}</h2>
-                <p>{t.boardHint}</p>
+                <p>{t.operationsHint}</p>
               </div>
               <span className="user-chip">{t.roleBadges[user?.role]}</span>
             </div>
@@ -1415,203 +1335,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <section className="panel internal-board-panel">
-        <div className="panel-header">
-          <div>
-            <h2>{t.boardTitle}</h2>
-            <p>{t.boardHint}</p>
-          </div>
-          {selectedBoardRegion || selectedBoardStatus ? (
-            <button className="btn-light" type="button" onClick={() => {
-              setSelectedBoardRegion('');
-              setSelectedBoardStatus('');
-            }}>
-              {t.resetBoardFocus}
-            </button>
-          ) : null}
-        </div>
-
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="kanban-grid kanban-grid-four">
-            {visibleRegionBoard.map((region) => (
-              <OperationsRegionKanban
-                key={region.key}
-                region={region}
-                visibleStatuses={visibleBoardStatuses}
-                isActive={selectedBoardRegion === region.key}
-                activeStatus={selectedBoardStatus}
-                emptyText={t.emptyColumn}
-                lang={lang}
-                t={t}
-                canManageStatuses={permissions.canManageStatuses}
-                canCreateOrders={permissions.canCreateOrders}
-                onAdvanceStatus={onAdvanceStatus}
-                onRequestReschedule={onRequestReschedule}
-                onCancelOrder={onCancelOrder}
-                onContactCustomer={onContactCustomer}
-                onOpenSchedule={openScheduleEditor}
-                scheduleDrafts={scheduleDrafts}
-                updateScheduleDraft={updateScheduleDraft}
-                onSaveSchedule={onSaveSchedule}
-                expandedScheduleId={expandedScheduleId}
-                updatingId={updatingId}
-                schedulingId={schedulingId}
-                onSelectRegion={onSelectBoardRegion}
-                onSelectStatus={onSelectBoardStatus}
-              />
-            ))}
-          </div>
-        </DragDropContext>
-      </section>
     </section>
-  );
-}
-
-function OperationsRegionKanban({
-  region,
-  visibleStatuses,
-  isActive,
-  activeStatus,
-  emptyText,
-  lang,
-  t,
-  canManageStatuses,
-  canCreateOrders,
-  onAdvanceStatus,
-  onRequestReschedule,
-  onCancelOrder,
-  onContactCustomer,
-  onOpenSchedule,
-  scheduleDrafts,
-  updateScheduleDraft,
-  onSaveSchedule,
-  expandedScheduleId,
-  updatingId,
-  schedulingId,
-  onSelectRegion,
-  onSelectStatus,
-}) {
-  const ignoreBoardFocusClick = (event) =>
-    event.target.closest('a, button, input, textarea, select, label') || event.target.closest('.kanban-card');
-
-  return (
-    <div
-      className={`kanban-column region-kanban-column ${isActive ? 'active' : ''}`}
-      onClick={(event) => {
-        if (ignoreBoardFocusClick(event) || event.target.closest('.region-kanban-section')) {
-          return;
-        }
-        onSelectRegion(region.key);
-      }}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelectRegion(region.key);
-        }
-      }}
-    >
-      <div className="kanban-column-head">
-        <div>
-          <h3>{lang === 'ar' ? region.ar : region.en}</h3>
-          <p className="muted">{region.cities.join(' - ')}</p>
-        </div>
-        <span>{region.orders.length}</span>
-      </div>
-
-      <div className="region-kanban-counter-row">
-        {region.displayStatusBuckets.map((statusItem) => (
-          <div className="region-status-counter" key={`${region.key}-${statusItem.key}`}>
-            <small>{statusItem.label}</small>
-            <strong>{statusItem.count || 0}</strong>
-          </div>
-        ))}
-      </div>
-
-      <p className="muted region-kanban-hint">{t.boardRegionHint}</p>
-
-      <div className="region-kanban-sections">
-        {visibleStatuses.map((statusKey) => (
-          <Droppable droppableId={`${region.key}:${statusKey}`} key={`${region.key}:${statusKey}`}>
-            {(provided, snapshot) => (
-              <div
-                className={`region-kanban-section ${snapshot.isDraggingOver ? 'drag-over' : ''} ${
-                  activeStatus === statusKey ? 'active' : ''
-                }`}
-                ref={provided.innerRef}
-                {...provided.droppableProps}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (ignoreBoardFocusClick(event)) {
-                    return;
-                  }
-                  onSelectStatus(region.key, statusKey);
-                }}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onSelectStatus(region.key, statusKey);
-                  }
-                }}
-              >
-                <div className="region-kanban-section-head">
-                  <h4>{t.columnLabels[statusKey]}</h4>
-                  <span>{region.counters[statusKey] || 0}</span>
-                </div>
-                <div className="kanban-card-list">
-                  {(region.sections[statusKey] || []).length ? (
-                    region.sections[statusKey].map((order, index) => (
-                      <Draggable
-                        key={order.id}
-                        draggableId={order.id}
-                        index={index}
-                        isDragDisabled={!canManageStatuses || ['completed', 'canceled'].includes(order.status) || updatingId === order.id}
-                      >
-                        {(dragProvided) => (
-                          <article
-                            className={`kanban-card ${order.status || ''}`}
-                            ref={dragProvided.innerRef}
-                            {...dragProvided.draggableProps}
-                            {...dragProvided.dragHandleProps}
-                          >
-                            <TaskCardBody
-                              order={order}
-                              lang={lang}
-                              t={t}
-                              canManageStatuses={canManageStatuses}
-                              canCreateOrders={canCreateOrders}
-                              nextStatus={nextStatusFor(order.status)}
-                              onAdvanceStatus={onAdvanceStatus}
-                              onRequestReschedule={onRequestReschedule}
-                              onCancelOrder={onCancelOrder}
-                              onContactCustomer={onContactCustomer}
-                              onOpenSchedule={onOpenSchedule}
-                              scheduleDraft={scheduleDrafts[order.id]}
-                              updateScheduleDraft={updateScheduleDraft}
-                              onSaveSchedule={onSaveSchedule}
-                              expandedScheduleId={expandedScheduleId}
-                              updatingId={updatingId}
-                              schedulingId={schedulingId}
-                            />
-                          </article>
-                        )}
-                      </Draggable>
-                    ))
-                  ) : (
-                    <p className="muted">{emptyText}</p>
-                  )}
-                  {provided.placeholder}
-                </div>
-              </div>
-            )}
-          </Droppable>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -1646,7 +1370,7 @@ function TaskCardBody({
     <>
       <div className="kanban-card-head">
         <div className="task-card-topline">
-          <strong>{order.requestNumber || order.id}</strong>
+          <strong>{getOrderReferenceText(order, lang)}</strong>
           <span>{order.customerName}</span>
         </div>
         <span className={`status-badge ${order.status || ''}`}>{displayStatus}</span>
@@ -1704,7 +1428,7 @@ function TaskCardBody({
         ))}
         <a
           className="btn-light"
-          href={buildWhatsAppUrl(order.whatsappPhone || order.phone, `${t.requestNumber}: ${order.requestNumber}`)}
+          href={buildWhatsAppUrl(order.whatsappPhone || order.phone, `${t.requestNumber}: ${getOrderPrimaryReference(order)}`)}
           target="_blank"
           rel="noreferrer"
         >

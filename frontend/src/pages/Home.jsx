@@ -9,14 +9,14 @@ const copy = {
     heroTitle: 'Built with care for customer service and the operations manager.',
     heroSubtitle:
       'This program exists to make their day lighter: fewer scattered updates, faster request intake, and one clear path from a new Zamil request to final completion.',
-    primaryButton: 'Open dashboard',
+    primaryButton: 'Sign in',
     secondaryButton: 'Sign in',
     note: 'When request volume grows, the system stays calm, readable, and easy to act on.',
     summaryTitle: "Today's snapshot",
     stats: [
       { label: 'Waiting for operations' },
       { label: 'Active requests' },
-      { label: 'Completed requests' },
+      { label: 'Canceled requests' },
       { label: 'In transit now' },
     ],
     promiseKicker: 'Why it exists',
@@ -28,7 +28,7 @@ const copy = {
       },
       {
         title: 'Built for heavy volume',
-        text: 'Large daily batches stay organized through clear statuses, visual grouping, and a board that highlights what needs action now.',
+        text: 'Large daily batches stay organized through clear statuses and filtered task lists that surface what needs action now.',
       },
       {
         title: 'Built for speed',
@@ -44,7 +44,7 @@ const copy = {
       },
       {
         title: '2. Clear movement for operations',
-        text: 'Move requests across pending, scheduled, in transit, and completed from one board designed for quick decisions.',
+        text: 'Move requests across pending, scheduled, and in transit from one focused workflow designed for quick decisions.',
       },
       {
         title: '3. Instant visibility back to customer service',
@@ -60,7 +60,7 @@ const copy = {
       },
       {
         title: 'High-volume clarity',
-        text: 'The Kanban layout separates new, active, and archived requests for faster scanning.',
+        text: 'The workspace keeps new and active requests separate for faster scanning under pressure.',
       },
       {
         title: 'Direct communication',
@@ -77,14 +77,14 @@ const copy = {
     heroTitle: 'هذا البرنامج صُمم بكل عناية لتسهيل رحلة خدمة العملاء ومدير العمليات.',
     heroSubtitle:
       'فكرته أن يخفف الضغط عنهما: إدخال أسرع للطلبات، متابعة أوضح للحالات، ومسار واحد مرتب من لحظة ورود طلب الزامل حتى اكتماله.',
-    primaryButton: 'فتح اللوحة',
+    primaryButton: 'تسجيل الدخول',
     secondaryButton: 'تسجيل الدخول',
     note: 'حتى عندما تتضاعف الطلبات، يبقى النظام هادئاً وواضحاً وسهلاً في اتخاذ القرار.',
     summaryTitle: 'ملخص سريع',
     stats: [
       { label: 'بانتظار العمليات' },
       { label: 'طلبات نشطة' },
-      { label: 'طلبات مكتملة' },
+      { label: 'طلبات ملغاة' },
       { label: 'في الطريق الآن' },
     ],
     promiseKicker: 'لماذا هذا النظام؟',
@@ -96,7 +96,7 @@ const copy = {
       },
       {
         title: 'مبني للضغط العالي',
-        text: 'حتى مع تدفق الطلبات الكبير يومياً، تبقى الحالات منظمة واللوحة بصرية وما يحتاج تدخلاً يظهر بسرعة.',
+        text: 'حتى مع تدفق الطلبات الكبير يومياً، تبقى الحالات منظمة وقوائم العمل واضحة وما يحتاج تدخلاً يظهر بسرعة.',
       },
       {
         title: 'مبني للسرعة',
@@ -112,7 +112,7 @@ const copy = {
       },
       {
         title: '2. تحريك واضح من مدير العمليات',
-        text: 'ينقل الطلب بين بانتظار العمليات، تمت الجدولة، في الطريق، ومكتمل من لوحة واحدة مصممة للقرار السريع.',
+        text: 'ينقل الطلب بين بانتظار العمليات، تمت الجدولة، وفي الطريق من مسار واحد واضح ومصمم للقرار السريع.',
       },
       {
         title: '3. عودة فورية للمعلومة إلى خدمة العملاء',
@@ -128,7 +128,7 @@ const copy = {
       },
       {
         title: 'وضوح تحت الضغط',
-        text: 'تقسيم Kanban يفرز الطلبات الجديدة والنشطة والمكتملة لتسهيل القراءة عند ارتفاع العدد.',
+        text: 'فصل الطلبات الجديدة والنشطة داخل قوائم واضحة يسهّل القراءة عند ارتفاع العدد.',
       },
       {
         title: 'تواصل مباشر',
@@ -175,7 +175,7 @@ export default function Home() {
           <h1>{lang === 'ar' ? t.heroTitle : homeSettings?.heroTitle || t.heroTitle}</h1>
           <p className="hero-text">{lang === 'ar' ? t.heroSubtitle : homeSettings?.heroSubtitle || t.heroSubtitle}</p>
           <div className="hero-actions">
-            <Link className="btn-primary" to="/dashboard">
+            <Link className="btn-primary" to="/login">
               {lang === 'ar' ? t.primaryButton : homeSettings?.primaryButtonText || t.primaryButton}
             </Link>
             <Link className="btn-light" to="/login">
@@ -197,7 +197,7 @@ export default function Home() {
               <span>{t.stats[1].label}</span>
             </article>
             <article>
-              <strong>{summary?.completedOrders ?? 0}</strong>
+              <strong>{summary?.canceledOrders ?? 0}</strong>
               <span>{t.stats[2].label}</span>
             </article>
             <article>

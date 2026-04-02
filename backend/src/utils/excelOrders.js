@@ -346,9 +346,26 @@ const parseExcelWorkbook = async (filePath = DEFAULT_EXCEL_FILE) => {
 const loadExcelOrdersPreview = async (fileName = 'data.xlsx') => {
   const filePath = path.isAbsolute(fileName) ? fileName : path.resolve(path.dirname(DEFAULT_EXCEL_FILE), fileName);
   const workbook = await parseExcelWorkbook(filePath);
+  let skippedCompletedOrders = 0;
+  let invalidRows = 0;
   const orders = (workbook.sheets || [])
-    .flatMap((sheet) => (sheet.rows || []).map((row) => normalizeImportedRow(sheet.name, row)))
-    .filter(Boolean);
+    .flatMap((sheet) =>
+      (sheet.rows || []).flatMap((row) => {
+        const importStatus = normalizeImportedStatus(row.Status);
+        if (importStatus === 'completed') {
+          skippedCompletedOrders += 1;
+          return [];
+        }
+
+        const normalized = normalizeImportedRow(sheet.name, row);
+        if (!normalized) {
+          invalidRows += 1;
+          return [];
+        }
+
+        return [normalized];
+      })
+    );
 
   return {
     filePath: workbook.filePath,
@@ -362,6 +379,8 @@ const loadExcelOrdersPreview = async (fileName = 'data.xlsx') => {
       sheetCount: (workbook.sheets || []).length,
       totalRows: (workbook.sheets || []).reduce((sum, sheet) => sum + ((sheet.rows || []).length || 0), 0),
       validOrders: orders.length,
+      skippedCompletedOrders,
+      invalidRows,
     },
   };
 };

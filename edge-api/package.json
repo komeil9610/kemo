@@ -8,10 +8,14 @@
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 execute tarkeeb_pro_db --local --file=./migrations/schema.sql",
     "db:migrate:remote": "wrangler d1 execute tarkeeb_pro_db --remote --file=./migrations/schema.sql",
+    "db:sync:supabase": "node ./scripts/sync-d1-to-supabase.mjs",
     "admin:sql": "node ./scripts/generate-admin-sql.mjs"
   },
   "devDependencies": {
     "web-push": "^3.6.7",
     "wrangler": "^4.8.0"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
   }
 }

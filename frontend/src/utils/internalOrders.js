@@ -10,7 +10,7 @@ export const statusLabels = {
   canceled: { ar: 'ملغي', en: 'Canceled' },
 };
 
-export const boardColumns = ['pending', 'scheduled', 'in_transit', 'completed'];
+export const boardColumns = ['pending', 'scheduled', 'in_transit'];
 
 export const todayString = () => new Date().toISOString().slice(0, 10);
 
@@ -65,8 +65,81 @@ const extractExcelStatusFromNotes = (notes) => {
   return String(match?.[1] || '').trim();
 };
 
+const extractOrderImportReference = (order = {}, label) => {
+  const directValue = String(order?.[label] || order?.[`${label}Id`] || order?.importMeta?.[label] || '').trim();
+  if (directValue) {
+    return directValue;
+  }
+
+  const text = String(order?.notes || '').trim();
+  const escapedLabel = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = text.match(new RegExp(`(?:^|\\n)${escapedLabel}\\s*:\\s*(.+?)(?:\\n|$)`, 'i'));
+  return String(match?.[1] || '').trim();
+};
+
 export const getOrderExternalStatus = (order = {}) =>
   String(order?.externalStatus || order?.excelStatus || order?.importMeta?.excelStatus || extractExcelStatusFromNotes(order?.notes)).trim();
+
+export const getOrderSoId = (order = {}) =>
+  String(order?.soId || extractOrderImportReference(order, 'soId') || extractOrderImportReference(order, 'SO ID') || order?.requestNumber || '')
+    .trim();
+
+export const getOrderWoId = (order = {}) =>
+  String(order?.woId || extractOrderImportReference(order, 'woId') || extractOrderImportReference(order, 'WO ID') || '').trim();
+
+export const getOrderPrimaryReference = (order = {}) => getOrderSoId(order) || String(order?.requestNumber || order?.id || '').trim();
+
+export const getOrderReferenceText = (order = {}, lang = 'ar') => {
+  const soId = getOrderSoId(order);
+  const woId = getOrderWoId(order);
+  const soLabel = lang === 'ar' ? 'SO ID' : 'SO ID';
+  const woLabel = lang === 'ar' ? 'WO ID' : 'WO ID';
+
+  const parts = [
+    soId ? `${soLabel}: ${soId}` : '',
+    woId ? `${woLabel}: ${woId}` : '',
+  ].filter(Boolean);
+
+  return parts.join(' • ') || String(order?.requestNumber || order?.id || '—').trim() || '—';
+};
+
+export const orderMatchesSearchQuery = (order = {}, query = '') => {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const haystack = [
+    order?.id,
+    order?.requestNumber,
+    getOrderSoId(order),
+    getOrderWoId(order),
+    order?.customerName,
+    order?.phone,
+    normalizeSaudiPhoneNumber(order?.phone),
+    order?.secondaryPhone,
+    normalizeSaudiPhoneNumber(order?.secondaryPhone),
+    order?.whatsappPhone,
+    normalizeSaudiPhoneNumber(order?.whatsappPhone),
+    order?.status,
+    order?.externalStatus,
+    order?.city,
+    order?.district,
+    order?.region,
+    order?.internalAreaLabel,
+    order?.internalAreaArLabel,
+    order?.address,
+    order?.addressText,
+    order?.technicianName,
+    order?.workType,
+    order?.serviceSummary,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return haystack.includes(normalizedQuery);
+};
 
 export const getOrderDisplayStatus = (order = {}, lang = 'ar') => {
   const externalStatus = getOrderExternalStatus(order);
@@ -163,7 +236,7 @@ export const getOrdersForView = (orders, viewKey) => {
   }
 
   if (viewKey === 'completed') {
-    return orders.filter((order) => ['completed', 'canceled'].includes(order.status));
+    return [];
   }
 
   if (viewKey === 'in_transit') {
