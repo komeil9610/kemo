@@ -4,6 +4,7 @@ const { body, param } = require('express-validator');
 const ServiceOrder = require('../models/ServiceOrder');
 const User = require('../models/User');
 const { authenticate, authorize } = require('../middleware/auth');
+const { loadExcelOrdersPreview } = require('../utils/excelOrders');
 const {
   validateEmail,
   validatePassword,
@@ -68,7 +69,7 @@ const calculateServiceItemsTotal = (items = []) =>
 
 const buildTechnicianView = (user, activeOrders = []) => {
   const technicianId = user.technicianId || user._id.toString();
-  const hasActiveWork = activeOrders.some((order) => ['en_route', 'in_progress'].includes(order.status));
+  const hasActiveWork = activeOrders.some((order) => ['scheduled', 'in_transit', 'en_route', 'in_progress'].includes(order.status));
 
   return {
     id: technicianId,
@@ -98,7 +99,7 @@ const buildSummary = (orders, technicians) => {
   return {
     totalOrders: orders.length,
     pendingOrders: orders.filter((order) => order.status === 'pending').length,
-    activeOrders: orders.filter((order) => ['en_route', 'in_progress'].includes(order.status)).length,
+    activeOrders: orders.filter((order) => ['scheduled', 'in_transit', 'en_route', 'in_progress'].includes(order.status)).length,
     completedOrders: orders.filter((order) => order.status === 'completed').length,
     availableTechnicians: technicians.filter((tech) => tech.status === 'available').length,
     ...totals,
@@ -146,6 +147,15 @@ const technicianOwnsOrder = (order, user) => {
 };
 
 const canTechnicianChangeOrder = (order, user) => technicianOwnsOrder(order, user) && !isFinalizedOrder(order);
+
+router.get('/excel-import/preview', async (req, res, next) => {
+  try {
+    const preview = await loadExcelOrdersPreview(req.query.fileName || 'data.xlsx');
+    return res.status(200).json(preview);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get('/dashboard', authenticate, authorize(['admin']), async (req, res, next) => {
   try {
@@ -356,6 +366,40 @@ router.put(
   }
 );
 
+router.patch(
+  '/orders/:orderId',
+  authenticate,
+  authorize(['admin']),
+  [param('orderId').notEmpty().withMessage('Order id is required')],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const order = await findOrderByIdentifier(req.params.orderId);
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+
+      const requestedStatus = String(req.body.status || '').trim();
+      const status = requestedStatus === 'rescheduled' ? 'scheduled' : requestedStatus;
+
+      if (!['completed', 'rescheduled'].includes(requestedStatus)) {
+        return res.status(400).json({ message: 'Invalid compact order status' });
+      }
+
+      if (order.status === 'canceled') {
+        return res.status(409).json({ message: 'Canceled orders cannot be updated from the compact table' });
+      }
+
+      order.status = status;
+      await order.save();
+
+      return res.status(200).json({ order: serializeOrder(order) });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
 router.post('/orders/:orderId/cancel', authenticate, authorize(['technician', 'admin']), async (req, res, next) => {
   try {
     const order = await findOrderByIdentifier(req.params.orderId);
@@ -424,7 +468,16 @@ router.put('/orders/:orderId/status', authenticate, authorize(['technician', 're
       return res.status(409).json({ message: 'لا يمكن تعديل الطلب بعد اكتماله أو إلغائه' });
     }
 
-    order.status = req.body.status || order.status;
+    const requestedStatus = String(req.body.status || '').trim();
+    if (req.user.role === 'technician' && !['completed', 'rescheduled'].includes(requestedStatus)) {
+      return res.status(400).json({ message: 'الحالة غير مدعومة من شاشة الفني المبسطة' });
+    }
+
+    order.status = requestedStatus === 'rescheduled' ? 'suspended' : requestedStatus || order.status;
+    if (requestedStatus === 'rescheduled') {
+      const reason = String(req.body.suspensionReason || 'طلب إعادة جدولة من الفني').trim();
+      order.notes = order.notes ? `${order.notes}\n\n${reason}` : reason;
+    }
     await order.save();
     return res.status(200).json({ order: serializeOrder(order) });
   } catch (error) {

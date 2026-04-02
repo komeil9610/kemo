@@ -30,6 +30,9 @@
     "wrangler": "^4.39.0"
   },
   "scripts": {
+    "prepare:excel-import": "node ../scripts/generate-excel-import-asset.mjs",
+    "prestart": "npm run prepare:excel-import",
+    "prebuild": "npm run prepare:excel-import",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "cf:build": "npm run build",

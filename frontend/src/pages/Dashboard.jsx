@@ -43,6 +43,11 @@ const deliveryOptions = [
   { value: 'express_24h', ar: 'توصيل سريع خلال 24 ساعة', en: 'Fast delivery within 24 hours' },
 ];
 
+const inlineStatusOptions = [
+  { value: 'completed', ar: 'مكتمل', en: 'Completed' },
+  { value: 'rescheduled', ar: 'أعيدت جدولته', en: 'Rescheduled' },
+];
+
 const zamilCoverageByRegion = [
   {
     key: 'east',
@@ -135,6 +140,9 @@ const copy = {
       orderId: 'Order ID',
       status: 'Status',
       customer: 'Customer',
+      actions: 'Actions',
+      updateStatus: 'Update status',
+      updatingStatus: 'Updating...',
       drawerTitle: 'Order details',
       close: 'Close',
       results: (shown, total) => `${shown} of ${total} orders`,
@@ -144,6 +152,9 @@ const copy = {
     customerServicePanel: 'Customer service intake',
     operationsPanel: 'Operations coordination',
     formHint: 'Capture the request in full detail so the operations manager can coordinate clearly from the first touch.',
+    excelImportTitle: 'Excel intake',
+    excelImportHint: 'Read all rows from the Excel file in backend/data/data.xlsx, keep the SO ID inside each request, and create the orders automatically.',
+    excelImportFile: 'Source file: backend/data/data.xlsx',
     operationsDate: 'Operations date',
     saveOperationsDate: 'Update date',
     moveToNextDate: 'Export day and move forward',
@@ -182,6 +193,8 @@ const copy = {
     addAc: 'Add another AC type',
     remove: 'Remove',
     create: 'Create request',
+    importExcel: 'Import Excel file',
+    importingExcel: 'Importing...',
     update: 'Update request',
     creating: 'Creating...',
     updating: 'Updating...',
@@ -237,9 +250,14 @@ const copy = {
     },
     regionTaskCount: 'Requests in this region',
     successCreate: 'Request created successfully.',
+    successImport: (imported, skipped) =>
+      `Imported ${imported} request${imported === 1 ? '' : 's'} from Excel${skipped ? ` and skipped ${skipped} duplicate or invalid row${skipped === 1 ? '' : 's'}` : ''}.`,
     successStatus: 'Request updated successfully.',
     successSchedule: 'Schedule saved successfully.',
     successReport: 'Report exported successfully.',
+    successInlineCompleted: 'Order marked as completed.',
+    successInlineRescheduled: 'Order rescheduled successfully.',
+    confirmInlineStatus: (orderRef, nextStatus) => `Change ${orderRef} to ${nextStatus}?`,
     labels: {
       pending: 'Pending',
       scheduled: 'Scheduled',
@@ -269,6 +287,9 @@ const copy = {
       orderId: 'رقم الطلب',
       status: 'الحالة',
       customer: 'العميل',
+      actions: 'الإجراء',
+      updateStatus: 'تحديث الحالة',
+      updatingStatus: 'جارٍ التحديث...',
       drawerTitle: 'تفاصيل الطلب',
       close: 'إغلاق',
       results: (shown, total) => `${shown} من أصل ${total} طلب`,
@@ -278,6 +299,9 @@ const copy = {
     customerServicePanel: 'إدخال خدمة العملاء',
     operationsPanel: 'تنسيق مدير العمليات',
     formHint: 'اكتب الطلب كاملاً وبوضوح حتى يستطيع مدير العمليات فهم الحالة وتنسيق الموعد دون أي نقص.',
+    excelImportTitle: 'استيراد Excel',
+    excelImportHint: 'يتم قراءة جميع صفوف ملف Excel الموجود داخل backend/data/data.xlsx مع حفظ SO ID داخل كل طلب وإنشاء الطلبات تلقائياً.',
+    excelImportFile: 'ملف المصدر: backend/data/data.xlsx',
     operationsDate: 'تاريخ التشغيل',
     saveOperationsDate: 'تحديث التاريخ',
     moveToNextDate: 'تصدير اليوم والانتقال لليوم التالي',
@@ -316,6 +340,8 @@ const copy = {
     addAc: 'إضافة نوع مكيف آخر',
     remove: 'حذف',
     create: 'إنشاء الطلب',
+    importExcel: 'استيراد ملف Excel',
+    importingExcel: 'جارٍ الاستيراد...',
     update: 'تحديث الطلب',
     creating: 'جارٍ الإنشاء...',
     updating: 'جارٍ التحديث...',
@@ -371,9 +397,14 @@ const copy = {
     },
     regionTaskCount: 'طلبات هذه المنطقة',
     successCreate: 'تم إنشاء الطلب بنجاح.',
+    successImport: (imported, skipped) =>
+      `تم استيراد ${imported} طلب${imported === 1 ? '' : 'ات'} من ملف Excel${skipped ? ` مع تجاوز ${skipped} صف${skipped === 1 ? '' : 'وف'} مكرر أو غير صالح` : ''}.`,
     successStatus: 'تم تحديث الطلب بنجاح.',
     successSchedule: 'تم حفظ الموعد بنجاح.',
     successReport: 'تم تصدير التقرير بنجاح.',
+    successInlineCompleted: 'تم تعليم الطلب كمكتمل.',
+    successInlineRescheduled: 'تمت إعادة جدولة الطلب بنجاح.',
+    confirmInlineStatus: (orderRef, nextStatus) => `هل تريد تغيير ${orderRef} إلى ${nextStatus}؟`,
     labels: {
       pending: 'بانتظار العمليات',
       scheduled: 'تمت الجدولة',
@@ -450,6 +481,15 @@ const getBoardOrders = (orders, statusKey) => {
   return orders.filter((order) => order.status === statusKey);
 };
 
+const buildDashboardSummary = (orders = []) => ({
+  totalOrders: orders.filter((order) => order.status !== 'canceled').length,
+  pendingOrders: orders.filter((order) => order.status === 'pending').length,
+  activeOrders: orders.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length,
+  completedOrders: orders.filter((order) => order.status === 'completed').length,
+  inTransitOrders: orders.filter((order) => order.status === 'in_transit').length,
+  canceledOrders: orders.filter((order) => order.status === 'canceled').length,
+});
+
 export default function Dashboard() {
   const { viewKey } = useParams();
   const { user, permissions } = useAuth();
@@ -458,6 +498,7 @@ export default function Dashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importingExcel, setImportingExcel] = useState(false);
   const [updatingId, setUpdatingId] = useState('');
   const [schedulingId, setSchedulingId] = useState('');
   const [editingOrderId, setEditingOrderId] = useState('');
@@ -467,6 +508,7 @@ export default function Dashboard() {
   const [form, setForm] = useState(() => createEmptyForm(getOperationalDate()));
   const [scheduleDrafts, setScheduleDrafts] = useState({});
   const [expandedScheduleId, setExpandedScheduleId] = useState('');
+  const [inlineStatusDrafts, setInlineStatusDrafts] = useState({});
   const formPanelRef = useRef(null);
   const isEditingOrder = Boolean(editingOrderId);
   const effectivePriority = form.deliveryType === 'none' ? form.priority : 'urgent';
@@ -567,6 +609,25 @@ export default function Dashboard() {
 
   const reportOrders = useMemo(() => orders.slice().sort((a, b) => `${b.updatedAt}`.localeCompare(`${a.updatedAt}`)), [orders]);
 
+  const applyOrderUpdate = (updatedOrder) => {
+    if (!updatedOrder?.id) {
+      return;
+    }
+
+    setDashboard((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextOrders = (current.orders || []).map((order) => (String(order.id) === String(updatedOrder.id) ? updatedOrder : order));
+      return {
+        ...current,
+        orders: nextOrders,
+        summary: buildDashboardSummary(nextOrders),
+      };
+    });
+  };
+
   const updateAcRow = (id, key, value) => {
     setForm((current) => ({
       ...current,
@@ -663,15 +724,72 @@ export default function Dashboard() {
     }
   };
 
+  const onImportExcel = async () => {
+    try {
+      setImportingExcel(true);
+      const response = await operationsService.importOrdersFromExcel('data.xlsx');
+      const importedCount = Number(response.data?.importedCount) || 0;
+      const skippedCount = Number(response.data?.skippedCount) || 0;
+
+      if (!importedCount && !skippedCount) {
+        toast.error(lang === 'ar' ? 'لم يتم العثور على طلبات صالحة داخل ملف Excel.' : 'No valid Excel orders were found.');
+        return;
+      }
+
+      toast.success(t.successImport(importedCount, skippedCount));
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || 'Unable to import Excel orders');
+    } finally {
+      setImportingExcel(false);
+    }
+  };
+
   const moveOrderToStatus = async (orderId, targetStatus) => {
     try {
       setUpdatingId(orderId);
-      await operationsService.updateOrderStatus(orderId, targetStatus);
+      const response = await operationsService.updateOrderStatus(orderId, targetStatus);
+      applyOrderUpdate(response.data?.order || null);
       toast.success(t.successStatus);
     } catch (error) {
       toast.error(error?.response?.data?.message || error.message || 'Unable to update request');
     } finally {
       setUpdatingId('');
+    }
+  };
+
+  const onInlineStatusDraftChange = (orderId, value) => {
+    setInlineStatusDrafts((current) => ({
+      ...current,
+      [orderId]: value,
+    }));
+  };
+
+  const onInlineStatusChange = async (order, nextStatus) => {
+    if (!nextStatus) {
+      return;
+    }
+
+    const statusLabel =
+      inlineStatusOptions.find((option) => option.value === nextStatus)?.[lang === 'ar' ? 'ar' : 'en'] || nextStatus;
+    const orderRef = order.requestNumber || order.id;
+
+    onInlineStatusDraftChange(order.id, nextStatus);
+
+    if (!window.confirm(t.confirmInlineStatus(orderRef, statusLabel))) {
+      onInlineStatusDraftChange(order.id, '');
+      return;
+    }
+
+    try {
+      setUpdatingId(order.id);
+      const response = await operationsService.quickUpdateOrderStatus(order.id, nextStatus);
+      applyOrderUpdate(response.data?.order || null);
+      toast.success(nextStatus === 'completed' ? t.successInlineCompleted : t.successInlineRescheduled);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || 'Unable to update request');
+    } finally {
+      setUpdatingId('');
+      onInlineStatusDraftChange(order.id, '');
     }
   };
 
@@ -866,6 +984,33 @@ export default function Dashboard() {
               isRTL={isRTL}
               labels={t.compactList}
               orders={detailOrders}
+              renderRowActions={
+                permissions.canManageStatuses
+                  ? (order) => {
+                      const isInlineUpdating = updatingId === order.id;
+                      const isDisabled = isInlineUpdating || ['completed', 'canceled'].includes(order.status);
+
+                      return (
+                        <div className="order-inline-status">
+                          <select
+                            aria-label={t.compactList.updateStatus}
+                            className="input compact-input order-inline-select"
+                            disabled={isDisabled}
+                            onChange={(event) => onInlineStatusChange(order, event.target.value)}
+                            value={inlineStatusDrafts[order.id] || ''}
+                          >
+                            <option value="">{isInlineUpdating ? t.compactList.updatingStatus : t.compactList.updateStatus}</option>
+                            {inlineStatusOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option[lang === 'ar' ? 'ar' : 'en']}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    }
+                  : undefined
+              }
               renderOrderDetails={(order) => (
                 <div className="drawer-task-content">
                   <TaskCardBody
@@ -905,6 +1050,9 @@ export default function Dashboard() {
                 <p>{isEditingOrder ? t.editingHint : t.formHint}</p>
               </div>
               <div className="helper-actions">
+                <button className="btn-light" type="button" disabled={importingExcel || saving} onClick={onImportExcel}>
+                  {importingExcel ? t.importingExcel : t.importExcel}
+                </button>
                 {isEditingOrder ? (
                   <button className="btn-light" type="button" onClick={onCancelEditOrder}>
                     {t.cancelEdit}
@@ -934,6 +1082,12 @@ export default function Dashboard() {
                     </p>
                   ))}
                 </div>
+              </div>
+              <div className="reference-card">
+                <span className="reference-label">{t.excelImportTitle}</span>
+                <h3>{t.importExcel}</h3>
+                <p>{t.excelImportHint}</p>
+                <small>{t.excelImportFile}</small>
               </div>
             </div>
 

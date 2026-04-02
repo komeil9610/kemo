@@ -80,6 +80,10 @@ export default {
         return updateInternalAreaClusters(request, env);
       }
 
+      if (path === "/api/operations/orders/import" && request.method === "POST") {
+        return importServiceOrders(request, env);
+      }
+
       if (path === "/api/operations/orders" && request.method === "POST") {
         return createServiceOrder(request, env);
       }
@@ -104,6 +108,10 @@ export default {
 
       if (path === "/api/notifications" && request.method === "GET") {
         return listNotifications(request, env);
+      }
+
+      if (path === "/api/notifications/config" && request.method === "GET") {
+        return getPushNotificationConfig(request, env);
       }
 
       if (path === "/api/notifications/read-all" && request.method === "PUT") {
@@ -166,6 +174,11 @@ export default {
       if (path.startsWith("/api/operations/orders/") && request.method === "PUT") {
         const id = path.split("/").pop();
         return updateServiceOrder(request, id, env);
+      }
+
+      if (path.startsWith("/api/orders/") && request.method === "PATCH") {
+        const id = path.split("/").pop();
+        return quickUpdateCompactOrderStatus(request, id, env);
       }
 
       if (path === "/api/products" && request.method === "GET") {
@@ -276,14 +289,59 @@ export default {
 
 import webpush from "web-push";
 
-const vapidPublicKey = 'BJDe1im_oVNRMdPrjtBjE7qwlb-CJUDIxxc_Dp-mhPwuiuSgTHcFxWgS3MX-gyVyy3YPMS8nGQ6YaJIb1rrGgyo';
-const vapidPrivateKey = 'lsoE_8aTNecmeyMys5PdzKcCKnzJFcfI0YjVDYIaD3I';
+const DEFAULT_VAPID_PUBLIC_KEY = "BJDe1im_oVNRMdPrjtBjE7qwlb-CJUDIxxc_Dp-mhPwuiuSgTHcFxWgS3MX-gyVyy3YPMS8nGQ6YaJIb1rrGgyo";
+const DEFAULT_VAPID_CONTACT_EMAIL = "ops@tarkeebpro.sa";
+let webPushConfigCacheKey = "";
 
-webpush.setVapidDetails(
-  'mailto:your-email@example.com',
-  vapidPublicKey,
-  vapidPrivateKey
-);
+function getWebPushConfig(env = {}) {
+  const publicKey = String(env.WEB_PUSH_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY || "").trim();
+  const privateKey = String(env.WEB_PUSH_PRIVATE_KEY || "").trim();
+  const rawContact = String(env.WEB_PUSH_CONTACT_EMAIL || DEFAULT_VAPID_CONTACT_EMAIL || "").trim();
+  const contactEmail = rawContact ? (rawContact.startsWith("mailto:") ? rawContact : `mailto:${rawContact}`) : "";
+
+  return {
+    enabled: Boolean(publicKey && privateKey && contactEmail),
+    publicKey,
+    privateKey,
+    contactEmail,
+  };
+}
+
+function ensureWebPushConfigured(env = {}) {
+  const config = getWebPushConfig(env);
+  if (!config.enabled) {
+    return null;
+  }
+
+  const cacheKey = `${config.publicKey}:${config.privateKey}:${config.contactEmail}`;
+  if (webPushConfigCacheKey !== cacheKey) {
+    webpush.setVapidDetails(config.contactEmail, config.publicKey, config.privateKey);
+    webPushConfigCacheKey = cacheKey;
+  }
+
+  return config;
+}
+
+function getWorkspacePathForRole(role) {
+  return {
+    customer_service: "/customer-service",
+    operations_manager: "/operations-manager",
+    regional_dispatcher: "/regions",
+  }[String(role || "").trim()] || "/login";
+}
+
+async function getPushNotificationConfig(request, env) {
+  const config = getWebPushConfig(env);
+  return json(
+    {
+      enabled: config.enabled,
+      publicKey: config.publicKey || null,
+    },
+    200,
+    request,
+    env
+  );
+}
 
 async function subscribe(request, env) {
   const body = await readJson(request);
@@ -295,7 +353,12 @@ async function subscribe(request, env) {
   }
 
   await env.DB.prepare(
-    "INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_id) VALUES (?, ?, ?, ?)"
+    `INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_id)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(endpoint) DO UPDATE SET
+       p256dh = excluded.p256dh,
+       auth = excluded.auth,
+       user_id = excluded.user_id`
   )
     .bind(endpoint, keys.p256dh, keys.auth, user ? user.sub : null)
     .run();
@@ -304,8 +367,12 @@ async function subscribe(request, env) {
 }
 
 async function pushNotification(request, env) {
+  if (!ensureWebPushConfigured(env)) {
+    return json({ message: "Push notifications are not configured" }, 503, request, env);
+  }
+
   const body = await readJson(request);
-  const { message } = body;
+  const { message, title = "Tarkeeb Pro", url = "/login", tag = "broadcast" } = body;
 
   if (!message) {
     return json({ message: "Message is required" }, 400, request, env);
@@ -313,7 +380,12 @@ async function pushNotification(request, env) {
 
   const { results } = await env.DB.prepare("SELECT * FROM push_subscriptions").all();
 
-  const notificationPromises = results.map((subscription) => {
+  const payload =
+    typeof message === "string"
+      ? JSON.stringify({ title, body: message, url, tag, silent: false })
+      : JSON.stringify({ title, url, tag, silent: false, ...message });
+
+  const notificationPromises = results.map(async (subscription) => {
     const pushConfig = {
       endpoint: subscription.endpoint,
       keys: {
@@ -321,12 +393,70 @@ async function pushNotification(request, env) {
         auth: subscription.auth,
       },
     };
-    return webpush.sendNotification(pushConfig, message);
+
+    try {
+      return await webpush.sendNotification(pushConfig, payload);
+    } catch (error) {
+      if ([404, 410].includes(Number(error?.statusCode))) {
+        await env.DB.prepare("DELETE FROM push_subscriptions WHERE id = ?").bind(subscription.id).run();
+      }
+      return null;
+    }
   });
 
-  await Promise.all(notificationPromises);
+  await Promise.allSettled(notificationPromises);
 
   return json({ message: "Push notifications sent" }, 200, request, env);
+}
+
+async function sendPushToUser(env, userId, payload = {}) {
+  if (!userId || !ensureWebPushConfigured(env)) {
+    return;
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT s.id, s.endpoint, s.p256dh, s.auth, u.role
+     FROM push_subscriptions s
+     LEFT JOIN users u ON u.id = s.user_id
+     WHERE s.user_id = ?`
+  )
+    .bind(Number(userId))
+    .all();
+
+  if (!results?.length) {
+    return;
+  }
+
+  const targetUrl = payload.url || getWorkspacePathForRole(results[0]?.role);
+  const message = JSON.stringify({
+    title: payload.title || "Tarkeeb Pro",
+    body: payload.body || "",
+    url: targetUrl,
+    tag: payload.tag || (payload.relatedOrderId ? `order-${payload.relatedOrderId}` : `user-${userId}`),
+    relatedOrderId: payload.relatedOrderId || null,
+    silent: false,
+  });
+
+  await Promise.allSettled(
+    results.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            keys: {
+              p256dh: subscription.p256dh,
+              auth: subscription.auth,
+            },
+          },
+          message
+        );
+      } catch (error) {
+        if ([404, 410].includes(Number(error?.statusCode))) {
+          await env.DB.prepare("DELETE FROM push_subscriptions WHERE id = ?").bind(subscription.id).run();
+        }
+      }
+    })
+  );
 }
 
 async function register(request, env) {
@@ -1321,6 +1451,136 @@ async function createServiceOrder(request, env) {
     return json({ message: normalized.error }, 400, request, env);
   }
 
+  const createdOrderId = await insertServiceOrderRecord(env, normalized, Number(csr.sub), {
+    actor: "customer_service",
+    message: `تم إنشاء الطلب ${normalized.requestNumber} وإرساله إلى مدير العمليات${normalized.deliveryType !== "none" ? ` مع ${normalized.deliveryType === "express_24h" ? "توصيل سريع" : "طلب توصيل"}` : ""}.`,
+  });
+
+  await notifyUsersByRoles(
+    env,
+    ["operations_manager"],
+    normalized.deliveryType === "none" ? "طلب جديد بانتظار العمليات" : "طلب توصيل بأولوية قصوى",
+    normalized.deliveryType === "none"
+      ? `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويحتاج إلى المتابعة.`
+      : `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويتضمن ${normalized.deliveryType === "express_24h" ? "توصيلاً سريعاً خلال 24 ساعة" : "توصيلاً"} ويحتاج إلى متابعة عاجلة.`,
+    createdOrderId
+  );
+
+  await notifyRegionalDispatchersForOrder(
+    env,
+    normalized,
+    "طلب جديد ضمن منطقتكم",
+    `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} وإرساله مباشرة إلى منطقتكم.`,
+    createdOrderId
+  );
+
+  const order = await readServiceOrderById(env, createdOrderId);
+  return json({ order }, 201, request, env);
+}
+
+async function importServiceOrders(request, env) {
+  const csr = await requireRoles(request, env, ["customer_service"]);
+  if (!csr) {
+    return json({ message: "Customer service access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const rawOrders = Array.isArray(body?.orders) ? body.orders : [];
+  const sourceFileName = String(body?.fileName || "Excel").trim();
+  if (!rawOrders.length) {
+    return json({ message: "At least one Excel order is required" }, 400, request, env);
+  }
+
+  const seenRequestNumbers = new Set();
+  const validOrders = [];
+  const skippedOrders = [];
+
+  for (const item of rawOrders) {
+    const normalized = normalizeServiceOrderInput(item);
+    const requestNumber = String(item?.requestNumber || normalized.requestNumber || "").trim();
+
+    if (normalized.error) {
+      skippedOrders.push({
+        requestNumber,
+        reason: normalized.error,
+      });
+      continue;
+    }
+
+    const dedupeKey = String(normalized.requestNumber || "").trim();
+    if (!dedupeKey || seenRequestNumbers.has(dedupeKey)) {
+      skippedOrders.push({
+        requestNumber: dedupeKey || requestNumber,
+        reason: "Duplicate request number inside the Excel import batch",
+      });
+      continue;
+    }
+
+    seenRequestNumbers.add(dedupeKey);
+    validOrders.push(normalized);
+  }
+
+  if (!validOrders.length) {
+    return json(
+      {
+        importedCount: 0,
+        skippedCount: skippedOrders.length,
+        skippedOrders,
+        orders: [],
+      },
+      200,
+      request,
+      env
+    );
+  }
+
+  const existingRequestNumbers = await readExistingServiceOrderNumbers(
+    env,
+    validOrders.map((item) => item.requestNumber)
+  );
+
+  let importedCount = 0;
+  for (const normalized of validOrders) {
+    if (existingRequestNumbers.has(normalized.requestNumber)) {
+      skippedOrders.push({
+        requestNumber: normalized.requestNumber,
+        reason: "This SO ID is already imported",
+      });
+      continue;
+    }
+
+    const orderId = await insertServiceOrderRecord(env, normalized, Number(csr.sub), {
+      actor: "customer_service",
+      message: `تم استيراد الطلب ${normalized.requestNumber} من ملف Excel وإرساله إلى مدير العمليات.`,
+    });
+    importedCount += orderId ? 1 : 0;
+  }
+
+  return json(
+    {
+      fileName: sourceFileName,
+      importedCount,
+      skippedCount: skippedOrders.length,
+      skippedOrders,
+    },
+    201,
+    request,
+    env
+  );
+}
+
+async function insertServiceOrderRecord(env, normalized, createdByUserId, auditEntry) {
+  const initialStatus = normalizeImportedOrderStatus(normalized.importStatus);
+  const scheduledTime = ["scheduled", "completed"].includes(initialStatus) ? normalized.preferredTime : "";
+  const canceledAt =
+    initialStatus === "canceled" && normalized.preferredDate
+      ? `${normalized.preferredDate}T${normalized.preferredTime || "09:00"}:00`
+      : null;
+  const completedAt =
+    initialStatus === "completed" && normalized.preferredDate
+      ? `${normalized.preferredDate}T${normalized.preferredTime || "09:00"}:00`
+      : null;
+
   const created = await env.DB.prepare(
     `INSERT INTO service_orders (
       customer_name, request_number, phone, secondary_phone, whatsapp_phone, district, city, address, address_text,
@@ -1347,21 +1607,21 @@ async function createServiceOrder(request, env) {
       1,
       normalized.serviceSummary,
       normalized.totalQuantity,
-      "pending",
+      initialStatus,
       normalized.priority,
       normalized.deliveryType,
       normalized.preferredDate,
       normalized.preferredTime,
       normalized.preferredDate,
-      "",
+      scheduledTime,
       "",
       normalized.sourceChannel,
       normalized.notes,
       "none",
       "",
       "",
-      null,
-      null,
+      canceledAt,
+      completedAt,
       null,
       0,
       0,
@@ -1371,27 +1631,16 @@ async function createServiceOrder(request, env) {
         {
           id: `audit-${Date.now()}`,
           type: "created",
-          actor: "customer_service",
-          message: `تم إنشاء الطلب ${normalized.requestNumber} وإرساله إلى مدير العمليات${normalized.deliveryType !== "none" ? ` مع ${normalized.deliveryType === "express_24h" ? "توصيل سريع" : "طلب توصيل"}` : ""}.`,
+          actor: String(auditEntry?.actor || "customer_service"),
+          message: String(auditEntry?.message || `تم إنشاء الطلب ${normalized.requestNumber}.`),
           createdAt: new Date().toISOString(),
         },
       ]),
-      Number(csr.sub)
+      Number(createdByUserId)
     )
     .run();
 
-  await notifyUsersByRoles(
-    env,
-    ["operations_manager"],
-    normalized.deliveryType === "none" ? "طلب جديد بانتظار العمليات" : "طلب توصيل بأولوية قصوى",
-    normalized.deliveryType === "none"
-      ? `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويحتاج إلى المتابعة.`
-      : `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويتضمن ${normalized.deliveryType === "express_24h" ? "توصيلاً سريعاً خلال 24 ساعة" : "توصيلاً"} ويحتاج إلى متابعة عاجلة.`,
-    created.meta.last_row_id
-  );
-
-  const order = await readServiceOrderById(env, created.meta.last_row_id);
-  return json({ order }, 201, request, env);
+  return created.meta.last_row_id;
 }
 
 async function createTechnician(request, env) {
@@ -2344,12 +2593,13 @@ async function updateServiceOrderStatus(request, id, env) {
   }
 
   const body = await readJson(request);
-  const status = String(body.status || "").trim();
+  const requestedStatus = String(body.status || "").trim();
+  const status = isTechnician && requestedStatus === "rescheduled" ? "suspended" : requestedStatus;
   const allowedStatuses = isTechnician
-    ? ["pending", "scheduled", "in_transit", "suspended"]
+    ? ["pending", "scheduled", "in_transit", "completed", "rescheduled", "suspended"]
     : ["pending", "scheduled", "in_transit", "completed"];
 
-  if (!allowedStatuses.includes(status)) {
+  if (!allowedStatuses.includes(requestedStatus)) {
     return json({ message: "Invalid order status" }, 400, request, env);
   }
 
@@ -2380,23 +2630,32 @@ async function updateServiceOrderStatus(request, id, env) {
       type: "status",
       actor: isTechnician ? "technician" : "operations_manager",
       message: isTechnician
-        ? `قام الفني بتحديث المهمة إلى حالة ${mapOrderStatusLabel(status)}`
+        ? requestedStatus === "rescheduled"
+          ? "قام الفني بطلب إعادة جدولة المهمة"
+          : `قام الفني بتحديث المهمة إلى حالة ${mapOrderStatusLabel(status)}`
         : `تم تحديث الطلب إلى حالة ${mapOrderStatusLabel(status)}`,
       createdAt: new Date().toISOString(),
     },
   ]);
   const suspendedAt = status === "suspended" ? new Date().toISOString() : null;
-  const suspensionReason = status === "suspended" ? String(body.suspensionReason || "").trim() : "";
+  const suspensionReason =
+    status === "suspended"
+      ? String(body.suspensionReason || (requestedStatus === "rescheduled" ? "طلب إعادة جدولة من الفني" : "")).trim()
+      : "";
   const suspensionNote = status === "suspended" ? String(body.suspensionNote || "").trim() : "";
-  const exceptionStatus = status === "suspended" ? String(body.exceptionStatus || "open").trim() || "open" : "none";
+  const exceptionStatus =
+    status === "suspended"
+      ? String(body.exceptionStatus || (requestedStatus === "rescheduled" ? "rescheduled" : "open")).trim() || "open"
+      : "none";
+  const completedAt = status === "completed" ? new Date().toISOString() : null;
 
   await env.DB.prepare(
     `UPDATE service_orders
      SET status = ?, suspension_reason = ?, suspension_note = ?, suspended_at = ?, exception_status = ?,
-         audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+         completed_at = ?, audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`
   )
-    .bind(status, suspensionReason, suspensionNote, suspendedAt, exceptionStatus, JSON.stringify(nextAuditLog), orderId)
+    .bind(status, suspensionReason, suspensionNote, suspendedAt, exceptionStatus, completedAt, JSON.stringify(nextAuditLog), orderId)
     .run();
 
   if (status === "in_transit") {
@@ -2412,19 +2671,127 @@ async function updateServiceOrderStatus(request, id, env) {
   if (status === "completed") {
     await notifyUsersByRoles(
       env,
-      ["customer_service"],
-      "تم إنهاء الطلب",
-      `تم الانتهاء من الطلب رقم ${order.request_number || order.customer_name} بنجاح.`,
+      ["operations_manager", "customer_service"],
+      "تم إنهاء الطلب من الفني",
+      `قام الفني بإنهاء الطلب رقم ${order.request_number || order.customer_name}.`,
       orderId
     );
   }
 
-  if (status === "suspended") {
+  if (requestedStatus === "rescheduled") {
+    await notifyUsersByRoles(
+      env,
+      ["operations_manager", "customer_service"],
+      "طلب إعادة جدولة من الفني",
+      `طلب الفني إعادة جدولة الطلب رقم ${order.request_number || order.customer_name}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`,
+      orderId
+    );
+  }
+
+  if (status === "suspended" && requestedStatus !== "rescheduled") {
     await notifyUsersByRoles(
       env,
       ["operations_manager"],
       "تم تعليق مهمة ميدانية",
       `قام الفني بتعليق الطلب رقم ${order.request_number || order.customer_name}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`,
+      orderId
+    );
+  }
+
+  const updated = await readServiceOrderById(env, orderId);
+  return json({ order: updated }, 200, request, env);
+}
+
+async function quickUpdateCompactOrderStatus(request, id, env) {
+  const user = await requireRoles(request, env, ["operations_manager"]);
+  if (!user) {
+    return json({ message: "Operations manager access required" }, 401, request, env);
+  }
+
+  const orderId = Number(id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return json({ message: "Invalid order id" }, 400, request, env);
+  }
+
+  const body = await readJson(request);
+  const requestedStatus = String(body.status || "").trim();
+  const status = requestedStatus === "rescheduled" ? "scheduled" : requestedStatus;
+
+  if (!["completed", "scheduled"].includes(status) || !["completed", "rescheduled"].includes(requestedStatus)) {
+    return json({ message: "Invalid compact order status" }, 400, request, env);
+  }
+
+  const order = await env.DB.prepare(
+    `SELECT
+      o.id, o.customer_name, o.request_number, o.status, o.city, o.completed_at, o.audit_log_json
+     FROM service_orders o
+     WHERE o.id = ?`
+  )
+    .bind(orderId)
+    .first();
+
+  if (!order) {
+    return json({ message: "Order not found" }, 404, request, env);
+  }
+
+  if (String(order.status || "").trim() === "canceled") {
+    return json({ message: "Canceled orders cannot be updated from the compact table" }, 409, request, env);
+  }
+
+  const nextAuditLog = normalizeAuditLogEntries([
+    ...normalizeAuditLogEntries(parseJsonArray(order.audit_log_json)),
+    {
+      type: "status",
+      actor: "operations_manager",
+      message:
+        requestedStatus === "rescheduled"
+          ? "تمت إعادة جدولة الطلب من الجدول المختصر."
+          : `تم تحديث الطلب إلى حالة ${mapOrderStatusLabel(status)} من الجدول المختصر.`,
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  const nextCompletedAt = status === "completed" ? new Date().toISOString() : null;
+
+  await env.DB.prepare(
+    `UPDATE service_orders
+     SET status = ?, completed_at = ?, audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(status, nextCompletedAt, JSON.stringify(nextAuditLog), orderId)
+    .run();
+
+  if (requestedStatus === "rescheduled") {
+    await notifyUsersByRoles(
+      env,
+      ["customer_service"],
+      "تمت إعادة جدولة الطلب",
+      `تمت إعادة جدولة الطلب رقم ${order.request_number || order.customer_name}.`,
+      orderId
+    );
+
+    await notifyRegionalDispatchersForOrder(
+      env,
+      { city: order.city },
+      "تمت إعادة جدولة طلب المنطقة",
+      `أعاد مدير العمليات جدولة الطلب رقم ${order.request_number || order.customer_name}.`,
+      orderId
+    );
+  }
+
+  if (requestedStatus === "completed") {
+    await notifyUsersByRoles(
+      env,
+      ["customer_service"],
+      "تم إنهاء الطلب",
+      `تم الانتهاء من الطلب رقم ${order.request_number || order.customer_name} بنجاح.`,
+      orderId
+    );
+
+    await notifyRegionalDispatchersForOrder(
+      env,
+      { city: order.city },
+      "تم إنهاء طلب المنطقة",
+      `قام مدير العمليات بإنهاء الطلب رقم ${order.request_number || order.customer_name}.`,
       orderId
     );
   }
@@ -2912,6 +3279,20 @@ function normalizeDeliveryType(value) {
   return ["none", "standard", "express_24h"].includes(normalized) ? normalized : "none";
 }
 
+function normalizeImportedOrderStatus(value) {
+  const normalized = String(value || "pending").trim().toLowerCase();
+  if (["canceled", "cancelled"].includes(normalized)) {
+    return "canceled";
+  }
+  if (["completed", "done"].includes(normalized)) {
+    return "completed";
+  }
+  if (["scheduled", "assigned", "in_progress", "in progress"].includes(normalized)) {
+    return "scheduled";
+  }
+  return "pending";
+}
+
 function isFastDeliveryCity(city) {
   return FAST_DELIVERY_CITIES.includes(String(city || "").trim());
 }
@@ -3165,6 +3546,7 @@ function normalizeServiceOrderInput(body) {
   const sourceChannel = String(body.sourceChannel || body.source || "الزامل").trim();
   const serviceSummary = String(body.serviceSummary || body.workType || "").trim();
   const deliveryType = normalizeDeliveryType(body.deliveryType);
+  const importStatus = normalizeImportedOrderStatus(body.importStatus || body.status);
   const priority = deliveryType === "none" ? String(body.priority || "normal").trim() : "urgent";
   const preferredDate = String(body.preferredDate || body.scheduledDate || "").trim();
   const preferredTime = String(body.preferredTime || body.scheduledTime || "").trim();
@@ -3203,6 +3585,7 @@ function normalizeServiceOrderInput(body) {
     mapLink,
     sourceChannel,
     serviceSummary,
+    importStatus,
     priority,
     deliveryType,
     preferredDate,
@@ -3333,6 +3716,17 @@ async function createNotification(env, userId, title, body, kind = "info", relat
   )
     .bind(Number(userId), title, body, kind, relatedOrderId ? Number(relatedOrderId) : null)
     .run();
+
+  try {
+    await sendPushToUser(env, userId, {
+      title,
+      body,
+      kind,
+      relatedOrderId,
+    });
+  } catch (error) {
+    console.error("Push delivery failed", error);
+  }
 }
 
 async function notifyAdmins(env, title, body, relatedOrderId = null) {
@@ -3360,6 +3754,14 @@ async function notifyRegionalDispatchersForOrder(env, order = {}, title, body, r
     return;
   }
 
+  await notifyRegionalDispatchersByRegion(env, regionKey, title, body, relatedOrderId);
+}
+
+async function notifyRegionalDispatchersByRegion(env, regionKey, title, body, relatedOrderId = null) {
+  if (!regionKey) {
+    return;
+  }
+
   const { results } = await env.DB.prepare(
     `SELECT u.id
      FROM users u
@@ -3372,6 +3774,40 @@ async function notifyRegionalDispatchersForOrder(env, order = {}, title, body, r
   for (const user of results || []) {
     await createNotification(env, user.id, title, body, "assignment", relatedOrderId);
   }
+}
+
+async function readExistingServiceOrderNumbers(env, requestNumbers = []) {
+  const normalized = Array.from(
+    new Set(
+      (requestNumbers || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const existing = new Set();
+  for (let index = 0; index < normalized.length; index += 50) {
+    const chunk = normalized.slice(index, index + 50);
+    if (!chunk.length) {
+      continue;
+    }
+
+    const placeholders = chunk.map(() => "?").join(", ");
+    const { results } = await env.DB.prepare(
+      `SELECT request_number FROM service_orders WHERE request_number IN (${placeholders})`
+    )
+      .bind(...chunk)
+      .all();
+
+    for (const row of results || []) {
+      const requestNumber = String(row?.request_number || "").trim();
+      if (requestNumber) {
+        existing.add(requestNumber);
+      }
+    }
+  }
+
+  return existing;
 }
 
 async function readServiceTimeStandards(env) {

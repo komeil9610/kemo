@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const STORAGE_KEY = 'tarkeeb-pro-internal-db';
+const STORAGE_KEY = 'tarkeeb-pro-internal-db-v2';
+const LEGACY_STORAGE_KEY = 'tarkeeb-pro-internal-db';
 const NOTIFICATIONS_STORAGE_KEY = 'tarkeeb-pro-internal-notifications';
 
 const readStorage = (key) => {
@@ -34,6 +35,18 @@ const removeStorage = (key) => {
 
   try {
     window.localStorage.removeItem(key);
+  } catch {
+    return;
+  }
+};
+
+const clearLegacyOrders = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
     return;
   }
@@ -213,24 +226,23 @@ const defaultHomeSettings = {
   heroTitle: 'Made with care to simplify the journey of customer service and the operations manager.',
   heroSubtitle:
     'A private request workspace that keeps intake fast, statuses clear, and heavy daily order volumes easier to manage.',
-  primaryButtonText: 'Open dashboard',
-  primaryButtonUrl: '/dashboard',
+  primaryButtonText: 'Sign in',
+  primaryButtonUrl: '/login',
   secondaryButtonText: 'Sign in',
   secondaryButtonUrl: '/login',
   stats: [
-    { value: '2', label: 'Dedicated internal roles' },
-    { value: '4+', label: 'Daily coordination actions' },
-    { value: '1', label: 'Shared operations board' },
+    { value: '3', label: 'Dedicated workspaces' },
+    { value: '4', label: 'Regional accounts' },
+    { value: '2', label: 'Core office roles' },
     { value: 'Instant', label: 'Customer service alerts' },
   ],
 };
 
 const defaultFooter = {
   aboutText:
-    'A focused internal workspace for handing off requests between customer service and the operations manager.',
+    'A focused internal workspace for customer service, the operations manager, and the four regional accounts.',
   usefulLinks: [
     { label: 'Home', url: '/' },
-    { label: 'Internal Dashboard', url: '/dashboard' },
     { label: 'Login', url: '/login' },
   ],
   customerServiceLinks: [
@@ -277,6 +289,7 @@ const writeStoredNotifications = (items) => {
 };
 
 const readState = () => {
+  clearLegacyOrders();
   const raw = readStorage(STORAGE_KEY);
   if (!raw) {
     writeStorage(STORAGE_KEY, JSON.stringify(defaultState));
@@ -457,6 +470,9 @@ const allowDemoFallback = process.env.REACT_APP_ALLOW_DEMO_FALLBACK === 'true';
 const API_BASE_URL =
   process.env.REACT_APP_API_URL ||
   (isLocalhost ? 'http://127.0.0.1:5000/api' : '/api');
+const BACKEND_API_BASE_URL =
+  process.env.REACT_APP_BACKEND_API_URL ||
+  (isLocalhost ? 'http://127.0.0.1:5000/api' : '');
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -464,6 +480,14 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+const backendApiClient = BACKEND_API_BASE_URL
+  ? axios.create({
+      baseURL: BACKEND_API_BASE_URL,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+  : null;
 
 apiClient.interceptors.request.use((config) => {
   const token = readStorage('authToken');
@@ -472,6 +496,15 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+if (backendApiClient) {
+  backendApiClient.interceptors.request.use((config) => {
+    const token = readStorage('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
+}
 
 const withFallback = async (remoteAction, localAction) => {
   try {
@@ -801,6 +834,11 @@ const localOperationsService = {
     return this.updateOrder(orderId, { status });
   },
 
+  async quickUpdateOrderStatus(orderId, status) {
+    const normalizedStatus = status === 'rescheduled' ? 'scheduled' : status;
+    return this.updateOrder(orderId, { status: normalizedStatus });
+  },
+
   async getDailyTasks(selectedDate = todayString()) {
     const state = getState();
     return delay({ data: getDailyTasksPayload(state.orders || [], selectedDate) });
@@ -816,8 +854,10 @@ const remoteOperationsService = {
   getDashboard: () => apiClient.get('/operations/dashboard'),
   getTechnicianOrders: (technicianId) => apiClient.get('/operations/technician/orders', { params: { technicianId } }),
   createOrder: (data) => apiClient.post('/operations/orders', data),
+  importOrders: (data) => apiClient.post('/operations/orders/import', data),
   createTechnician: (data) => apiClient.post('/operations/technicians', data),
   updateOrder: (orderId, data) => apiClient.put(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}`, data),
+  quickUpdateOrderStatus: (orderId, status) => apiClient.patch(`/orders/${String(orderId).replace(/^ORD-/, '')}`, { status }),
   updateOrderStatus: (orderId, status) =>
     apiClient.put(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}/status`, { status }),
   updateTechnicianStatus: (orderId, payload) =>
@@ -868,6 +908,52 @@ export const operationsService = {
       },
       () => localOperationsService.createOrder(data)
     ),
+  importOrdersFromExcel: async (fileName = 'data.xlsx') => {
+    const preview = backendApiClient
+      ? await backendApiClient.get('/operations/excel-import/preview', {
+          params: { fileName },
+        })
+      : await axios.get('/excel-import/orders.json');
+    const orders = Array.isArray(preview.data?.orders) ? preview.data.orders : [];
+
+    if (!orders.length) {
+      return {
+        data: {
+          importedCount: 0,
+          skippedCount: 0,
+          skippedOrders: [],
+          preview: preview.data || null,
+        },
+      };
+    }
+
+    const chunkSize = 100;
+    let importedCount = 0;
+    let skippedCount = 0;
+    const skippedOrders = [];
+
+    for (let index = 0; index < orders.length; index += chunkSize) {
+      const chunk = orders.slice(index, index + chunkSize);
+      const response = await remoteOperationsService.importOrders({
+        fileName,
+        orders: chunk,
+      });
+      importedCount += Number(response.data?.importedCount) || 0;
+      skippedCount += Number(response.data?.skippedCount) || 0;
+      skippedOrders.push(...(response.data?.skippedOrders || []));
+    }
+
+    window.dispatchEvent(new CustomEvent('operations-updated'));
+    return {
+      data: {
+        fileName,
+        importedCount,
+        skippedCount,
+        skippedOrders,
+        preview: preview.data || null,
+      },
+    };
+  },
   createTechnician: (data) =>
     withFallback(
       async () => {
@@ -896,6 +982,21 @@ export const operationsService = {
         return response;
       },
       () => localOperationsService.updateOrderStatus(orderId, status)
+    ),
+  quickUpdateOrderStatus: (orderId, status) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.quickUpdateOrderStatus(orderId, status);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return {
+          ...response,
+          data: {
+            ...response.data,
+            order: response.data?.order ? mapRemoteOrder(response.data.order) : null,
+          },
+        };
+      },
+      () => localOperationsService.quickUpdateOrderStatus(orderId, status)
     ),
   getTechnicianOrders: (technicianId) =>
     withFallback(
@@ -996,6 +1097,38 @@ export const operationsService = {
 };
 
 export const notificationsService = {
+  getConfig: async () => {
+    try {
+      return await apiClient.get('/notifications/config');
+    } catch (error) {
+      if (!allowDemoFallback) {
+        throw error;
+      }
+
+      return {
+        data: {
+          enabled: false,
+          publicKey: null,
+        },
+      };
+    }
+  },
+  subscribe: async (subscription) => {
+    try {
+      return await apiClient.post('/notifications/subscribe', subscription);
+    } catch (error) {
+      if (!allowDemoFallback) {
+        throw error;
+      }
+
+      return {
+        data: {
+          ok: false,
+          local: true,
+        },
+      };
+    }
+  },
   list: async () => {
     try {
       return await apiClient.get('/notifications');
