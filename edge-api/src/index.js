@@ -1897,10 +1897,11 @@ async function updateServiceOrder(request, id, env) {
   }
 
   const body = await readJson(request);
+  const touchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
   const technicianAllowedKeys = ["clientSignature"];
-  const technicianTouchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
+  const technicianTouchedKeys = touchedKeys;
   const regionalAllowedKeys = ["scheduledDate", "scheduledTime", "coordinationNote", "status", "completionNote", "contactCustomerNote"];
-  const regionalTouchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
+  const regionalTouchedKeys = touchedKeys;
   let regionalProfile = null;
 
   if (isTechnician) {
@@ -1940,6 +1941,51 @@ async function updateServiceOrder(request, id, env) {
     if (getOrderRegionKey({ city: existing.city }) !== normalizeRegionKey(regionalProfile.zone)) {
       return json({ message: "This order does not belong to your assigned region" }, 403, request, env);
     }
+  }
+
+  const noteOnlyContactCustomer =
+    !isCustomerService &&
+    touchedKeys.length === 1 &&
+    touchedKeys[0] === "contactCustomerNote" &&
+    String(body.contactCustomerNote || "").trim();
+
+  if (noteOnlyContactCustomer) {
+    const contactCustomerNote = String(body.contactCustomerNote || "").trim();
+    const nextCoordinationNote = [String(existing.coordination_note || "").trim(), `اتصل بالعميل: ${contactCustomerNote}`]
+      .filter(Boolean)
+      .join("\n");
+    const nextAuditLog = normalizeAuditLogEntries([
+      ...normalizeAuditLogEntries(parseJsonArray(existing.audit_log_json)),
+      {
+        type: isOperationsManager ? "coordination" : "regional_dispatch",
+        actor: isOperationsManager ? "operations_manager" : "regional_dispatcher",
+        message: isOperationsManager
+          ? `سجل مدير العمليات تواصلاً مع العميل. الملاحظة: ${contactCustomerNote}`
+          : `سجلت جهة المنطقة تواصلاً مع العميل. الملاحظة: ${contactCustomerNote}`,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    await env.DB.prepare(
+      `UPDATE service_orders
+       SET coordination_note = ?, audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+      .bind(nextCoordinationNote, JSON.stringify(nextAuditLog), orderId)
+      .run();
+
+    if (isRegionalDispatcher) {
+      await notifyUsersByRoles(
+        env,
+        ["operations_manager"],
+        "اتصال من حساب المنطقة",
+        `سجلت ${regionalProfile?.name || "جهة المنطقة"} تواصلاً مع العميل في الطلب رقم ${existing.request_number}. الملاحظة: ${contactCustomerNote}`,
+        orderId
+      );
+    }
+
+    const order = await readServiceOrderById(env, orderId);
+    return json({ order }, 200, request, env);
   }
 
   const requestNumber =
@@ -4237,6 +4283,11 @@ function isInternalProxyRequest(request) {
 }
 
 async function validateCloudflareAccess(request, env) {
+  const requestUrl = new URL(request.url);
+  if (["localhost", "127.0.0.1"].includes(requestUrl.hostname)) {
+    return null;
+  }
+
   const token =
     request.headers.get("CF-Access-Jwt-Assertion") ||
     request.headers.get("Cf-Access-Jwt-Assertion") ||

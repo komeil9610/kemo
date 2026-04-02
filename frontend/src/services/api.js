@@ -501,6 +501,8 @@ const backendApiClient = BACKEND_API_BASE_URL
     })
   : null;
 
+export const canUploadExcelSource = Boolean(backendApiClient);
+
 apiClient.interceptors.request.use((config) => {
   const token = readStorage('authToken');
   if (token) {

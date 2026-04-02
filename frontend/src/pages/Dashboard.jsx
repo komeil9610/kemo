@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import {
   buildWhatsAppUrl,
+  canUploadExcelSource,
   formatSaudiPhoneDisplay,
   normalizeSaudiPhoneNumber,
   operationsService,
@@ -1058,14 +1059,16 @@ export default function Dashboard() {
                   ref={excelUploadInputRef}
                   type="file"
                 />
-                <button
-                  className="btn-light"
-                  type="button"
-                  disabled={uploadingExcel || importingExcel || saving}
-                  onClick={() => excelUploadInputRef.current?.click()}
-                >
-                  {uploadingExcel ? t.uploadingExcelSource : t.uploadExcelSource}
-                </button>
+                {canUploadExcelSource ? (
+                  <button
+                    className="btn-light"
+                    type="button"
+                    disabled={uploadingExcel || importingExcel || saving}
+                    onClick={() => excelUploadInputRef.current?.click()}
+                  >
+                    {uploadingExcel ? t.uploadingExcelSource : t.uploadExcelSource}
+                  </button>
+                ) : null}
                 <button className="btn-light" type="button" disabled={uploadingExcel || importingExcel || saving} onClick={onImportExcel}>
                   {importingExcel ? t.importingExcel : t.importExcel}
                 </button>
