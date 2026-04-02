@@ -12,6 +12,7 @@ import {
   operationsService,
   technicianStatusOptions,
 } from '../services/api';
+import { getOrderDisplayStatus } from '../utils/internalOrders';
 import { notificationHaptic, sendAppNotification, selectionHaptic } from '../utils/mobileNative';
 
 const fileToDataUrl = (file) =>
@@ -593,6 +594,11 @@ export default function Orders() {
   const completedCount = ordersWithMeta.filter((order) => order.status === 'completed').length;
   const attentionCount = ordersWithMeta.filter((order) => order.overdue || order.status === 'pending').length;
 
+  const activateSummaryTab = async (nextTab) => {
+    await selectionHaptic();
+    setActiveTab(nextTab);
+  };
+
   const updateStatus = async (orderId, status) => {
     setMessage('');
     await operationsService.updateTechnicianStatus(orderId, status);
@@ -710,7 +716,7 @@ export default function Orders() {
             {viewT.generalTasksLink}
           </Link>
           {!isRegionalDispatcher ? (
-            <Link className="btn-light" to="/tasks/daily">
+            <Link className="btn-light" to="/regions">
               {t.dailyTasksLink}
             </Link>
           ) : null}
@@ -722,23 +728,27 @@ export default function Orders() {
 
       {message ? <div className="flash-message">{message}</div> : null}
 
-      <div className="technician-summary-strip">
-        <article className="tech-summary-card">
+      <div className={`technician-summary-strip ${isRegionalDispatcher ? 'regional-summary-strip' : ''}`}>
+        <button className={`tech-summary-card interactive-summary-card ${activeTab === 'today' ? 'is-active' : ''}`} type="button" onClick={() => activateSummaryTab('today')}>
           <span>{viewT.metrics.today}</span>
           <strong>{visibleTodayOrders.length}</strong>
-        </article>
-        <article className="tech-summary-card">
+        </button>
+        <button className="tech-summary-card interactive-summary-card" type="button" onClick={() => activateSummaryTab('today')}>
           <span>{viewT.metrics.active}</span>
           <strong>{activeCount}</strong>
-        </article>
-        <article className="tech-summary-card">
+        </button>
+        <button className={`tech-summary-card interactive-summary-card ${activeTab === 'history' ? 'is-active' : ''}`} type="button" onClick={() => activateSummaryTab('history')}>
           <span>{viewT.metrics.done}</span>
           <strong>{completedCount}</strong>
-        </article>
-        <article className="tech-summary-card attention">
+        </button>
+        <button
+          className={`tech-summary-card attention interactive-summary-card ${activeTab === 'notifications' ? 'is-active' : ''}`}
+          type="button"
+          onClick={() => activateSummaryTab('notifications')}
+        >
           <span>{viewT.metrics.alerts}</span>
           <strong>{attentionCount}</strong>
-        </article>
+        </button>
       </div>
 
       <div className="technician-app-body">
@@ -773,7 +783,7 @@ export default function Orders() {
                     >
                       <div className="tech-job-top">
                         <span className="tech-job-time">{order.scheduledTime || order.scheduledDate || '—'}</span>
-                        <span className={`status-badge ${order.status}`}>{viewT.statusLabels[order.status] || order.status}</span>
+                        <span className={`status-badge ${order.status}`}>{getOrderDisplayStatus(order, lang)}</span>
                       </div>
                       <strong>{order.customerName}</strong>
                       <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
@@ -806,7 +816,7 @@ export default function Orders() {
                       <p>{formatSaudiPhoneDisplay(selectedOrder.phone)}</p>
                     </div>
                     <span className={`status-badge ${selectedOrder.status}`}>
-                      {viewT.statusLabels[selectedOrder.status] || selectedOrder.status}
+                      {getOrderDisplayStatus(selectedOrder, lang)}
                     </span>
                   </div>
 
@@ -1024,7 +1034,7 @@ export default function Orders() {
                             <button className="btn-light" type="button" onClick={() => saveSignature(selectedOrder)}>
                               {t.saveStatus}
                             </button>
-                            <Link className="btn-danger" to="/tasks/daily">
+                            <Link className="btn-danger" to="/regions">
                               {t.openClosureFlow}
                             </Link>
                           </div>
@@ -1057,7 +1067,7 @@ export default function Orders() {
                         <p>{order.region}</p>
                         <p>{formatDate(order.scheduledDate, lang)}</p>
                       </div>
-                      <span className={`status-badge ${order.status}`}>{viewT.statusLabels[order.status] || order.status}</span>
+                      <span className={`status-badge ${order.status}`}>{getOrderDisplayStatus(order, lang)}</span>
                     </div>
                     <p>{order.workType || order.acType}</p>
                   </article>
@@ -1079,7 +1089,7 @@ export default function Orders() {
                 <article className="alert-card" key={`${order.id}-${order.status}`}>
                   <strong>{order.customerName}</strong>
                   <p>{order.address}</p>
-                  <span>{order.overdue ? (lang === 'ar' ? 'متأخرة' : 'Overdue') : viewT.statusLabels[order.status] || order.status}</span>
+                  <span>{order.overdue ? (lang === 'ar' ? 'متأخرة' : 'Overdue') : getOrderDisplayStatus(order, lang)}</span>
                 </article>
               ))}
               {notifications.map((item) => (

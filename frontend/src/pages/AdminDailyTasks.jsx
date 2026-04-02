@@ -4,12 +4,15 @@ import toast from 'react-hot-toast';
 import { useLang } from '../context/LangContext';
 import {
   buildEscalationSnapshot,
+  buildDisplayStatusBuckets,
   compareOrdersByInternalArea,
   formatSaudiPhoneDisplay,
   getAreaClusterLabel,
   notificationsService,
   operationsService,
 } from '../services/api';
+import { getOrderDisplayStatus, orderMatchesDisplayStatus } from '../utils/internalOrders';
+import { sendAppNotification } from '../utils/mobileNative';
 
 const todayString = () => new Date().toISOString().slice(0, 10);
 const formatOrderNumber = (value) => String(value || '').replace(/^ORD-/, '');
@@ -327,13 +330,7 @@ export default function AdminDailyTasks() {
       if (bootstrappedNotificationsRef.current && unseenItems.length) {
         unseenItems.forEach((item) => {
           toast(item.title, { duration: 5000 });
-          try {
-            if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
-              new window.Notification(item.title, { body: item.body });
-            }
-          } catch {
-            return;
-          }
+          sendAppNotification({ key: `admin-daily-${item.id}`, title: item.title, body: item.body });
         });
 
         await loadDashboard({ silently: true });
@@ -389,6 +386,16 @@ export default function AdminDailyTasks() {
     });
     return Array.from(values).sort((left, right) => left.localeCompare(right));
   }, [orders]);
+  const displayStatusOptions = useMemo(
+    () => buildDisplayStatusBuckets(orders.filter((order) => order.scheduledDate === selectedDate), lang),
+    [lang, orders, selectedDate]
+  );
+
+  useEffect(() => {
+    if (filters.status !== 'all' && !displayStatusOptions.some((item) => item.key === filters.status)) {
+      setFilters((current) => ({ ...current, status: 'all' }));
+    }
+  }, [displayStatusOptions, filters.status]);
 
   const searchTerm = filters.search.trim().toLowerCase();
 
@@ -405,6 +412,8 @@ export default function AdminDailyTasks() {
         order.phone,
         formatSaudiPhoneDisplay(order.phone),
         order.region,
+        getOrderDisplayStatus(order, 'ar'),
+        getOrderDisplayStatus(order, 'en'),
         order.internalAreaLabel,
         order.internalAreaArLabel,
         order.address,
@@ -433,11 +442,11 @@ export default function AdminDailyTasks() {
         const matchesRegion = filters.region === 'all' || order.region === filters.region;
         const matchesTechnician =
           filters.technician === 'all' || String(order.technicianId || '') === String(filters.technician);
-        const matchesStatus = filters.status === 'all' || order.status === filters.status;
+        const matchesStatus = filters.status === 'all' || orderMatchesDisplayStatus(order, filters.status, lang);
 
         return matchesRegion && matchesTechnician && matchesStatus && searchMatches(order);
       }),
-    [filters.region, filters.status, filters.technician, orders, searchMatches, selectedDate]
+    [filters.region, filters.status, filters.technician, lang, orders, searchMatches, selectedDate]
   );
 
   const closeRequestOrders = useMemo(
@@ -799,9 +808,9 @@ export default function AdminDailyTasks() {
             onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
           >
             <option value="all">{t.allStatuses}</option>
-            {Object.entries(t.statusOptions).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
+            {displayStatusOptions.map((statusItem) => (
+              <option key={statusItem.key} value={statusItem.key}>
+                {statusItem.label}
               </option>
             ))}
           </select>
@@ -1206,7 +1215,7 @@ export default function AdminDailyTasks() {
                                 #{formatOrderNumber(order.id)} - {order.customerName}
                               </strong>
                               <div className="task-badges">
-                                <span className={`status-badge ${order.status}`}>{t.statusOptions[order.status] || order.status}</span>
+                                <span className={`status-badge ${order.status}`}>{getOrderDisplayStatus(order, lang)}</span>
                                 {order.zamilClosureStatus && order.zamilClosureStatus !== 'idle' ? (
                                   <span className={`close-stage-pill ${order.zamilClosureStatus}`}>
                                     {t.closeStatusLabels[order.zamilClosureStatus]}

@@ -2,9 +2,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, NavLink } from 'react-router-dom';
 import OrderMasterDetail from '../components/OrderMasterDetail';
+import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { buildWhatsAppUrl, formatSaudiPhoneDisplay, operationsService } from '../services/api';
-import { buildCallUrl, exportOrdersCsv, formatDateTimeLabel, getOperationalDate, getOrderTaskDate, statusLabels } from '../utils/internalOrders';
+import {
+  buildCallUrl,
+  buildDisplayStatusBuckets,
+  exportOrdersCsv,
+  formatDateTimeLabel,
+  getOperationalDate,
+  getOrderDisplayStatus,
+  getOrderTaskDate,
+  orderMatchesDisplayStatus,
+} from '../utils/internalOrders';
 
 const operationsRegions = [
   {
@@ -118,12 +128,9 @@ const compareOrdersByStatusThenRegion = (left, right) => {
 const compareOrdersByLatest = (left, right) => `${right.updatedAt || right.createdAt || ''}`.localeCompare(`${left.updatedAt || left.createdAt || ''}`);
 const compareOrdersByCustomer = (left, right) => `${left.customerName || ''}`.localeCompare(`${right.customerName || ''}`, 'ar');
 
-const getFilteredSummary = (orders) => ({
+const getFilteredSummary = (orders, lang) => ({
   total: orders.length,
-  pending: orders.filter((order) => order.status === 'pending').length,
-  scheduled: orders.filter((order) => order.status === 'scheduled').length,
-  inTransit: orders.filter((order) => order.status === 'in_transit').length,
-  completed: orders.filter((order) => order.status === 'completed').length,
+  buckets: buildDisplayStatusBuckets(orders, lang),
 });
 
 const copy = {
@@ -189,10 +196,24 @@ const copy = {
       orderId: 'Order ID',
       status: 'Status',
       customer: 'Customer',
+      actions: 'Status',
       drawerTitle: 'Order details',
       close: 'Close',
       results: (shown, total) => `${shown} of ${total} orders`,
       emptySearch: 'No orders match this search.',
+    },
+    quickStatus: {
+      placeholder: 'Change status',
+      scheduled: 'Rescheduled',
+      canceled: 'Canceled',
+      completed: 'Completed',
+      loading: 'Updating...',
+      confirm: (label, customer) => `Change ${customer || 'this order'} to ${label}?`,
+      success: {
+        scheduled: 'Order marked as rescheduled.',
+        canceled: 'Order marked as canceled.',
+        completed: 'Order marked as completed.',
+      },
     },
     empty: 'No tasks match this view yet.',
     requestNumber: 'Request number',
@@ -265,10 +286,24 @@ const copy = {
       orderId: 'رقم الطلب',
       status: 'الحالة',
       customer: 'العميل',
+      actions: 'تغيير الحالة',
       drawerTitle: 'تفاصيل الطلب',
       close: 'إغلاق',
       results: (shown, total) => `${shown} من أصل ${total} طلب`,
       emptySearch: 'لا توجد طلبات مطابقة لهذا البحث.',
+    },
+    quickStatus: {
+      placeholder: 'تغيير الحالة',
+      scheduled: 'إعادة جدولة',
+      canceled: 'ملغي',
+      completed: 'مكتمل',
+      loading: 'جارٍ التحديث...',
+      confirm: (label, customer) => `تغيير حالة ${customer || 'الطلب'} إلى ${label}؟`,
+      success: {
+        scheduled: 'تم تحويل الطلب إلى إعادة جدولة.',
+        canceled: 'تم تعليم الطلب كملغي.',
+        completed: 'تم تعليم الطلب كمكتمل.',
+      },
     },
     empty: 'لا توجد مهام مطابقة لهذه الفترة حالياً.',
     requestNumber: 'رقم الطلب',
@@ -282,6 +317,7 @@ const copy = {
 };
 
 export function InternalTaskPlanner({ mode = 'daily' }) {
+  const { user } = useAuth();
   const { lang, isRTL } = useLang();
   const t = copy[lang] || copy.en;
   const modeCopy = t.modes[mode] || t.modes.daily;
@@ -291,6 +327,9 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   const [sortKey, setSortKey] = useState('region');
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [updatingOrderId, setUpdatingOrderId] = useState('');
+  const [statusDrafts, setStatusDrafts] = useState({});
+  const isOperationsManager = user?.role === 'operations_manager';
 
   useEffect(() => {
     const load = async (silent = false) => {
@@ -349,10 +388,18 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       })),
     [rangeOrders]
   );
+  const displayStatusOptions = useMemo(() => buildDisplayStatusBuckets(rangeOrders, lang), [lang, rangeOrders]);
+
+  useEffect(() => {
+    if (selectedStatus !== 'all' && !displayStatusOptions.some((item) => item.key === selectedStatus)) {
+      setSelectedStatus('all');
+    }
+  }, [displayStatusOptions, selectedStatus]);
 
   const filteredOrders = useMemo(() => {
     const regionScoped = selectedRegion === 'all' ? rangeOrders : rangeOrders.filter((order) => getOrderRegionKey(order) === selectedRegion);
-    const statusScoped = selectedStatus === 'all' ? regionScoped : regionScoped.filter((order) => order.status === selectedStatus);
+    const statusScoped =
+      selectedStatus === 'all' ? regionScoped : regionScoped.filter((order) => orderMatchesDisplayStatus(order, selectedStatus, lang));
     const sorted = statusScoped.slice();
     if (sortKey === 'status') {
       sorted.sort(compareOrdersByStatusThenRegion);
@@ -364,9 +411,9 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       sorted.sort(compareOrdersByRegion);
     }
     return sorted;
-  }, [rangeOrders, selectedRegion, selectedStatus, sortKey]);
+  }, [lang, rangeOrders, selectedRegion, selectedStatus, sortKey]);
 
-  const summary = useMemo(() => getFilteredSummary(filteredOrders), [filteredOrders]);
+  const summary = useMemo(() => getFilteredSummary(filteredOrders, lang), [filteredOrders, lang]);
 
   const exportReport = () => {
     exportOrdersCsv({
@@ -380,6 +427,47 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
 
   const printPage = () => {
     window.print();
+  };
+
+  const handleManagerQuickStatus = async (order, nextStatus) => {
+    if (!nextStatus) {
+      return;
+    }
+
+    const nextLabel = t.quickStatus[nextStatus] || nextStatus;
+    const shouldProceed = window.confirm(t.quickStatus.confirm(nextLabel, order.customerName));
+    if (!shouldProceed) {
+      setStatusDrafts((current) => ({
+        ...current,
+        [order.id]: '',
+      }));
+      return;
+    }
+
+    try {
+      setUpdatingOrderId(String(order.id));
+      await operationsService.updateOrder(order.id, { status: nextStatus });
+      setOrders((current) =>
+        current.map((item) =>
+          String(item.id) === String(order.id)
+            ? {
+                ...item,
+                status: nextStatus,
+                updatedAt: new Date().toISOString(),
+              }
+            : item
+        )
+      );
+      toast.success(t.quickStatus.success[nextStatus] || nextLabel);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || nextLabel);
+    } finally {
+      setUpdatingOrderId('');
+      setStatusDrafts((current) => ({
+        ...current,
+        [order.id]: '',
+      }));
+    }
   };
 
   if (loading) {
@@ -448,9 +536,10 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           <div>
             <label>{t.statusFilter}</label>
             <select className="input" value={selectedStatus} onChange={(event) => setSelectedStatus(event.target.value)}>
-              {Object.entries(t.statusOptions).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
+              <option value="all">{t.allStatuses}</option>
+              {displayStatusOptions.map((statusItem) => (
+                <option key={statusItem.key} value={statusItem.key}>
+                  {statusItem.label}
                 </option>
               ))}
             </select>
@@ -462,22 +551,12 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
             <strong>{summary.total}</strong>
             <span>{t.summary.total}</span>
           </article>
-          <article className="dashboard-stat-link">
-            <strong>{summary.pending}</strong>
-            <span>{t.summary.pending}</span>
-          </article>
-          <article className="dashboard-stat-link">
-            <strong>{summary.scheduled}</strong>
-            <span>{t.summary.scheduled}</span>
-          </article>
-          <article className="dashboard-stat-link">
-            <strong>{summary.inTransit}</strong>
-            <span>{t.summary.inTransit}</span>
-          </article>
-          <article className="dashboard-stat-link">
-            <strong>{summary.completed}</strong>
-            <span>{t.summary.completed}</span>
-          </article>
+          {summary.buckets.map((statusItem) => (
+            <article className="dashboard-stat-link" key={statusItem.key}>
+              <strong>{statusItem.count}</strong>
+              <span>{statusItem.label}</span>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -520,11 +599,39 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           emptyText={t.empty}
           getCustomerName={(order) => order.customerName || '—'}
           getOrderReference={(order) => order.requestNumber || order.id || '—'}
-          getStatusLabel={(order) => statusLabels[order.status]?.[lang] || order.status}
+          getStatusLabel={(order) => getOrderDisplayStatus(order, lang)}
           isRTL={isRTL}
           labels={t.compactList}
           orders={filteredOrders}
           renderOrderDetails={(order) => <DailyTaskDetailContent lang={lang} order={order} t={t} />}
+          renderRowActions={
+            isOperationsManager
+              ? (order) => (
+                  <div className="order-inline-status manager-inline-status">
+                    <select
+                      className="input compact-input order-inline-select manager-inline-select"
+                      disabled={updatingOrderId === String(order.id)}
+                      value={statusDrafts[order.id] ?? ''}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value;
+                        setStatusDrafts((current) => ({
+                          ...current,
+                          [order.id]: nextStatus,
+                        }));
+                        handleManagerQuickStatus(order, nextStatus);
+                      }}
+                    >
+                      <option value="">
+                        {updatingOrderId === String(order.id) ? t.quickStatus.loading : t.quickStatus.placeholder}
+                      </option>
+                      <option value="scheduled">{t.quickStatus.scheduled}</option>
+                      <option value="canceled">{t.quickStatus.canceled}</option>
+                      <option value="completed">{t.quickStatus.completed}</option>
+                    </select>
+                  </div>
+                )
+              : undefined
+          }
           renderResultsSummary={t.compactList.results}
           searchPlaceholder={t.compactList.searchPlaceholder}
         />

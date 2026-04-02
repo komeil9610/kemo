@@ -13,13 +13,15 @@ import {
 } from '../services/api';
 import {
   boardColumns,
+  buildDisplayStatusBuckets,
   buildCallUrl,
   exportOrdersCsv,
   formatDateTimeLabel,
   getOperationalDate,
+  getOrderDisplayStatus,
+  orderMatchesDisplayStatus,
   getOrdersForView,
   nextStatusFor,
-  statusLabels,
   todayString,
 } from '../utils/internalOrders';
 
@@ -558,11 +560,13 @@ export default function Dashboard() {
   }, [operationalDate]);
 
   const orders = useMemo(() => dashboard?.orders || [], [dashboard]);
-  const summary = useMemo(() => dashboard?.summary || {}, [dashboard]);
+  const displayStatusBuckets = useMemo(() => buildDisplayStatusBuckets(orders, lang), [orders, lang]);
   const detailOrders = useMemo(() => {
-    const scopedOrders = getOrdersForView(orders, viewKey);
+    const scopedOrders = displayStatusBuckets.some((item) => item.key === viewKey)
+      ? orders.filter((order) => orderMatchesDisplayStatus(order, viewKey, lang))
+      : getOrdersForView(orders, viewKey);
     return permissions.canManageStatuses ? scopedOrders.slice().sort(compareOrdersByOperationsRegion) : scopedOrders;
-  }, [orders, permissions.canManageStatuses, viewKey]);
+  }, [displayStatusBuckets, lang, orders, permissions.canManageStatuses, viewKey]);
 
   const regionBoard = useMemo(
     () =>
@@ -579,6 +583,7 @@ export default function Dashboard() {
         return {
           ...region,
           orders: regionOrders,
+          displayStatusBuckets: buildDisplayStatusBuckets(regionOrders, lang),
           counters: boardColumns.reduce(
             (result, statusKey) => ({
               ...result,
@@ -589,7 +594,7 @@ export default function Dashboard() {
           sections,
         };
       }),
-    [orders]
+    [lang, orders]
   );
   const visibleRegionBoard = useMemo(
     () => (selectedBoardRegion ? regionBoard.filter((region) => region.key === selectedBoardRegion) : regionBoard),
@@ -598,13 +603,8 @@ export default function Dashboard() {
   const visibleBoardStatuses = selectedBoardStatus ? [selectedBoardStatus] : boardColumns;
 
   const statCards = useMemo(
-    () => [
-      { key: 'pending', count: summary.pendingOrders ?? 0, label: t.stats.pending },
-      { key: 'active', count: summary.activeOrders ?? 0, label: t.stats.active },
-      { key: 'completed', count: (summary.completedOrders ?? 0) + (summary.canceledOrders ?? 0), label: t.stats.completed },
-      { key: 'in_transit', count: summary.inTransitOrders ?? 0, label: t.stats.inTransit },
-    ],
-    [summary, t.stats]
+    () => displayStatusBuckets,
+    [displayStatusBuckets]
   );
 
   const reportOrders = useMemo(() => orders.slice().sort((a, b) => `${b.updatedAt}`.localeCompare(`${a.updatedAt}`)), [orders]);
@@ -980,7 +980,7 @@ export default function Dashboard() {
               emptyText={t.emptyDetail}
               getCustomerName={(order) => order.customerName || '—'}
               getOrderReference={(order) => order.requestNumber || order.id || '—'}
-              getStatusLabel={(order) => statusLabels[order.status]?.[lang] || t.labels[order.status] || order.status}
+              getStatusLabel={(order) => getOrderDisplayStatus(order, lang)}
               isRTL={isRTL}
               labels={t.compactList}
               orders={detailOrders}
@@ -1512,10 +1512,10 @@ function OperationsRegionKanban({
       </div>
 
       <div className="region-kanban-counter-row">
-        {boardColumns.map((statusKey) => (
-          <div className={`region-status-counter ${statusKey}`} key={`${region.key}-${statusKey}`}>
-            <small>{t.columnLabels[statusKey]}</small>
-            <strong>{region.counters[statusKey] || 0}</strong>
+        {region.displayStatusBuckets.map((statusItem) => (
+          <div className="region-status-counter" key={`${region.key}-${statusItem.key}`}>
+            <small>{statusItem.label}</small>
+            <strong>{statusItem.count || 0}</strong>
           </div>
         ))}
       </div>
@@ -1626,7 +1626,7 @@ function TaskCardBody({
   schedulingId,
 }) {
   const scheduleOpen = expandedScheduleId === order.id;
-  const displayStatus = statusLabels[order.status]?.[lang] || t.labels[order.status] || order.status;
+  const displayStatus = getOrderDisplayStatus(order, lang);
   const showCustomerActions = canCreateOrders && !['completed', 'canceled'].includes(order.status);
   const showSchedule = canManageStatuses && !['completed', 'canceled'].includes(order.status);
   const displayPhones = [order.phone, order.secondaryPhone].filter(Boolean);

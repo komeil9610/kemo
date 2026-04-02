@@ -314,6 +314,7 @@ const normalizeImportedRow = (sheetName, row) => {
     mapLink: buildMapsLink(addressText),
     sourceChannel: `Excel import - ${sheetName}`,
     serviceSummary: devicesSummary || 'Imported from Excel',
+    externalStatus: normalizeText(row.Status),
     priority: 'normal',
     deliveryType: 'none',
     importStatus: normalizeImportedStatus(row.Status),

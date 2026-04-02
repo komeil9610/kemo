@@ -69,6 +69,11 @@ const ORDER_STATUS_AR_LABELS = {
   completed: 'مكتمل',
   canceled: 'ملغي',
 };
+const extractExcelStatusFromNotes = (notes) => {
+  const text = String(notes || '');
+  const match = text.match(/(?:^|\n)Excel status:\s*(.+?)(?:\n|$)/i);
+  return String(match?.[1] || '').trim();
+};
 export const technicianStatusOptions = [
   { value: 'available', label: 'متاح', enLabel: 'Available' },
   { value: 'busy', label: 'مشغول', enLabel: 'Busy' },
@@ -396,6 +401,7 @@ const mapRemoteOrder = (order = {}) => ({
   delayReason: order.delayReason || order.delay_reason || '',
   delayNote: order.delayNote || order.delay_note || '',
   status: order.status || 'pending',
+  externalStatus: order.externalStatus || order.external_status || order.excelStatus || extractExcelStatusFromNotes(order.notes),
   customerAction: order.customerAction || order.customer_action || 'none',
   rescheduleReason: order.rescheduleReason || order.reschedule_reason || '',
   cancellationReason: order.cancellationReason || order.cancellation_reason || '',

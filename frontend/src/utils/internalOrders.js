@@ -59,6 +59,55 @@ export const nextDateString = (dateValue) => {
 export const getOrderTaskDate = (order) =>
   order?.scheduledDate || order?.preferredDate || String(order?.createdAt || '').slice(0, 10) || '';
 
+const extractExcelStatusFromNotes = (notes) => {
+  const text = String(notes || '');
+  const match = text.match(/(?:^|\n)Excel status:\s*(.+?)(?:\n|$)/i);
+  return String(match?.[1] || '').trim();
+};
+
+export const getOrderExternalStatus = (order = {}) =>
+  String(order?.externalStatus || order?.excelStatus || order?.importMeta?.excelStatus || extractExcelStatusFromNotes(order?.notes)).trim();
+
+export const getOrderDisplayStatus = (order = {}, lang = 'ar') => {
+  const externalStatus = getOrderExternalStatus(order);
+  if (externalStatus) {
+    return externalStatus;
+  }
+  return statusLabels[order.status]?.[lang] || String(order.status || '').trim() || (lang === 'ar' ? 'غير محدد' : 'Unknown');
+};
+
+export const getOrderDisplayStatusKey = (order = {}, lang = 'ar') => {
+  const displayStatus = getOrderDisplayStatus(order, lang);
+  const internalStatus = String(order?.status || '').trim();
+  if (!displayStatus) {
+    return internalStatus || 'unknown';
+  }
+  if (!getOrderExternalStatus(order) && internalStatus) {
+    return internalStatus;
+  }
+  return displayStatus
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_+|_+$/g, '') || 'unknown';
+};
+
+export const orderMatchesDisplayStatus = (order = {}, statusKey = '', lang = 'ar') =>
+  getOrderDisplayStatusKey(order, lang) === String(statusKey || '').trim();
+
+export const buildDisplayStatusBuckets = (orders = [], lang = 'ar') => {
+  const bucketMap = new Map();
+
+  for (const order of Array.isArray(orders) ? orders : []) {
+    const key = getOrderDisplayStatusKey(order, lang);
+    const label = getOrderDisplayStatus(order, lang);
+    const current = bucketMap.get(key) || { key, label, count: 0 };
+    current.count += 1;
+    bucketMap.set(key, current);
+  }
+
+  return Array.from(bucketMap.values()).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'ar'));
+};
+
 export const nextStatusFor = (status) => {
   const sequence = ['pending', 'scheduled', 'in_transit', 'completed'];
   const currentIndex = sequence.indexOf(status);
@@ -163,7 +212,7 @@ export const exportOrdersCsv = ({ orders, lang, scopeLabel, fileDate = todayStri
     order.whatsappPhone || order.phone,
     order.city,
     order.district,
-    statusLabels[order.status]?.[lang] || order.status,
+    getOrderDisplayStatus(order, lang),
     order.priority,
     order.deliveryType || 'none',
     formatDateTimeLabel(order.preferredDate, order.preferredTime, lang),

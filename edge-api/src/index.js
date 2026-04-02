@@ -3356,6 +3356,12 @@ function normalizeAuditLogEntries(entries) {
     .filter(Boolean);
 }
 
+function extractExcelStatusFromNotes(notes) {
+  const text = String(notes || "");
+  const match = text.match(/(?:^|\n)Excel status:\s*(.+?)(?:\n|$)/i);
+  return String(match?.[1] || "").trim();
+}
+
 async function readServiceOrders(env) {
   const areaClusters = await readInternalAreaClusters(env);
   const { results } = await env.DB.prepare(
@@ -3443,6 +3449,7 @@ async function mapServiceOrderRow(env, row, areaClusters = []) {
     workType: row.work_type || "",
     acCount: Number(row.ac_count || 1),
     status: row.status,
+    externalStatus: extractExcelStatusFromNotes(row.notes),
     priority: row.priority || "normal",
     deliveryType: normalizeDeliveryType(row.delivery_type),
     preferredDate: row.preferred_date || row.scheduled_date,
