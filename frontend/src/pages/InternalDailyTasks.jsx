@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, NavLink } from 'react-router-dom';
+import OrderDeviceBreakdown from '../components/OrderDeviceBreakdown';
 import OrderMasterDetail from '../components/OrderMasterDetail';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
@@ -8,7 +9,7 @@ import { buildWhatsAppUrl, formatSaudiPhoneDisplay, operationsService } from '..
 import {
   buildCallUrl,
   buildDisplayStatusBuckets,
-  exportOrdersCsv,
+  exportOrdersReport,
   formatDateTimeLabel,
   getOperationalDate,
   getOrderDeviceCount,
@@ -139,6 +140,8 @@ const getFilteredSummary = (orders, lang) => ({
   buckets: buildDisplayStatusBuckets(orders, lang),
 });
 
+const getWorkspaceBasePath = (role) => (role === 'operations_manager' ? '/operations-manager' : '/customer-service');
+
 const copy = {
   en: {
     modes: {
@@ -163,7 +166,8 @@ const copy = {
     },
     loading: 'Loading tasks...',
     dashboard: 'Back to dashboard',
-    export: 'Export report',
+    exportPdf: 'Export PDF',
+    exportExcel: 'Export Excel',
     print: 'Print page',
     tabs: {
       daily: 'Daily',
@@ -230,6 +234,7 @@ const copy = {
     map: 'Map',
     notes: 'Notes',
     deviceCount: 'Devices',
+    devicesTitle: 'Devices in this order',
     contactCustomer: 'Called customer',
     contactPrompt: 'Write the call note for the customer',
   },
@@ -256,7 +261,8 @@ const copy = {
     },
     loading: 'جارٍ تحميل المهام...',
     dashboard: 'العودة إلى اللوحة',
-    export: 'تصدير التقرير',
+    exportPdf: 'تصدير PDF',
+    exportExcel: 'تصدير Excel',
     print: 'طباعة الصفحة',
     tabs: {
       daily: 'اليومية',
@@ -323,6 +329,7 @@ const copy = {
     map: 'الموقع',
     notes: 'الملاحظات',
     deviceCount: 'عدد الأجهزة',
+    devicesTitle: 'أجهزة هذا الطلب',
     contactCustomer: 'تم التواصل مع العميل',
     contactPrompt: 'اكتب ملاحظة الاتصال مع العميل',
   },
@@ -333,15 +340,18 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   const { lang, isRTL } = useLang();
   const t = copy[lang] || copy.en;
   const modeCopy = t.modes[mode] || t.modes.daily;
+  const workspaceBasePath = getWorkspaceBasePath(user?.role);
   const [scopeValue, setScopeValue] = useState(() => getInitialScopeValue(mode));
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [sortKey, setSortKey] = useState('region');
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exportingFormat, setExportingFormat] = useState('');
   const [updatingOrderId, setUpdatingOrderId] = useState('');
   const [statusDrafts, setStatusDrafts] = useState({});
   const isOperationsManager = user?.role === 'operations_manager';
+  const resultsSectionRef = useRef(null);
 
   useEffect(() => {
     const load = async (silent = false) => {
@@ -402,7 +412,12 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       })),
     [rangeOrders]
   );
-  const displayStatusOptions = useMemo(() => buildDisplayStatusBuckets(rangeOrders, lang), [lang, rangeOrders]);
+
+  const regionScopedOrders = useMemo(
+    () => (selectedRegion === 'all' ? rangeOrders : rangeOrders.filter((order) => getOrderRegionKey(order) === selectedRegion)),
+    [rangeOrders, selectedRegion]
+  );
+  const displayStatusOptions = useMemo(() => buildDisplayStatusBuckets(regionScopedOrders, lang), [lang, regionScopedOrders]);
 
   useEffect(() => {
     if (selectedStatus !== 'all' && !displayStatusOptions.some((item) => item.key === selectedStatus)) {
@@ -411,9 +426,8 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   }, [displayStatusOptions, selectedStatus]);
 
   const filteredOrders = useMemo(() => {
-    const regionScoped = selectedRegion === 'all' ? rangeOrders : rangeOrders.filter((order) => getOrderRegionKey(order) === selectedRegion);
     const statusScoped =
-      selectedStatus === 'all' ? regionScoped : regionScoped.filter((order) => orderMatchesDisplayStatus(order, selectedStatus, lang));
+      selectedStatus === 'all' ? regionScopedOrders : regionScopedOrders.filter((order) => orderMatchesDisplayStatus(order, selectedStatus, lang));
     const sorted = statusScoped.slice();
     if (sortKey === 'status') {
       sorted.sort(compareOrdersByStatusThenRegion);
@@ -425,22 +439,41 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       sorted.sort(compareOrdersByRegion);
     }
     return sorted;
-  }, [lang, rangeOrders, selectedRegion, selectedStatus, sortKey]);
+  }, [lang, regionScopedOrders, selectedStatus, sortKey]);
 
-  const summary = useMemo(() => getFilteredSummary(filteredOrders, lang), [filteredOrders, lang]);
-  const visibleSummaryBuckets = useMemo(
-    () => summary.buckets.filter((item) => item.key !== 'pending'),
-    [summary.buckets]
-  );
+  const summary = useMemo(() => getFilteredSummary(regionScopedOrders, lang), [regionScopedOrders, lang]);
+  const visibleSummaryBuckets = useMemo(() => summary.buckets, [summary.buckets]);
 
-  const exportReport = () => {
-    exportOrdersCsv({
-      orders: filteredOrders,
-      lang,
-      scopeLabel: `${mode}-tasks`,
-      fileDate: scopeMeta.exportLabel,
-    });
-    toast.success(lang === 'ar' ? 'تم تصدير التقرير بنجاح.' : 'Report exported successfully.');
+  const scrollToResults = () => {
+    resultsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleSummaryCardClick = (statusKey = 'all') => {
+    setSelectedStatus(statusKey);
+    scrollToResults();
+  };
+
+  const handleRegionCardClick = (regionKey = 'all') => {
+    setSelectedRegion(regionKey);
+    scrollToResults();
+  };
+
+  const exportReport = async (format) => {
+    try {
+      setExportingFormat(format);
+      await exportOrdersReport({
+        orders: filteredOrders,
+        lang,
+        scopeLabel: `${mode}-tasks`,
+        fileDate: scopeMeta.exportLabel,
+        format,
+      });
+      toast.success(lang === 'ar' ? 'تم تصدير التقرير بنجاح.' : 'Report exported successfully.');
+    } catch (error) {
+      toast.error(error?.message || (lang === 'ar' ? 'تعذر تصدير التقرير.' : 'Unable to export report.'));
+    } finally {
+      setExportingFormat('');
+    }
   };
 
   const printPage = () => {
@@ -528,25 +561,28 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       </div>
 
       <div className="dashboard-toolbar-links print-hidden">
-        <Link className="btn-light" to="/dashboard">
+        <Link className="btn-light" to={workspaceBasePath}>
           {t.dashboard}
         </Link>
         <button className="btn-secondary" type="button" onClick={printPage}>
           {t.print}
         </button>
-        <button className="btn-primary" type="button" onClick={exportReport}>
-          {t.export}
+        <button className="btn-primary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportReport('pdf')}>
+          {exportingFormat === 'pdf' ? '...' : t.exportPdf}
+        </button>
+        <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportReport('excel')}>
+          {exportingFormat === 'excel' ? '...' : t.exportExcel}
         </button>
       </div>
 
       <div className="planning-tabs print-hidden">
-        <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to="/dashboard/daily">
+        <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to={`${workspaceBasePath}/daily`}>
           {t.tabs.daily}
         </NavLink>
-        <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to="/dashboard/weekly">
+        <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to={`${workspaceBasePath}/weekly`}>
           {t.tabs.weekly}
         </NavLink>
-        <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to="/dashboard/monthly">
+        <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to={`${workspaceBasePath}/monthly`}>
           {t.tabs.monthly}
         </NavLink>
       </div>
@@ -575,7 +611,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           <div>
             <label>{t.statusFilter}</label>
             <select className="input" value={selectedStatus} onChange={(event) => setSelectedStatus(event.target.value)}>
-              <option value="all">{t.allStatuses}</option>
+              <option value="all">{t.statusOptions.all}</option>
               {displayStatusOptions.map((statusItem) => (
                 <option key={statusItem.key} value={statusItem.key}>
                   {statusItem.label}
@@ -586,20 +622,25 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
         </div>
 
       <div className="daily-summary-grid">
-        <article className="dashboard-stat-link">
+        <button className={`dashboard-stat-link summary-filter-card ${selectedStatus === 'all' ? 'active' : ''}`} type="button" onClick={() => handleSummaryCardClick('all')}>
           <strong>{summary.total}</strong>
           <span>{t.summary.total}</span>
-        </article>
-        <article className="dashboard-stat-link">
-          <strong>{filteredOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0)}</strong>
+        </button>
+        <button className={`dashboard-stat-link summary-filter-card ${selectedStatus === 'all' ? 'active' : ''}`} type="button" onClick={() => handleSummaryCardClick('all')}>
+          <strong>{regionScopedOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0)}</strong>
           <span>{t.deviceCount}</span>
-        </article>
+        </button>
         {visibleSummaryBuckets.map((statusItem) => (
-          <article className="dashboard-stat-link" key={statusItem.key}>
+          <button
+            className={`dashboard-stat-link summary-filter-card ${selectedStatus === statusItem.key ? 'active' : ''}`}
+            key={statusItem.key}
+            type="button"
+            onClick={() => handleSummaryCardClick(statusItem.key)}
+          >
             <strong>{statusItem.count}</strong>
-              <span>{statusItem.label}</span>
-            </article>
-          ))}
+            <span>{statusItem.label}</span>
+          </button>
+        ))}
         </div>
       </section>
 
@@ -615,7 +656,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           <button
             className={`dashboard-stat-link region-entry-card ${selectedRegion === 'all' ? 'active' : ''}`}
             type="button"
-            onClick={() => setSelectedRegion('all')}
+            onClick={() => handleRegionCardClick('all')}
           >
             <strong>{rangeOrders.length}</strong>
             <span>{t.allRegions}</span>
@@ -626,7 +667,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
               className={`dashboard-stat-link region-entry-card ${selectedRegion === region.key ? 'active' : ''}`}
               key={region.key}
               type="button"
-              onClick={() => setSelectedRegion(region.key)}
+              onClick={() => handleRegionCardClick(region.key)}
             >
               <strong>{region.count}</strong>
               <span>{lang === 'ar' ? region.ar : region.en}</span>
@@ -636,7 +677,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
         </div>
       </section>
 
-      <section className="panel print-panel">
+      <section className="panel print-panel" ref={resultsSectionRef}>
         <OrderMasterDetail
           emptySearchText={t.compactList.emptySearch}
           emptyText={t.empty}
@@ -725,6 +766,8 @@ function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactC
         <p>{getOrderReferenceText(order, lang)}</p>
         <p>{order.serviceSummary || order.workType || '—'}</p>
       </div>
+
+      <OrderDeviceBreakdown lang={lang} order={order} title={t.devicesTitle} />
 
       <div className="task-contact-actions">
         <a className="btn-light" href={buildCallUrl(order.phone)}>

@@ -233,7 +233,16 @@ const normalizeDeliveryType = (value) => {
 const isFastDeliveryCity = (city) => FAST_DELIVERY_CITIES.includes(String(city || '').trim());
 
 const defaultState = {
-  users: [],
+  users: [
+    {
+      id: 'user-ops-manager',
+      name: 'مدير العمليات',
+      email: 'operations@tarkeebpro.sa',
+      password: 'OpsManager@2026',
+      role: 'operations_manager',
+      status: 'active',
+    },
+  ],
   orders: [],
 };
 

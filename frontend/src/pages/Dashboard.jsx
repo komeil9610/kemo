@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
+import OrderDeviceBreakdown from '../components/OrderDeviceBreakdown';
 import OrderMasterDetail from '../components/OrderMasterDetail';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
@@ -14,7 +15,7 @@ import {
 import {
   buildDisplayStatusBuckets,
   buildCallUrl,
-  exportOrdersCsv,
+  exportOrdersReport,
   formatDateTimeLabel,
   getOperationalDate,
   getOrderDeviceCount,
@@ -178,6 +179,8 @@ const copy = {
     creating: 'Creating...',
     exportCsr: 'Export GM report',
     exportOps: 'Export team report',
+    exportPdf: 'PDF file',
+    exportExcel: 'Excel file',
     emptyColumn: 'No requests here yet.',
     emptyDetail: 'No tasks in this category right now.',
     preferredSlot: 'Preferred slot',
@@ -222,6 +225,7 @@ const copy = {
     },
     regionTaskCount: 'Requests in this region',
     deviceCount: 'Devices',
+    devicesTitle: 'Devices in this request',
     successExcelUpload: 'Excel file parsed and prepared for import successfully.',
     successCreate: 'Request created successfully.',
     successImport: (imported, skipped) =>
@@ -322,6 +326,8 @@ const copy = {
     creating: 'جارٍ الإنشاء...',
     exportCsr: 'تصدير تقرير للمدير العام',
     exportOps: 'تصدير تقرير تنسيق الفريق',
+    exportPdf: 'ملف PDF',
+    exportExcel: 'ملف Excel',
     emptyColumn: 'لا توجد طلبات هنا حالياً.',
     emptyDetail: 'لا توجد مهام في هذا التصنيف حالياً.',
     preferredSlot: 'الموعد المفضل',
@@ -366,6 +372,7 @@ const copy = {
     },
     regionTaskCount: 'طلبات هذه المنطقة',
     deviceCount: 'عدد الأجهزة',
+    devicesTitle: 'أجهزة هذا الطلب',
     successExcelUpload: 'تمت قراءة ملف Excel وتجهيزه للاستيراد بنجاح.',
     successCreate: 'تم إنشاء الطلب بنجاح.',
     successImport: (imported, skipped) =>
@@ -384,11 +391,6 @@ const copy = {
       canceled: 'ملغي',
     },
   },
-};
-
-const acTypeLabel = (type, lang) => {
-  const match = acTypeOptions.find((item) => item.value === type);
-  return match ? (lang === 'ar' ? match.ar : match.en) : type;
 };
 
 const priorityLabel = (value, lang) => {
@@ -453,16 +455,20 @@ const buildDashboardSummary = (orders = []) => ({
   canceledOrders: orders.filter((order) => order.status === 'canceled').length,
 });
 
+const getWorkspaceBasePath = (role) => (role === 'operations_manager' ? '/operations-manager' : '/customer-service');
+
 export default function Dashboard() {
   const { viewKey } = useParams();
   const { user, permissions } = useAuth();
   const { lang, isRTL } = useLang();
   const t = copy[lang] || copy.en;
+  const workspaceBasePath = getWorkspaceBasePath(user?.role);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingExcel, setUploadingExcel] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState('');
   const [updatingId, setUpdatingId] = useState('');
   const [schedulingId, setSchedulingId] = useState('');
   const [excelSourceFileName, setExcelSourceFileName] = useState('data.xlsx');
@@ -543,7 +549,7 @@ export default function Dashboard() {
     [displayStatusBuckets]
   );
 
-  const reportOrders = useMemo(() => orders.slice().sort((a, b) => `${b.updatedAt}`.localeCompare(`${a.updatedAt}`)), [orders]);
+  const reportOrders = useMemo(() => orders.slice(), [orders]);
 
   const applyOrderUpdate = (updatedOrder) => {
     if (!updatedOrder?.id) {
@@ -825,13 +831,21 @@ export default function Dashboard() {
     }
   };
 
-  const onExport = (scopeLabel) => {
-    exportOrdersCsv({
-      orders: reportOrders,
-      lang,
-      scopeLabel,
-    });
-    toast.success(t.successReport);
+  const onExport = async (scopeLabel, format) => {
+    try {
+      setExportingFormat(format);
+      await exportOrdersReport({
+        orders: reportOrders,
+        lang,
+        scopeLabel,
+        format,
+      });
+      toast.success(t.successReport);
+    } catch (error) {
+      toast.error(error?.message || (lang === 'ar' ? 'تعذر تصدير التقرير.' : 'Unable to export report.'));
+    } finally {
+      setExportingFormat('');
+    }
   };
 
   if (loading) {
@@ -853,15 +867,24 @@ export default function Dashboard() {
       </div>
 
       <div className="dashboard-toolbar-links">
-        <Link className="btn-light" to="/dashboard/daily">
+        <Link className="btn-light" to={`${workspaceBasePath}/daily`}>
           {t.dailyTasks}
         </Link>
         <button
           className="btn-primary"
           type="button"
-          onClick={() => onExport(permissions.canCreateOrders ? 'csr-report' : 'ops-report')}
+          disabled={Boolean(exportingFormat)}
+          onClick={() => onExport(permissions.canCreateOrders ? 'csr-report' : 'ops-report', 'pdf')}
         >
-          {permissions.canCreateOrders ? t.exportCsr : t.exportOps}
+          {exportingFormat === 'pdf' ? '...' : `${permissions.canCreateOrders ? t.exportCsr : t.exportOps} - ${t.exportPdf}`}
+        </button>
+        <button
+          className="btn-secondary"
+          type="button"
+          disabled={Boolean(exportingFormat)}
+          onClick={() => onExport(permissions.canCreateOrders ? 'csr-report' : 'ops-report', 'excel')}
+        >
+          {exportingFormat === 'excel' ? '...' : `${permissions.canCreateOrders ? t.exportCsr : t.exportOps} - ${t.exportExcel}`}
         </button>
       </div>
 
@@ -870,7 +893,7 @@ export default function Dashboard() {
           <Link
             className={`dashboard-stat-link ${viewKey === item.key ? 'active' : ''}`}
             key={item.key}
-            to={item.key === viewKey ? '/dashboard' : `/dashboard/${item.key}`}
+            to={item.key === viewKey ? workspaceBasePath : `${workspaceBasePath}/${item.key}`}
           >
             <strong>{item.count}</strong>
             <span>{item.label}</span>
@@ -886,7 +909,7 @@ export default function Dashboard() {
               <h2>{t.detailTitle}</h2>
               <p>{t.detailHint}</p>
             </div>
-            <Link className="btn-light" to="/dashboard">
+            <Link className="btn-light" to={workspaceBasePath}>
               {t.closeDetail}
             </Link>
           </div>
@@ -1423,13 +1446,7 @@ function TaskCardBody({
         </div>
       ) : null}
 
-      <div className="kanban-ac-list">
-        {(order.acDetails || []).map((item, index) => (
-          <span className="internal-area-pill" key={`${order.id}-ac-${index}`}>
-            {acTypeLabel(item.type, lang)} x {item.quantity}
-          </span>
-        ))}
-      </div>
+      <OrderDeviceBreakdown lang={lang} order={order} title={t.devicesTitle} />
 
       <div className="task-contact-actions">
         {displayPhones.map((phoneValue, index) => (

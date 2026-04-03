@@ -2175,7 +2175,7 @@ html[dir='rtl'] .coverage-chip {
 }
 
 .dashboard-toolbar-links {
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
   justify-content: flex-start;
 }
 
@@ -2188,6 +2188,12 @@ html[dir='rtl'] .coverage-chip {
   display: grid;
   gap: 8px;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+button.dashboard-stat-link {
+  width: 100%;
+  cursor: pointer;
+  text-align: start;
 }
 
 .dashboard-stat-link:hover,
@@ -2224,7 +2230,7 @@ html[dir='rtl'] .coverage-chip {
 
 .operations-date-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) max-content max-content;
+  grid-template-columns: minmax(220px, 280px) repeat(auto-fit, minmax(170px, max-content));
   gap: 12px;
   align-items: end;
   margin: 0 0 16px;
@@ -2589,6 +2595,97 @@ html[dir='rtl'] .coverage-chip {
   flex-wrap: wrap;
 }
 
+.device-breakdown-panel {
+  gap: 12px;
+}
+
+.device-breakdown-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.device-breakdown-header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.device-filter-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.device-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.device-filter-pill.active,
+.device-filter-pill:hover {
+  border-color: rgba(217, 107, 39, 0.28);
+  background: rgba(255, 247, 238, 0.98);
+  transform: translateY(-1px);
+}
+
+.device-filter-pill strong {
+  display: inline-flex;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.06);
+}
+
+.device-breakdown-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.device-breakdown-item {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.device-breakdown-item strong,
+.device-breakdown-item small {
+  margin: 0;
+}
+
+.device-breakdown-item span {
+  position: absolute;
+  inset-inline-end: 12px;
+  top: 12px;
+  display: inline-flex;
+  min-width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(217, 107, 39, 0.1);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .task-contact-actions {
   grid-template-columns: repeat(auto-fit, minmax(130px, max-content));
 }
@@ -2603,7 +2700,7 @@ html[dir='rtl'] .coverage-chip {
 }
 
 .daily-summary-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .planning-tabs {
@@ -2645,6 +2742,10 @@ html[dir='rtl'] .coverage-chip {
   width: 100%;
   text-align: start;
   cursor: pointer;
+}
+
+.summary-filter-card {
+  appearance: none;
 }
 
 .technician-app-shell button,

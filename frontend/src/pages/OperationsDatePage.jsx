@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { operationsService } from '../services/api';
-import { exportOrdersCsv, getOperationalDate, getOrderTaskDate, nextDateString, setOperationalDate } from '../utils/internalOrders';
+import { exportOrdersReport, getOperationalDate, getOrderTaskDate, nextDateString, setOperationalDate } from '../utils/internalOrders';
 
 const copy = {
   en: {
@@ -15,7 +15,8 @@ const copy = {
     backDashboard: 'Back to dashboard',
     date: 'Operational date',
     updateDate: 'Update date',
-    exportDay: 'Export current day reports',
+    exportDayPdf: 'Export PDF reports',
+    exportDayExcel: 'Export Excel reports',
     closeDay: 'Export day and move forward',
     hint: 'Closing the day exports both customer service and operations reports for the active date before moving to the next day.',
     dateUpdated: 'Operational date updated.',
@@ -34,7 +35,8 @@ const copy = {
     backDashboard: 'العودة إلى اللوحة',
     date: 'تاريخ التشغيل',
     updateDate: 'تحديث التاريخ',
-    exportDay: 'تصدير تقارير اليوم',
+    exportDayPdf: 'تصدير تقارير PDF',
+    exportDayExcel: 'تصدير تقارير Excel',
     closeDay: 'تصدير اليوم والانتقال لليوم التالي',
     hint: 'عند إغلاق اليوم يتم تصدير تقارير خدمة العملاء ومدير العمليات لنفس تاريخ التشغيل أولاً ثم الانتقال إلى التاريخ التالي.',
     dateUpdated: 'تم تحديث تاريخ التشغيل.',
@@ -47,13 +49,17 @@ const copy = {
   },
 };
 
+const getWorkspaceBasePath = (role) => (role === 'operations_manager' ? '/operations-manager' : '/customer-service');
+
 export default function OperationsDatePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLang();
   const t = copy[lang] || copy.en;
+  const workspaceBasePath = getWorkspaceBasePath(user?.role);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [operationalDate, setOperationalDateState] = useState(() => getOperationalDate());
+  const [exportingFormat, setExportingFormat] = useState('');
 
   useEffect(() => {
     const load = async (silent = false) => {
@@ -87,17 +93,26 @@ export default function OperationsDatePage() {
     };
   }, []);
 
-  const reportOrders = useMemo(() => orders.slice().sort((a, b) => `${b.updatedAt}`.localeCompare(`${a.updatedAt}`)), [orders]);
+  const reportOrders = useMemo(() => orders.slice(), [orders]);
   const dailyOrders = useMemo(
     () => reportOrders.filter((order) => getOrderTaskDate(order) === operationalDate),
     [operationalDate, reportOrders]
   );
 
-  const exportCurrentDay = (showToast = true) => {
-    exportOrdersCsv({ orders: dailyOrders, lang, scopeLabel: 'csr-daily', fileDate: operationalDate });
-    exportOrdersCsv({ orders: dailyOrders, lang, scopeLabel: 'ops-daily', fileDate: operationalDate });
-    if (showToast) {
-      toast.success(t.dayExported);
+  const exportCurrentDay = async (format, showToast = true) => {
+    try {
+      setExportingFormat(format);
+      await exportOrdersReport({ orders: dailyOrders, lang, scopeLabel: 'csr-daily', fileDate: operationalDate, format });
+      await exportOrdersReport({ orders: dailyOrders, lang, scopeLabel: 'ops-daily', fileDate: operationalDate, format });
+      if (showToast) {
+        toast.success(t.dayExported);
+      }
+      return true;
+    } catch (error) {
+      toast.error(error?.message || (lang === 'ar' ? 'تعذر تصدير تقارير اليوم.' : 'Unable to export day reports.'));
+      return false;
+    } finally {
+      setExportingFormat('');
     }
   };
 
@@ -107,8 +122,15 @@ export default function OperationsDatePage() {
     toast.success(t.dateUpdated);
   };
 
-  const onCloseDay = () => {
-    exportCurrentDay(false);
+  const onCloseDay = async () => {
+    const excelDone = await exportCurrentDay('excel', false);
+    if (!excelDone) {
+      return;
+    }
+    const pdfDone = await exportCurrentDay('pdf', false);
+    if (!pdfDone) {
+      return;
+    }
     const nextDate = setOperationalDate(nextDateString(operationalDate));
     setOperationalDateState(nextDate);
     toast.success(t.dayClosed);
@@ -139,7 +161,7 @@ export default function OperationsDatePage() {
             <p>{t.hint}</p>
           </div>
           <div className="helper-actions">
-            <Link className="btn-light" to="/dashboard">
+            <Link className="btn-light" to={workspaceBasePath}>
               {t.backDashboard}
             </Link>
             <span className="user-chip">{t.roleBadges[user?.role]}</span>
@@ -159,11 +181,14 @@ export default function OperationsDatePage() {
           <button className="btn-light" type="button" onClick={onSaveDate}>
             {t.updateDate}
           </button>
-          <button className="btn-secondary" type="button" onClick={exportCurrentDay}>
-            {t.exportDay}
+          <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportCurrentDay('pdf')}>
+            {exportingFormat === 'pdf' ? '...' : t.exportDayPdf}
           </button>
-          <button className="btn-primary" type="button" onClick={onCloseDay}>
-            {t.closeDay}
+          <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportCurrentDay('excel')}>
+            {exportingFormat === 'excel' ? '...' : t.exportDayExcel}
+          </button>
+          <button className="btn-primary" disabled={Boolean(exportingFormat)} type="button" onClick={onCloseDay}>
+            {exportingFormat === 'excel' || exportingFormat === 'pdf' ? '...' : t.closeDay}
           </button>
           <p className="muted">{t.hint}</p>
         </div>
