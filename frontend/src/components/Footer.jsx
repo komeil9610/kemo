@@ -26,7 +26,6 @@ const fallbackFooter = {
   aboutText: 'مساحة داخلية مبسطة لإدارة الطلبات بين خدمة العملاء ومدير العمليات فقط.',
   usefulLinks: [
     { label: 'Home', url: '/' },
-    { label: 'Internal Dashboard', url: '/dashboard' },
     { label: 'Login', url: '/login' },
   ],
   customerServiceLinks: [

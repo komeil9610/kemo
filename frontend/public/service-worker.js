@@ -1,67 +1,115 @@
 /* eslint-disable no-restricted-globals */
 
-// This service worker can be customized!
-// See https://developers.google.com/web/tools/workbox/guides/service-worker-essentials
+const CACHE_NAME = 'tarkeeb-pro-shell-v2';
+const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg'];
 
-// This is the service worker with the combined offline page and push notification logic.
-
-// We need this in Webpack plugin in next.config.js
-// const { assets } = global.serviceWorkerOption;
-
-const CACHE_NAME = 'tarkeeb-pro-cache-v1';
-
-// const assetsToCache = [...assets, './'];
-
-// Install event
 self.addEventListener('install', (event) => {
-  console.log('[Service Worker] Install');
-  // event.waitUntil(
-  //   caches.open(CACHE_NAME).then((cache) => {
-  //     console.log('[Service Worker] Caching all: app shell and content');
-  //     return cache.addAll(assetsToCache);
-  //   })
-  // );
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL.map((path) => new Request(path, { cache: 'reload' }))))
+      .catch(() => null)
+  );
+  self.skipWaiting();
 });
 
-// Activate event
 self.addEventListener('activate', (event) => {
-  console.log('[Service Worker] Activate');
-  // event.waitUntil(
-  //   caches.keys().then((keyList) => {
-  //     return Promise.all(
-  //       keyList.map((key) => {
-  //         if (key !== CACHE_NAME) {
-  //           console.log('[Service Worker] Removing old cache', key);
-  //           return caches.delete(key);
-  //         }
-  //       })
-  //     );
-  //   })
-  // );
-  self.clients.claim();
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
 });
 
-// Fetch event
 self.addEventListener('fetch', (event) => {
-  // console.log('[Service Worker] Fetch');
-  // event.respondWith(
-  //   caches.match(event.request).then((response) => {
-  //     return response || fetch(event.request);
-  //   })
-  // );
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        return cache.match('/index.html');
+      })
+    );
+    return;
+  }
+
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      const networkPromise = fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+          }
+          return response;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || networkPromise;
+    })
+  );
 });
 
-// Listen for push notifications
-self.addEventListener('push', (event) => {
-  console.log('[Service Worker] Push Received.');
-  console.log(`[Service Worker] Push had this data: "${event.data.text()}"`);
+const parsePushPayload = (event) => {
+  if (!event.data) {
+    return {};
+  }
 
-  const title = 'Tarkeeb Pro';
+  try {
+    return event.data.json();
+  } catch {
+    return { body: event.data.text() };
+  }
+};
+
+self.addEventListener('push', (event) => {
+  const payload = parsePushPayload(event);
+  const title = payload.title || 'Tarkeeb Pro';
   const options = {
-    body: event.data.text(),
-    icon: 'favicon.svg',
-    badge: 'favicon.svg',
+    body: payload.body || payload.message || 'لديك تحديث جديد.',
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    tag: payload.tag || 'tarkeeb-notification',
+    data: {
+      url: payload.url || '/login',
+      relatedOrderId: payload.relatedOrderId || null,
+    },
+    vibrate: [140, 60, 140],
+    renotify: true,
+    requireInteraction: false,
+    silent: false,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || '/login', self.location.origin).toString();
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url === targetUrl && 'focus' in client) {
+          return client.focus();
+        }
+      }
+
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+
+      return null;
+    })
+  );
 });

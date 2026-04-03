@@ -13,7 +13,12 @@ import {
   getOperationalDate,
   getOrderDeviceCount,
   getOrderDisplayStatus,
+  getOrderPrimaryReference,
+  getOrderReferenceText,
+  getOrderSearchMetaLines,
+  getOrderSoId,
   getOrderTaskDate,
+  getOrderWoId,
   orderMatchesDisplayStatus,
 } from '../utils/internalOrders';
 
@@ -193,7 +198,7 @@ const copy = {
     },
     compactList: {
       search: 'Search orders',
-      searchPlaceholder: 'Search by order ID, customer, or city',
+      searchPlaceholder: 'Search by phone, SO ID, WO ID, customer, or city',
       orderId: 'Order ID',
       status: 'Status',
       customer: 'Customer',
@@ -286,7 +291,7 @@ const copy = {
     },
     compactList: {
       search: 'بحث الطلبات',
-      searchPlaceholder: 'ابحث برقم الطلب أو اسم العميل أو المدينة',
+      searchPlaceholder: 'ابحث بالجوال أو SO ID أو WO ID أو اسم العميل أو المدينة',
       orderId: 'رقم الطلب',
       status: 'الحالة',
       customer: 'العميل',
@@ -347,7 +352,9 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
         const response = await operationsService.getDashboard();
         setOrders(response.data?.orders || []);
       } catch (error) {
-        toast.error(error?.response?.data?.message || error.message || 'Unable to load tasks');
+        if (!silent) {
+          toast.error(error?.response?.data?.message || error.message || 'Unable to load tasks');
+        }
       } finally {
         if (!silent) {
           setLoading(false);
@@ -578,14 +585,18 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           </div>
         </div>
 
-        <div className="daily-summary-grid">
-          <article className="dashboard-stat-link">
-            <strong>{summary.total}</strong>
-            <span>{t.summary.total}</span>
-          </article>
-          {visibleSummaryBuckets.map((statusItem) => (
-            <article className="dashboard-stat-link" key={statusItem.key}>
-              <strong>{statusItem.count}</strong>
+      <div className="daily-summary-grid">
+        <article className="dashboard-stat-link">
+          <strong>{summary.total}</strong>
+          <span>{t.summary.total}</span>
+        </article>
+        <article className="dashboard-stat-link">
+          <strong>{filteredOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0)}</strong>
+          <span>{t.deviceCount}</span>
+        </article>
+        {visibleSummaryBuckets.map((statusItem) => (
+          <article className="dashboard-stat-link" key={statusItem.key}>
+            <strong>{statusItem.count}</strong>
               <span>{statusItem.label}</span>
             </article>
           ))}
@@ -630,11 +641,21 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           emptySearchText={t.compactList.emptySearch}
           emptyText={t.empty}
           getCustomerName={(order) => order.customerName || '—'}
-          getOrderReference={(order) => order.requestNumber || order.id || '—'}
+          getOrderReference={(order) => getOrderReferenceText(order, lang)}
           getStatusLabel={(order) => getOrderDisplayStatus(order, lang)}
           isRTL={isRTL}
           labels={t.compactList}
           orders={filteredOrders}
+          renderCustomerCell={(order) => (
+            <div className="order-compact-cell-stack">
+              <strong>{order.customerName || '—'}</strong>
+              <div className="order-compact-meta">
+                {getOrderSearchMetaLines(order, lang).map((line) => (
+                  <span key={`${order.id}-${line}`}>{line}</span>
+                ))}
+              </div>
+            </div>
+          )}
           renderOrderDetails={(order) => (
             <DailyTaskDetailContent
               canContactCustomer={isOperationsManager}
@@ -701,6 +722,7 @@ function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactC
       <div className="task-rich-meta">
         <p>{`${getOrderRegionLabel(order, lang)}${order.city ? ` - ${order.city}` : ''}${order.district ? ` - ${order.district}` : ''}`}</p>
         <p>{order.addressText || order.address || '—'}</p>
+        <p>{getOrderReferenceText(order, lang)}</p>
         <p>{order.serviceSummary || order.workType || '—'}</p>
       </div>
 
@@ -710,7 +732,7 @@ function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactC
         </a>
         <a
           className="btn-light"
-          href={buildWhatsAppUrl(order.whatsappPhone || order.phone, `${t.requestNumber}: ${order.requestNumber}`)}
+          href={buildWhatsAppUrl(order.whatsappPhone || order.phone, `${t.requestNumber}: ${getOrderPrimaryReference(order)}`)}
           target="_blank"
           rel="noreferrer"
         >
@@ -732,6 +754,13 @@ function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactC
         <div className="task-mini-panel">
           <span>{t.notes}</span>
           <strong>{order.notes}</strong>
+        </div>
+      ) : null}
+
+      {getOrderSoId(order) || getOrderWoId(order) ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'مراجع الطلب' : 'Order references'}</span>
+          <strong>{getOrderReferenceText(order, lang)}</strong>
         </div>
       ) : null}
     </div>

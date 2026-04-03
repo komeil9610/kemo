@@ -91,6 +91,61 @@ textarea {
   gap: 16px;
 }
 
+.app-access-banner {
+  width: min(1180px, calc(100% - 32px));
+  margin: 16px auto 0;
+  padding: 18px 20px;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  background:
+    linear-gradient(135deg, rgba(217, 107, 39, 0.16), rgba(17, 120, 100, 0.12)),
+    rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  box-shadow: var(--shadow);
+}
+
+.app-access-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.app-access-copy strong {
+  font-size: 1.08rem;
+}
+
+.app-access-copy p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.app-access-pills,
+.app-access-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.app-access-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: rgba(217, 107, 39, 0.12);
+  color: var(--brand-dark);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.app-access-pill.accent {
+  background: rgba(17, 120, 100, 0.12);
+  color: var(--accent);
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -1597,6 +1652,20 @@ html[dir='rtl'] .coverage-chip {
   box-shadow: var(--shadow);
 }
 
+.interactive-summary-card {
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  text-align: start;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.interactive-summary-card:hover,
+.interactive-summary-card.is-active {
+  transform: translateY(-2px);
+  border-color: rgba(217, 107, 39, 0.24);
+  box-shadow: 0 18px 30px rgba(84, 57, 33, 0.14);
+}
+
 .tech-summary-card span {
   color: var(--muted);
   font-weight: 700;
@@ -1667,6 +1736,64 @@ html[dir='rtl'] .coverage-chip {
 .tech-job-time {
   font-weight: 800;
   color: var(--brand-dark);
+}
+
+.technician-simple-shell {
+  gap: 18px;
+}
+
+.technician-simple-header {
+  align-items: center;
+}
+
+.technician-simple-summary {
+  justify-content: flex-start;
+}
+
+.technician-simple-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.technician-simple-card {
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  box-shadow: 0 18px 30px rgba(17, 24, 39, 0.08);
+}
+
+.technician-simple-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.technician-simple-meta {
+  display: grid;
+  gap: 10px;
+}
+
+.technician-simple-meta p {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.technician-simple-meta span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.technician-simple-meta strong {
+  color: var(--ink);
+}
+
+.technician-simple-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .task-detail-panel {
@@ -1845,10 +1972,10 @@ html[dir='rtl'] .coverage-chip {
 .bottom-tab-bar {
   position: fixed;
   left: 50%;
-  bottom: 14px;
+  bottom: max(14px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   width: min(720px, calc(100% - 24px));
-  padding: 10px;
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(17, 24, 39, 0.08);
@@ -2593,6 +2720,10 @@ html[dir='rtl'] .coverage-chip {
   transition: background 0.18s ease, box-shadow 0.18s ease;
 }
 
+.order-compact-row.with-actions {
+  grid-template-columns: minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(180px, 1.1fr) minmax(180px, 0.9fr);
+}
+
 .order-compact-row-head {
   color: var(--muted);
   font-size: 0.82rem;
@@ -2602,7 +2733,7 @@ html[dir='rtl'] .coverage-chip {
 }
 
 .order-compact-body .order-compact-row {
-  cursor: pointer;
+  cursor: default;
 }
 
 .order-compact-body .order-compact-row:hover {
@@ -2622,8 +2753,62 @@ html[dir='rtl'] .coverage-chip {
   color: var(--ink);
 }
 
+.order-compact-cell-button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  justify-content: flex-start;
+  text-align: start;
+  font: inherit;
+}
+
+.order-compact-cell-button:hover {
+  color: var(--brand-dark);
+}
+
 .order-compact-cell strong {
   color: var(--brand-dark);
+}
+
+.order-compact-cell-stack {
+  display: grid;
+  gap: 4px;
+}
+
+.order-compact-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.order-compact-meta span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.order-compact-cell-actions-head,
+.order-compact-action-cell {
+  justify-content: flex-end;
+}
+
+.order-inline-status {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.order-inline-select {
+  min-width: 160px;
+}
+
+.manager-inline-status {
+  justify-content: stretch;
+}
+
+.manager-inline-select {
+  min-width: 170px;
 }
 
 .order-drawer-backdrop {
@@ -2788,6 +2973,11 @@ html[dir='rtl'] .coverage-chip {
     flex-wrap: wrap;
   }
 
+  .app-access-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .order-main,
   .task-head,
   .tech-card,
@@ -2875,6 +3065,14 @@ html[dir='rtl'] .coverage-chip {
     width: calc(100% - 20px);
   }
 
+  .regional-summary-strip {
+    position: sticky;
+    top: max(10px, env(safe-area-inset-top));
+    z-index: 10;
+    padding: 4px 0 10px;
+    backdrop-filter: blur(10px);
+  }
+
   .order-list-toolbar {
     align-items: stretch;
   }
@@ -2906,6 +3104,19 @@ html[dir='rtl'] .coverage-chip {
 
   .nav {
     width: min(100% - 20px, 1180px);
+  }
+
+  .app-access-banner {
+    width: min(100% - 20px, 1180px);
+    margin-top: 12px;
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .app-access-actions .btn-light,
+  .app-access-actions .btn-primary,
+  .app-access-actions .btn-language {
+    width: 100%;
   }
 
   .hero-copy,
@@ -2953,12 +3164,29 @@ html[dir='rtl'] .coverage-chip {
     padding: 14px 16px;
   }
 
+  .order-compact-row.with-actions {
+    grid-template-columns: 1fr;
+  }
+
   .order-compact-row-head {
     display: none;
   }
 
   .order-compact-cell {
     justify-content: space-between;
+  }
+
+  .order-compact-action-cell,
+  .order-inline-status {
+    justify-content: stretch;
+  }
+
+  .order-inline-select {
+    width: 100%;
+  }
+
+  .interactive-summary-card {
+    min-width: calc(50% - 8px);
   }
 
   .order-compact-cell::before {

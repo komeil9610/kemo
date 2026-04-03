@@ -12,7 +12,14 @@ import {
   operationsService,
   technicianStatusOptions,
 } from '../services/api';
-import { getOrderDeviceCount, getOrderDisplayStatus } from '../utils/internalOrders';
+import {
+  getOrderDeviceCount,
+  getOrderDisplayStatus,
+  getOrderReferenceText,
+  getOrderSoId,
+  getOrderWoId,
+  orderMatchesSearchQuery,
+} from '../utils/internalOrders';
 import { notificationHaptic, sendAppNotification, selectionHaptic } from '../utils/mobileNative';
 
 const fileToDataUrl = (file) =>
@@ -61,8 +68,6 @@ const formatDate = (value, lang) => {
   }).format(new Date(`${value}T12:00:00`));
 };
 
-const formatOrderNumber = (value) => String(value || '').replace(/^ORD-/, '');
-
 const copy = {
   en: {
     eyebrow: 'Technician app',
@@ -80,6 +85,8 @@ const copy = {
     emptyToday: 'No assigned tasks match this date.',
     emptyHistory: 'No completed history yet.',
     emptyNotifications: 'No notifications right now.',
+    searchLabel: 'Search',
+    searchPlaceholder: 'Search by phone, SO ID, WO ID, customer, or area',
     dateFilter: 'Task date',
     allDates: 'All dates',
     standardTime: 'Standard',
@@ -158,6 +165,8 @@ const copy = {
     emptyToday: 'لا توجد مهام مسندة مطابقة لهذا التاريخ.',
     emptyHistory: 'لا يوجد سجل منجز حتى الآن.',
     emptyNotifications: 'لا توجد إشعارات حالياً.',
+    searchLabel: 'البحث',
+    searchPlaceholder: 'ابحث بالجوال أو SO ID أو WO ID أو العميل أو المنطقة',
     dateFilter: 'تاريخ المهمة',
     allDates: 'كل التواريخ',
     standardTime: 'المعياري',
@@ -238,6 +247,8 @@ const regionalCopy = {
     emptyToday: 'No regional orders are assigned right now.',
     emptyHistory: 'No completed regional orders yet.',
     emptyNotifications: 'No notifications right now.',
+    searchLabel: 'Search',
+    searchPlaceholder: 'Search by phone, SO ID, WO ID, customer, or area',
     dateFilter: 'Scheduled date',
     allDates: 'All dates',
     customer: 'Customer',
@@ -296,6 +307,8 @@ const regionalCopy = {
     emptyToday: 'لا توجد طلبات مسندة لهذه المنطقة حالياً.',
     emptyHistory: 'لا توجد طلبات مكتملة لهذه المنطقة حتى الآن.',
     emptyNotifications: 'لا توجد إشعارات حالياً.',
+    searchLabel: 'البحث',
+    searchPlaceholder: 'ابحث بالجوال أو SO ID أو WO ID أو العميل أو المنطقة',
     dateFilter: 'تاريخ الجدولة',
     allDates: 'كل التواريخ',
     customer: 'العميل',
@@ -375,6 +388,7 @@ export default function Orders() {
   const [activeTab, setActiveTab] = useState('today');
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [signatureDrafts, setSignatureDrafts] = useState({});
   const [regionalCompletionDrafts, setRegionalCompletionDrafts] = useState({});
 
@@ -384,7 +398,7 @@ export default function Orders() {
   const bootstrappedOrdersRef = useRef(false);
   const bootstrappedNotificationsRef = useRef(false);
 
-  const isRegionalDispatcher = user?.role === 'regional_dispatcher';
+  const isRegionalDispatcher = false;
   const t = useMemo(() => (copy[lang] || copy.en), [lang]);
   const regionalT = useMemo(() => regionalCopy[lang] || regionalCopy.en, [lang]);
   const viewT = isRegionalDispatcher ? regionalT : t;
@@ -440,13 +454,17 @@ export default function Orders() {
             sendAppNotification(alert);
           });
         }
+      } catch (error) {
+        if (!silent) {
+          toast.error(error?.response?.data?.message || error.message || viewT.loading);
+        }
       } finally {
         if (!silent) {
           setLoading(false);
         }
       }
     },
-    [lang, user]
+    [lang, user, viewT.loading]
   );
 
   const loadNotifications = useCallback(
@@ -483,7 +501,7 @@ export default function Orders() {
   );
 
   useEffect(() => {
-    if (!['technician', 'regional_dispatcher'].includes(user?.role) && !user?.technicianId) {
+    if (user?.role !== 'technician' && !user?.technicianId) {
       setLoading(false);
       return;
     }
@@ -497,7 +515,7 @@ export default function Orders() {
     };
 
     window.addEventListener('operations-updated', refresh);
-    const intervalId = window.setInterval(refresh, 15000);
+    const intervalId = window.setInterval(refresh, 30000);
 
     return () => {
       window.removeEventListener('operations-updated', refresh);
@@ -576,8 +594,20 @@ export default function Orders() {
     [ordersWithMeta]
   );
 
-  const visibleTodayOrders = isRegionalDispatcher ? regionalActiveOrders : todayOrders;
-  const visibleHistoryOrders = isRegionalDispatcher ? regionalHistoryOrders : historyOrders;
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const matchesSearch = useCallback(
+    (order) => orderMatchesSearchQuery(order, normalizedSearchQuery),
+    [normalizedSearchQuery]
+  );
+
+  const visibleTodayOrders = useMemo(
+    () => (isRegionalDispatcher ? regionalActiveOrders : todayOrders).filter(matchesSearch),
+    [isRegionalDispatcher, matchesSearch, regionalActiveOrders, todayOrders]
+  );
+  const visibleHistoryOrders = useMemo(
+    () => (isRegionalDispatcher ? regionalHistoryOrders : historyOrders).filter(matchesSearch),
+    [historyOrders, isRegionalDispatcher, matchesSearch, regionalHistoryOrders]
+  );
 
   useEffect(() => {
     const visibleOrders = activeTab === 'history' ? visibleHistoryOrders : visibleTodayOrders;
@@ -713,7 +743,7 @@ export default function Orders() {
             {viewT.generalTasksLink}
           </Link>
           {!isRegionalDispatcher ? (
-            <Link className="btn-light" to="/regions">
+            <Link className="btn-light" to="/tasks">
               {t.dailyTasksLink}
             </Link>
           ) : null}
@@ -757,17 +787,29 @@ export default function Orders() {
                   <h2>{viewT.tabs.today}</h2>
                   <p>{visibleTodayOrders.length ? `${visibleTodayOrders.length}` : viewT.emptyToday}</p>
                 </div>
-                <label className="filter-field compact-filter">
-                  <span>{viewT.dateFilter}</span>
-                  <select className="input compact-input" value={selectedDateFilter} onChange={(event) => setSelectedDateFilter(event.target.value)}>
-                    <option value="all">{viewT.allDates}</option>
-                    {assignedDateOptions.map((date) => (
-                      <option key={date} value={date}>
-                        {formatDate(date, lang)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="status-actions">
+                  <label className="filter-field compact-filter">
+                    <span>{viewT.searchLabel}</span>
+                    <input
+                      className="input compact-input"
+                      type="search"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder={viewT.searchPlaceholder}
+                    />
+                  </label>
+                  <label className="filter-field compact-filter">
+                    <span>{viewT.dateFilter}</span>
+                    <select className="input compact-input" value={selectedDateFilter} onChange={(event) => setSelectedDateFilter(event.target.value)}>
+                      <option value="all">{viewT.allDates}</option>
+                      {assignedDateOptions.map((date) => (
+                        <option key={date} value={date}>
+                          {formatDate(date, lang)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </div>
               <div className="tech-job-list">
                 {visibleTodayOrders.length ? (
@@ -782,7 +824,8 @@ export default function Orders() {
                         <span className="tech-job-time">{order.scheduledTime || order.scheduledDate || '—'}</span>
                         <span className={`status-badge ${order.status}`}>{getOrderDisplayStatus(order, lang)}</span>
                       </div>
-                      <strong>{order.customerName}</strong>
+                      <strong>{getOrderReferenceText(order, lang)}</strong>
+                      <small>{order.customerName}</small>
                       <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
                       <span>{order.region}</span>
                       <span>{order.workType || order.acType}</span>
@@ -811,7 +854,7 @@ export default function Orders() {
                       <p className="task-region">{getAreaClusterLabel(selectedOrder, lang)}</p>
                       <p className="task-region">{selectedOrder.region}</p>
                       <h2>
-                        #{formatOrderNumber(selectedOrder.id)} - {selectedOrder.customerName}
+                        {getOrderReferenceText(selectedOrder, lang)} - {selectedOrder.customerName}
                       </h2>
                       <p>{formatSaudiPhoneDisplay(selectedOrder.phone)}</p>
                     </div>
@@ -835,6 +878,14 @@ export default function Orders() {
                   </div>
 
                   <div className="task-detail-grid">
+                    <div className="detail-card">
+                      <span>SO ID</span>
+                      <strong>{getOrderSoId(selectedOrder) || '—'}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <span>WO ID</span>
+                      <strong>{getOrderWoId(selectedOrder) || '—'}</strong>
+                    </div>
                     <div className="detail-card">
                       <span>{viewT.customer}</span>
                       <strong>{selectedOrder.customerName}</strong>
@@ -980,7 +1031,7 @@ export default function Orders() {
                             <button className="btn-light" type="button" onClick={() => saveSignature(selectedOrder)}>
                               {t.saveStatus}
                             </button>
-                            <Link className="btn-danger" to="/regions">
+                            <Link className="btn-danger" to="/tasks">
                               {t.openClosureFlow}
                             </Link>
                           </div>
@@ -1001,7 +1052,19 @@ export default function Orders() {
         {activeTab === 'history' ? (
           <section className="panel history-panel">
             <div className="panel-header">
-              <h2>{viewT.tabs.history}</h2>
+              <div>
+                <h2>{viewT.tabs.history}</h2>
+              </div>
+              <label className="filter-field compact-filter">
+                <span>{viewT.searchLabel}</span>
+                <input
+                  className="input compact-input"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={viewT.searchPlaceholder}
+                />
+              </label>
             </div>
             <div className="history-list">
               {visibleHistoryOrders.length ? (
@@ -1009,7 +1072,8 @@ export default function Orders() {
                   <article className="history-card" key={order.id}>
                     <div className="task-head">
                       <div>
-                        <strong>#{formatOrderNumber(order.id)} - {order.customerName}</strong>
+                        <strong>{getOrderReferenceText(order, lang)}</strong>
+                        <p>{order.customerName}</p>
                         <p>{order.region}</p>
                         <p>{formatDate(order.scheduledDate, lang)}</p>
                       </div>

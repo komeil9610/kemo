@@ -24,11 +24,13 @@ Backend API for Tarkeeb Pro running on Cloudflare Workers with D1 as the main da
 - `DB`: D1 database binding
 - `JWT_SECRET`: Worker secret for auth tokens
 - `CORS_ALLOWED_ORIGINS`: comma-separated local/dev origins and the frontend Worker domain
+- `ACCESS_AUD`: Cloudflare Access audience for the protected direct Worker hostname
+- `ACCESS_JWKS_URL`: Cloudflare Access JWKS endpoint used to verify Access JWTs
 
 ## Variables and Secrets
 
 - Secret: `JWT_SECRET`
-- Vars: `CORS_ALLOWED_ORIGINS`
+- Vars: `CORS_ALLOWED_ORIGINS`, `ACCESS_AUD`, `ACCESS_JWKS_URL`
 - Binding: `DB`
 
 Set the secret with:
@@ -55,3 +57,4 @@ npx wrangler secret put JWT_SECRET
 
 - The frontend Worker can call this API via `Service Bindings` or fallback proxying with `API_ORIGIN`.
 - In production, the frontend usually calls `/api/*` on the same domain, so direct browser CORS is minimal.
+- If the raw `*.workers.dev` API URL is protected by Cloudflare Access, direct browser requests will require a valid Access token. Public browser traffic should use the frontend Worker `/api/*` route instead.

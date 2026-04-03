@@ -1,19 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { getOrderReferenceText, orderMatchesSearchQuery } from '../utils/internalOrders';
 
 const defaultMatchesSearch = (order, query) => {
-  const haystack = [
-    order?.id,
-    order?.requestNumber,
-    order?.customerName,
-    order?.status,
-    order?.city,
-    order?.district,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  return haystack.includes(query);
+  return orderMatchesSearchQuery(order, query);
 };
 
 export default function OrderMasterDetail({
@@ -23,15 +12,18 @@ export default function OrderMasterDetail({
   isRTL = false,
   labels,
   searchPlaceholder,
-  getOrderReference = (order) => order?.requestNumber || order?.id || '—',
+  getOrderReference = (order) => getOrderReferenceText(order),
   getCustomerName = (order) => order?.customerName || '—',
   getStatusLabel = (order) => order?.status || '—',
+  renderCustomerCell,
   matchesSearch = defaultMatchesSearch,
   renderResultsSummary,
   renderOrderDetails,
+  renderRowActions,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState('');
+  const hasRowActions = typeof renderRowActions === 'function';
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -73,6 +65,33 @@ export default function OrderMasterDetail({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selectedOrder]);
 
+  useEffect(() => {
+    if (!selectedOrder || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, [selectedOrder]);
+
+  const openOrderDetails = (orderId) => setSelectedOrderId(String(orderId));
+
+  const onCellKeyDown = (event, orderId) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    event.preventDefault();
+    openOrderDetails(orderId);
+  };
+
   return (
     <>
       <div className="order-master-detail">
@@ -91,9 +110,9 @@ export default function OrderMasterDetail({
         </div>
 
         {visibleOrders.length ? (
-          <div className="order-compact-table" role="table">
+          <div className={`order-compact-table ${hasRowActions ? 'with-actions' : ''}`} role="table">
             <div className="order-compact-head" role="rowgroup">
-              <div className="order-compact-row order-compact-row-head" role="row">
+              <div className={`order-compact-row order-compact-row-head ${hasRowActions ? 'with-actions' : ''}`} role="row">
                 <span className="order-compact-cell" role="columnheader">
                   {labels.orderId}
                 </span>
@@ -103,6 +122,11 @@ export default function OrderMasterDetail({
                 <span className="order-compact-cell" role="columnheader">
                   {labels.customer}
                 </span>
+                {hasRowActions ? (
+                  <span className="order-compact-cell order-compact-cell-actions-head" role="columnheader">
+                    {labels.actions}
+                  </span>
+                ) : null}
               </div>
             </div>
 
@@ -111,23 +135,47 @@ export default function OrderMasterDetail({
                 const isSelected = String(selectedOrderId) === String(order.id);
 
                 return (
-                  <button
-                    className={`order-compact-row ${isSelected ? 'selected' : ''}`}
+                  <div
+                    className={`order-compact-row ${hasRowActions ? 'with-actions' : ''} ${isSelected ? 'selected' : ''}`}
                     key={order.id}
-                    type="button"
-                    onClick={() => setSelectedOrderId(String(order.id))}
                     role="row"
                   >
-                    <span className="order-compact-cell" data-label={labels.orderId} role="cell">
+                    <button
+                      className="order-compact-cell order-compact-cell-button"
+                      type="button"
+                      data-label={labels.orderId}
+                      onClick={() => openOrderDetails(order.id)}
+                      onKeyDown={(event) => onCellKeyDown(event, order.id)}
+                      role="cell"
+                    >
                       <strong>{getOrderReference(order)}</strong>
-                    </span>
-                    <span className="order-compact-cell" data-label={labels.status} role="cell">
+                    </button>
+                    <button
+                      className="order-compact-cell order-compact-cell-button"
+                      type="button"
+                      data-label={labels.status}
+                      onClick={() => openOrderDetails(order.id)}
+                      onKeyDown={(event) => onCellKeyDown(event, order.id)}
+                      role="cell"
+                    >
                       <span className={`status-badge ${order.status || ''}`}>{getStatusLabel(order)}</span>
-                    </span>
-                    <span className="order-compact-cell" data-label={labels.customer} role="cell">
-                      {getCustomerName(order)}
-                    </span>
-                  </button>
+                    </button>
+                    <button
+                      className="order-compact-cell order-compact-cell-button"
+                      type="button"
+                      data-label={labels.customer}
+                      onClick={() => openOrderDetails(order.id)}
+                      onKeyDown={(event) => onCellKeyDown(event, order.id)}
+                      role="cell"
+                    >
+                      {typeof renderCustomerCell === 'function' ? renderCustomerCell(order) : getCustomerName(order)}
+                    </button>
+                    {hasRowActions ? (
+                      <span className="order-compact-cell order-compact-action-cell" data-label={labels.actions} role="cell">
+                        {renderRowActions(order)}
+                      </span>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>

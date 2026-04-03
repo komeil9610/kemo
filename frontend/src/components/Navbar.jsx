@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { notificationsService } from '../services/api';
+import { sendAppNotification } from '../utils/mobileNative';
 
 function NotificationMenu() {
   const { token } = useAuth();
@@ -41,10 +42,7 @@ function NotificationMenu() {
           .forEach((item) => {
             seenIdsRef.current.add(item.id);
             toast(item.title, { duration: 4500 });
-
-            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-              new Notification(item.title, { body: item.body });
-            }
+            sendAppNotification({ key: `navbar-notification-${item.id}`, title: item.title, body: item.body });
           });
       } catch {
         return null;
@@ -55,10 +53,6 @@ function NotificationMenu() {
 
     pollNotifications();
     const intervalId = window.setInterval(pollNotifications, 8000);
-
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => null);
-    }
 
     return () => window.clearInterval(intervalId);
   }, [token]);
@@ -106,6 +100,12 @@ function NotificationMenu() {
 export default function Navbar() {
   const { token, user, logout } = useAuth();
   const { lang, toggleLang, t } = useLang();
+  const dashboardBasePath =
+    user?.role === 'operations_manager'
+      ? '/operations-manager'
+      : user?.role === 'customer_service'
+        ? '/customer-service'
+        : '/login';
   const roleLabel =
     user?.role === 'operations_manager'
       ? lang === 'ar'
@@ -127,11 +127,11 @@ export default function Navbar() {
 
         <div className="nav-links">
           <NavLink to="/">{t('home')}</NavLink>
-          {token ? <NavLink to="/dashboard">{t('dashboard')}</NavLink> : null}
-          {token ? <NavLink to="/dashboard/daily">{lang === 'ar' ? 'المهام اليومية' : 'Daily tasks'}</NavLink> : null}
-          {token ? <NavLink to="/dashboard/weekly">{t('weeklyTasks')}</NavLink> : null}
-          {token ? <NavLink to="/dashboard/monthly">{t('monthlyTasks')}</NavLink> : null}
-          {token ? <NavLink to="/dashboard/operations-date">{t('operationsDay')}</NavLink> : null}
+          {token ? <NavLink to={dashboardBasePath}>{t('dashboard')}</NavLink> : null}
+          {token ? <NavLink to={`${dashboardBasePath}/daily`}>{lang === 'ar' ? 'المهام اليومية' : 'Daily tasks'}</NavLink> : null}
+          {token ? <NavLink to={`${dashboardBasePath}/weekly`}>{t('weeklyTasks')}</NavLink> : null}
+          {token ? <NavLink to={`${dashboardBasePath}/monthly`}>{t('monthlyTasks')}</NavLink> : null}
+          {token ? <NavLink to={`${dashboardBasePath}/operations-date`}>{t('operationsDay')}</NavLink> : null}
         </div>
 
         <div className="nav-actions">

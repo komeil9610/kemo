@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const mongoose = require('mongoose');
-const { seedDemoData } = require('./utils/seed');
+const operationsRoutes = require('./routes/operations');
 
 // Initialize Express App
 const app = express();
@@ -23,8 +23,6 @@ mongoose
   })
   .then(async () => {
     console.log('✅ MongoDB Connected Successfully');
-    await seedDemoData();
-    console.log('🌱 Demo seed data is ready');
   })
   .catch((err) => {
     console.error('❌ MongoDB Connection Error:', err);
@@ -37,7 +35,8 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/operations', require('./routes/operations'));
+app.use('/api/operations', operationsRoutes);
+app.use('/api', operationsRoutes);
 app.use('/api/notifications', require('./routes/notifications'));
 
 // 404 Handler

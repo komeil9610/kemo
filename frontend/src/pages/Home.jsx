@@ -13,6 +13,7 @@ const copy = {
     secondaryButton: 'Sign in',
     note: 'When request volume grows, the system stays calm, readable, and easy to act on.',
     summaryTitle: "Today's snapshot",
+    devicesLabel: 'Devices in active work',
     stats: [
       { label: 'Waiting for operations' },
       { label: 'Active requests' },
@@ -81,6 +82,7 @@ const copy = {
     secondaryButton: 'تسجيل الدخول',
     note: 'حتى عندما تتضاعف الطلبات، يبقى النظام هادئاً وواضحاً وسهلاً في اتخاذ القرار.',
     summaryTitle: 'ملخص سريع',
+    devicesLabel: 'إجمالي الأجهزة في العمل',
     stats: [
       { label: 'بانتظار العمليات' },
       { label: 'طلبات نشطة' },
@@ -203,6 +205,10 @@ export default function Home() {
             <article>
               <strong>{summary?.inTransitOrders ?? 0}</strong>
               <span>{t.stats[3].label}</span>
+            </article>
+            <article>
+              <strong>{summary?.totalDevices ?? 0}</strong>
+              <span>{t.devicesLabel}</span>
             </article>
           </div>
         </div>

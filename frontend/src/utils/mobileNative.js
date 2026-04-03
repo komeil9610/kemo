@@ -73,6 +73,8 @@ const ensureLocalChannel = async () => {
       description: 'Operational alerts and task updates',
       importance: 4,
       visibility: 1,
+      vibration: true,
+      sound: 'default',
     });
   } catch {
     return;
@@ -194,6 +196,7 @@ export const sendAppNotification = async ({ key, title, body }) => {
             title,
             body,
             channelId: CHANNEL_ID,
+            sound: 'default',
             schedule: { at: new Date(Date.now() + 250) },
           },
         ],
@@ -206,7 +209,11 @@ export const sendAppNotification = async ({ key, title, body }) => {
 
   if (isBrowserNotificationSupported && window.Notification.permission === 'granted') {
     try {
-      new window.Notification(title, { body });
+      new window.Notification(title, {
+        body,
+        tag: cacheKey,
+        silent: false,
+      });
       return true;
     } catch {
       return false;

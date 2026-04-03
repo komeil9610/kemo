@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
-const [, , nameArg, emailArg, passwordArg, roleArg = 'admin'] = process.argv;
-const allowedRoles = new Set(['admin', 'customer_service', 'operations_manager', 'technician', 'member']);
+const [, , nameArg, emailArg, passwordArg, roleArg = 'operations_manager'] = process.argv;
+const allowedRoles = new Set(['customer_service', 'operations_manager', 'member']);
 
 if (!nameArg || !emailArg || !passwordArg) {
   console.error('Usage: node scripts/generate-admin-sql.mjs "<name>" "<email>" "<password>" "[role]"');

@@ -303,6 +303,8 @@ const normalizeImportedRow = (sheetName, row) => {
 
   return {
     requestNumber: soId,
+    soId,
+    woId: normalizeText(row['WO ID']),
     customerName,
     phone,
     secondaryPhone: '',
@@ -318,6 +320,7 @@ const normalizeImportedRow = (sheetName, row) => {
     priority: 'normal',
     deliveryType: 'none',
     importStatus: normalizeImportedStatus(row.Status),
+    acCount: acDetails.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0),
     preferredDate: preferred.date,
     preferredTime: preferred.time || '09:00',
     notes: buildNotes(sheetName, row, devicesSummary),

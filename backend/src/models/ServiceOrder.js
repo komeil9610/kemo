@@ -82,7 +82,7 @@ const serviceOrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'en_route', 'in_progress', 'completed', 'canceled'],
+      enum: ['pending', 'scheduled', 'in_transit', 'en_route', 'in_progress', 'completed', 'suspended', 'canceled'],
       default: 'pending',
     },
     extras: {

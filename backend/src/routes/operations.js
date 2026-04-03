@@ -213,7 +213,7 @@ router.post('/excel-import/upload', excelUpload.single('file'), async (req, res,
 router.get('/dashboard', authenticate, authorize(['admin']), async (req, res, next) => {
   try {
     const [users, orders] = await Promise.all([
-      User.find({ role: { $in: ['technician', 'regional_dispatcher'] } }).sort({ createdAt: -1 }),
+      User.find({ role: { $in: ['technician'] } }).sort({ createdAt: -1 }),
       ServiceOrder.find().sort({ createdAt: -1 }),
     ]);
 
@@ -345,7 +345,7 @@ router.post('/orders', authenticate, authorize(['admin']), async (req, res, next
 router.put(
   '/orders/:orderId',
   authenticate,
-  authorize(['admin', 'regional_dispatcher']),
+  authorize(['admin']),
   [param('orderId').notEmpty().withMessage('Order id is required')],
   handleValidationErrors,
   async (req, res, next) => {
@@ -353,34 +353,6 @@ router.put(
       const order = await findOrderByIdentifier(req.params.orderId);
       if (!order) {
         return res.status(404).json({ message: 'Order not found' });
-      }
-
-      if (req.user.role === 'regional_dispatcher') {
-        const ownTechnicianId = req.user.technicianId || req.user.userId;
-        if (String(order.technicianId || '') !== String(ownTechnicianId || '')) {
-          return res.status(403).json({ message: 'ليس لديك صلاحية على هذا الطلب' });
-        }
-
-        if (req.body.scheduledDate !== undefined) {
-          order.scheduledDate = String(req.body.scheduledDate || order.scheduledDate);
-        }
-
-        if (req.body.status !== undefined) {
-          if (!['scheduled', 'completed'].includes(String(req.body.status))) {
-            return res.status(400).json({ message: 'الحالة غير مسموحة لحساب المنطقة' });
-          }
-          order.status = req.body.status;
-        }
-
-        if (req.body.coordinationNote !== undefined || req.body.notes !== undefined) {
-          const note = String(req.body.coordinationNote || req.body.notes || '').trim();
-          if (note) {
-            order.notes = order.notes ? `${order.notes}\n\n${note}` : note;
-          }
-        }
-
-        await order.save();
-        return res.status(200).json({ order: serializeOrder(order) });
       }
 
       if (req.body.technicianId) {
@@ -481,7 +453,7 @@ router.post('/orders/:orderId/cancel', authenticate, authorize(['technician', 'a
   }
 });
 
-router.get('/technician/orders', authenticate, authorize(['technician', 'regional_dispatcher', 'admin']), async (req, res, next) => {
+router.get('/technician/orders', authenticate, authorize(['technician', 'admin']), async (req, res, next) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user) {
@@ -506,7 +478,7 @@ router.get('/technician/orders', authenticate, authorize(['technician', 'regiona
   }
 });
 
-router.put('/orders/:orderId/status', authenticate, authorize(['technician', 'regional_dispatcher', 'admin']), async (req, res, next) => {
+router.put('/orders/:orderId/status', authenticate, authorize(['technician', 'admin']), async (req, res, next) => {
   try {
     const order = await findOrderByIdentifier(req.params.orderId);
     if (!order) {

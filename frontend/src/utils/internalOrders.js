@@ -201,6 +201,30 @@ export const getOrderDeviceCount = (order = {}) => {
   return derivedCount || 0;
 };
 
+export const getOrderSearchMetaLines = (order = {}, lang = 'ar') => {
+  const phone = normalizeSaudiPhoneNumber(order?.phone);
+  const soId = getOrderSoId(order);
+  const woId = getOrderWoId(order);
+  const deviceCount = getOrderDeviceCount(order);
+  const lines = [];
+
+  if (phone) {
+    lines.push(`${lang === 'ar' ? 'الجوال' : 'Phone'}: ${phone}`);
+  }
+
+  const refs = [];
+  if (soId) {
+    refs.push(`SO ID: ${soId}`);
+  }
+  if (woId) {
+    refs.push(`WO ID: ${woId}`);
+  }
+  refs.push(`${lang === 'ar' ? 'الأجهزة' : 'Devices'}: ${deviceCount}`);
+  lines.push(refs.join(' • '));
+
+  return lines.filter(Boolean);
+};
+
 export const buildCallUrl = (value) => {
   const normalized = normalizeSaudiPhoneNumber(value);
   if (!normalized) {

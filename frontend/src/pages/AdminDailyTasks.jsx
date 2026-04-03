@@ -6,17 +6,20 @@ import {
   buildEscalationSnapshot,
   buildDisplayStatusBuckets,
   compareOrdersByInternalArea,
-  formatSaudiPhoneDisplay,
   getAreaClusterLabel,
   notificationsService,
   operationsService,
 } from '../services/api';
-import { getOrderDeviceCount, getOrderDisplayStatus, orderMatchesDisplayStatus } from '../utils/internalOrders';
+import {
+  getOrderDeviceCount,
+  getOrderDisplayStatus,
+  getOrderReferenceText,
+  orderMatchesDisplayStatus,
+  orderMatchesSearchQuery,
+} from '../utils/internalOrders';
 import { sendAppNotification } from '../utils/mobileNative';
 
 const todayString = () => new Date().toISOString().slice(0, 10);
-const formatOrderNumber = (value) => String(value || '').replace(/^ORD-/, '');
-
 const formatDate = (value, lang) => {
   if (!value) {
     return '—';
@@ -61,7 +64,7 @@ const copy = {
     markAllRead: 'Mark all as read',
     dateLabel: 'Operation date',
     searchLabel: 'Search',
-    searchPlaceholder: 'Search customer, area, order, or technician',
+    searchPlaceholder: 'Search by phone, SO ID, WO ID, customer, area, or technician',
     regionLabel: 'Region',
     technicianLabel: 'Technician',
     statusLabel: 'Status',
@@ -167,7 +170,7 @@ const copy = {
     markAllRead: 'تعليم الكل كمقروء',
     dateLabel: 'تاريخ التشغيل',
     searchLabel: 'البحث',
-    searchPlaceholder: 'ابحث بالعميل أو المنطقة أو رقم الطلب أو اسم الفني',
+    searchPlaceholder: 'ابحث بالجوال أو SO ID أو WO ID أو العميل أو المنطقة أو اسم الفني',
     regionLabel: 'المنطقة',
     technicianLabel: 'الفني',
     statusLabel: 'الحالة',
@@ -291,13 +294,17 @@ export default function AdminDailyTasks() {
         }
         const response = await operationsService.getDashboard();
         setDashboard(response.data || {});
+      } catch (error) {
+        if (!silently) {
+          toast.error(resolveErrorMessage(error, t.loading));
+        }
       } finally {
         if (!silently) {
           setLoading(false);
         }
       }
     },
-    []
+    [t.loading]
   );
 
   const loadNotifications = useCallback(async (silent = false) => {
@@ -357,7 +364,7 @@ export default function AdminDailyTasks() {
     const intervalId = window.setInterval(() => {
       loadDashboard({ silently: true });
       loadNotifications(true);
-    }, 8000);
+    }, 20000);
 
     return () => window.clearInterval(intervalId);
   }, [loadDashboard, loadNotifications]);
@@ -404,19 +411,9 @@ export default function AdminDailyTasks() {
       }
 
       const haystack = [
-        order.id,
-        formatOrderNumber(order.id),
-        order.customerName,
-        order.phone,
-        formatSaudiPhoneDisplay(order.phone),
         order.region,
         getOrderDisplayStatus(order, 'ar'),
         getOrderDisplayStatus(order, 'en'),
-        order.internalAreaLabel,
-        order.internalAreaArLabel,
-        order.address,
-        order.technicianName,
-        order.workType,
         order.suspensionReason,
         order.suspensionNote,
         order.zamilOtpCode,
@@ -425,7 +422,7 @@ export default function AdminDailyTasks() {
         .join(' ')
         .toLowerCase();
 
-      return haystack.includes(searchTerm);
+      return orderMatchesSearchQuery(order, searchTerm) || haystack.includes(searchTerm);
     },
     [searchTerm]
   );
@@ -856,7 +853,7 @@ export default function AdminDailyTasks() {
                 urgentEscalationOrders.map((order) => (
                   <article className={`admin-urgent-card ${order.timing?.escalationLevel === 2 ? 'critical-escalation-card' : 'warning-escalation-card'}`} key={`esc-${order.id}`}>
                     <div className="dispatch-job-top">
-                      <strong>#{formatOrderNumber(order.id)}</strong>
+                      <strong>{getOrderReferenceText(order, lang)}</strong>
                       <span className={`close-stage-pill ${order.timing?.escalationLevel === 2 ? 'otp_submitted' : 'requested'}`}>
                         {t.escalationLabels[order.timing?.escalationLevel || 0]}
                       </span>
@@ -901,7 +898,7 @@ export default function AdminDailyTasks() {
                   closeRequestOrders.map((order) => (
                     <article className="admin-urgent-card zamil-request-card" key={order.id}>
                       <div className="dispatch-job-top">
-                        <strong>#{formatOrderNumber(order.id)}</strong>
+                        <strong>{getOrderReferenceText(order, lang)}</strong>
                         <span className="close-stage-pill requested">{t.closeStatusLabels.requested}</span>
                       </div>
                       <p>{order.customerName}</p>
@@ -936,7 +933,7 @@ export default function AdminDailyTasks() {
                   otpReadyOrders.map((order) => (
                     <article className="admin-urgent-card otp-ready-card" key={order.id}>
                       <div className="dispatch-job-top">
-                        <strong>#{formatOrderNumber(order.id)}</strong>
+                        <strong>{getOrderReferenceText(order, lang)}</strong>
                         <span className="close-stage-pill otp_submitted">{t.closeStatusLabels.otp_submitted}</span>
                       </div>
                       <p>{order.customerName}</p>
@@ -983,7 +980,7 @@ export default function AdminDailyTasks() {
                     onDragEnd={() => setDraggingOrderId('')}
                   >
                     <div className="dispatch-job-top">
-                      <strong>#{formatOrderNumber(order.id)}</strong>
+                      <strong>{getOrderReferenceText(order, lang)}</strong>
                       <span className="status-badge suspended">{t.statusOptions.suspended}</span>
                     </div>
                     <p>{order.customerName}</p>
@@ -1057,7 +1054,7 @@ export default function AdminDailyTasks() {
                       >
                         <div className="admin-task-row-main">
                           <strong>
-                            #{formatOrderNumber(order.id)} - {order.customerName}
+                            {getOrderReferenceText(order, lang)} - {order.customerName}
                           </strong>
                           <small className="internal-area-pill">{getAreaClusterLabel(order, lang)}</small>
                           <p>
@@ -1149,7 +1146,7 @@ export default function AdminDailyTasks() {
                           <div className="admin-task-row-main">
                             <div className="dispatch-job-top">
                               <strong>
-                                #{formatOrderNumber(order.id)} - {order.customerName}
+                                {getOrderReferenceText(order, lang)} - {order.customerName}
                               </strong>
                               <div className="task-badges">
                                 <span className={`status-badge ${order.status}`}>{getOrderDisplayStatus(order, lang)}</span>

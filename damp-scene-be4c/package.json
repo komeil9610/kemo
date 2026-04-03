@@ -1,0 +1,13 @@
+{
+	"name": "damp-scene-be4c",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"start": "wrangler dev",
+		"dev": "wrangler dev"
+	},
+	"devDependencies": {
+		"wrangler": "^4.77.0"
+	}
+}

@@ -1457,6 +1457,12 @@ async function createServiceOrder(request, env) {
     return json({ message: normalized.error }, 400, request, env);
   }
 
+  const referenceRegistry = await readServiceOrderReferenceRegistry(env);
+  const duplicateReference = findDuplicateOrderReference(referenceRegistry, normalized);
+  if (duplicateReference) {
+    return json({ message: buildDuplicateOrderMessage(duplicateReference) }, 409, request, env);
+  }
+
   const createdOrderId = await insertServiceOrderRecord(env, normalized, Number(csr.sub), {
     actor: "customer_service",
     message: `تم إنشاء الطلب ${normalized.requestNumber} وإرساله إلى مدير العمليات${normalized.deliveryType !== "none" ? ` مع ${normalized.deliveryType === "express_24h" ? "توصيل سريع" : "طلب توصيل"}` : ""}.`,
@@ -1469,14 +1475,6 @@ async function createServiceOrder(request, env) {
     normalized.deliveryType === "none"
       ? `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويحتاج إلى المتابعة.`
       : `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويتضمن ${normalized.deliveryType === "express_24h" ? "توصيلاً سريعاً خلال 24 ساعة" : "توصيلاً"} ويحتاج إلى متابعة عاجلة.`,
-    createdOrderId
-  );
-
-  await notifyRegionalDispatchersForOrder(
-    env,
-    normalized,
-    "طلب جديد ضمن منطقتكم",
-    `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} وإرساله مباشرة إلى منطقتكم.`,
     createdOrderId
   );
 
@@ -1497,7 +1495,10 @@ async function importServiceOrders(request, env) {
     return json({ message: "At least one Excel order is required" }, 400, request, env);
   }
 
+  const existingReferences = await readServiceOrderReferenceRegistry(env);
   const seenRequestNumbers = new Set();
+  const seenSoIds = new Set();
+  const seenWoIds = new Set();
   const validOrders = [];
   const skippedOrders = [];
 
@@ -1521,16 +1522,51 @@ async function importServiceOrders(request, env) {
       continue;
     }
 
-    const dedupeKey = String(normalized.requestNumber || "").trim();
-    if (!dedupeKey || seenRequestNumbers.has(dedupeKey)) {
+    const refs = readServiceOrderReferenceIds(normalized);
+    const requestKey = normalizeOrderReferenceKey(refs.requestNumber);
+    const soKey = normalizeOrderReferenceKey(refs.soId);
+    const woKey = normalizeOrderReferenceKey(refs.woId);
+
+    if (!requestKey || seenRequestNumbers.has(requestKey)) {
       skippedOrders.push({
-        requestNumber: dedupeKey || requestNumber,
+        requestNumber: refs.requestNumber || requestNumber,
         reason: "Duplicate request number inside the Excel import batch",
       });
       continue;
     }
 
-    seenRequestNumbers.add(dedupeKey);
+    if (soKey && seenSoIds.has(soKey)) {
+      skippedOrders.push({
+        requestNumber: refs.requestNumber || requestNumber,
+        reason: `Duplicate SO ID inside the Excel import batch: ${refs.soId}`,
+      });
+      continue;
+    }
+
+    if (woKey && seenWoIds.has(woKey)) {
+      skippedOrders.push({
+        requestNumber: refs.requestNumber || requestNumber,
+        reason: `Duplicate WO ID inside the Excel import batch: ${refs.woId}`,
+      });
+      continue;
+    }
+
+    const duplicateReference = findDuplicateOrderReference(existingReferences, normalized);
+    if (duplicateReference) {
+      skippedOrders.push({
+        requestNumber: refs.requestNumber || requestNumber,
+        reason: buildDuplicateOrderMessage(duplicateReference),
+      });
+      continue;
+    }
+
+    seenRequestNumbers.add(requestKey);
+    if (soKey) {
+      seenSoIds.add(soKey);
+    }
+    if (woKey) {
+      seenWoIds.add(woKey);
+    }
     validOrders.push(normalized);
   }
 
@@ -1548,21 +1584,8 @@ async function importServiceOrders(request, env) {
     );
   }
 
-  const existingRequestNumbers = await readExistingServiceOrderNumbers(
-    env,
-    validOrders.map((item) => item.requestNumber)
-  );
-
   let importedCount = 0;
   for (const normalized of validOrders) {
-    if (existingRequestNumbers.has(normalized.requestNumber)) {
-      skippedOrders.push({
-        requestNumber: normalized.requestNumber,
-        reason: "This SO ID is already imported",
-      });
-      continue;
-    }
-
     const orderId = await insertServiceOrderRecord(env, normalized, Number(csr.sub), {
       actor: "customer_service",
       message: `تم استيراد الطلب ${normalized.requestNumber} من ملف Excel وإرساله إلى مدير العمليات.`,
@@ -2014,6 +2037,18 @@ async function updateServiceOrder(request, id, env) {
       : normalizeSaudiPhoneNumber(existing.whatsapp_phone || existing.phone);
   const status = body.status !== undefined ? String(body.status || "").trim() : String(existing.status || "pending").trim();
   const notes = body.notes !== undefined ? String(body.notes || "").trim() : String(existing.notes || "").trim();
+  const existingExplicitSoId = String(
+    extractImportReferenceValue(existing, "SO ID") || extractImportReferenceValue(existing, "soId") || ""
+  ).trim();
+  const existingExplicitWoId = String(
+    extractImportReferenceValue(existing, "WO ID") || extractImportReferenceValue(existing, "woId") || ""
+  ).trim();
+  const soId = body.soId !== undefined ? String(body.soId || "").trim() : existingExplicitSoId || requestNumber;
+  const woId = body.woId !== undefined ? String(body.woId || "").trim() : existingExplicitWoId;
+  const nextNotes = normalizeServiceOrderNotes(notes, {
+    soId: soId || requestNumber,
+    woId,
+  });
   const district = body.district !== undefined ? String(body.district || "").trim() : String(existing.district || "").trim();
   const city = body.city !== undefined ? String(body.city || "").trim() : String(existing.city || "").trim();
   const addressText =
@@ -2196,6 +2231,17 @@ async function updateServiceOrder(request, id, env) {
     return json({ message: "Request number, customer name, phone, and map link are required" }, 400, request, env);
   }
 
+  const referenceRegistry = await readServiceOrderReferenceRegistry(env, orderId);
+  const duplicateReference = findDuplicateOrderReference(referenceRegistry, {
+    requestNumber,
+    soId: soId || requestNumber,
+    woId,
+    notes: nextNotes,
+  });
+  if (duplicateReference) {
+    return json({ message: buildDuplicateOrderMessage(duplicateReference) }, 409, request, env);
+  }
+
   if (deliveryType === "express_24h" && !isFastDeliveryCity(city)) {
     return json({ message: "Fast delivery is only available in the listed major cities" }, 400, request, env);
   }
@@ -2289,7 +2335,7 @@ async function updateServiceOrder(request, id, env) {
       whatsappPhone,
       status,
       technician ? technician.id : null,
-      notes,
+      nextNotes,
       district,
       city,
       address,
@@ -2758,14 +2804,6 @@ async function quickUpdateCompactOrderStatus(request, id, env) {
       `تمت إعادة جدولة الطلب رقم ${order.request_number || order.customer_name}.`,
       orderId
     );
-
-    await notifyRegionalDispatchersForOrder(
-      env,
-      { city: order.city },
-      "تمت إعادة جدولة طلب المنطقة",
-      `أعاد مدير العمليات جدولة الطلب رقم ${order.request_number || order.customer_name}.`,
-      orderId
-    );
   }
 
   if (requestedStatus === "completed") {
@@ -2774,14 +2812,6 @@ async function quickUpdateCompactOrderStatus(request, id, env) {
       ["customer_service"],
       "تم إنهاء الطلب",
       `تم الانتهاء من الطلب رقم ${order.request_number || order.customer_name} بنجاح.`,
-      orderId
-    );
-
-    await notifyRegionalDispatchersForOrder(
-      env,
-      { city: order.city },
-      "تم إنهاء طلب المنطقة",
-      `قام مدير العمليات بإنهاء الطلب رقم ${order.request_number || order.customer_name}.`,
       orderId
     );
   }
@@ -3283,6 +3313,165 @@ function normalizeImportedOrderStatus(value) {
   return "pending";
 }
 
+function normalizeOrderReferenceKey(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function escapeNoteLabel(label) {
+  return String(label || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractImportReferenceValue(source, label) {
+  const directValue = String(source?.[label] || source?.[`${label}Id`] || source?.importMeta?.[label] || "").trim();
+  if (directValue) {
+    return directValue;
+  }
+
+  const text = String(source?.notes || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  const match = text.match(new RegExp(`(?:^|\\n)${escapeNoteLabel(label)}\\s*:\\s*(.+?)(?:\\n|$)`, "i"));
+  return String(match?.[1] || "").trim();
+}
+
+function upsertStructuredNoteLine(text, label, value) {
+  const pattern = new RegExp(`^${escapeNoteLabel(label)}\\s*:`, "i");
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .filter((line) => !pattern.test(line));
+  const normalizedValue = String(value || "").trim();
+
+  if (normalizedValue) {
+    lines.push(`${label}: ${normalizedValue}`);
+  }
+
+  return lines.join("\n");
+}
+
+function normalizeServiceOrderNotes(notes, references = {}) {
+  let nextNotes = String(notes || "").trim();
+  nextNotes = upsertStructuredNoteLine(nextNotes, "SO ID", references.soId);
+  nextNotes = upsertStructuredNoteLine(nextNotes, "WO ID", references.woId);
+  return nextNotes;
+}
+
+function readServiceOrderReferenceIds(source = {}) {
+  const requestNumber = String(source.requestNumber || source.request_number || "").trim();
+  const soId = String(
+    source.soId ||
+      extractImportReferenceValue(source, "soId") ||
+      extractImportReferenceValue(source, "SO ID") ||
+      requestNumber
+  ).trim();
+  const woId = String(
+    source.woId || extractImportReferenceValue(source, "woId") || extractImportReferenceValue(source, "WO ID") || ""
+  ).trim();
+
+  return {
+    requestNumber,
+    soId,
+    woId,
+  };
+}
+
+async function readServiceOrderReferenceRegistry(env, excludeOrderId = null) {
+  const statement =
+    excludeOrderId === null
+      ? env.DB.prepare("SELECT id, customer_name, request_number, notes FROM service_orders")
+      : env.DB.prepare("SELECT id, customer_name, request_number, notes FROM service_orders WHERE id != ?").bind(
+          Number(excludeOrderId)
+        );
+  const { results } = await statement.all();
+  const registry = {
+    requestNumbers: new Map(),
+    soIds: new Map(),
+    woIds: new Map(),
+  };
+
+  for (const row of results || []) {
+    registerOrderReferenceIds(registry, row, {
+      orderId: Number(row.id),
+      customerName: String(row.customer_name || "").trim(),
+    });
+  }
+
+  return registry;
+}
+
+function registerOrderReferenceIds(registry, source = {}, entry = {}) {
+  const refs = readServiceOrderReferenceIds(source);
+  const payload = {
+    orderId: Number(entry.orderId || source.id || 0),
+    customerName: String(entry.customerName || source.customer_name || source.customerName || "").trim(),
+    requestNumber: refs.requestNumber,
+    soId: refs.soId,
+    woId: refs.woId,
+  };
+  const mappings = [
+    ["requestNumbers", refs.requestNumber],
+    ["soIds", refs.soId],
+    ["woIds", refs.woId],
+  ];
+
+  for (const [bucket, value] of mappings) {
+    const normalizedKey = normalizeOrderReferenceKey(value);
+    if (!normalizedKey || registry[bucket].has(normalizedKey)) {
+      continue;
+    }
+
+    registry[bucket].set(normalizedKey, {
+      ...payload,
+      value: String(value || "").trim(),
+    });
+  }
+}
+
+function findDuplicateOrderReference(registry, source = {}) {
+  const refs = readServiceOrderReferenceIds(source);
+  const checks = [
+    ["woIds", refs.woId, "woId"],
+    ["soIds", refs.soId, "soId"],
+    ["requestNumbers", refs.requestNumber, "requestNumber"],
+  ];
+
+  for (const [bucket, value, field] of checks) {
+    const normalizedKey = normalizeOrderReferenceKey(value);
+    if (!normalizedKey) {
+      continue;
+    }
+
+    const conflict = registry[bucket]?.get(normalizedKey);
+    if (conflict) {
+      return {
+        ...conflict,
+        field,
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildDuplicateOrderMessage(conflict) {
+  if (!conflict) {
+    return "Duplicate order reference detected";
+  }
+
+  if (conflict.field === "woId") {
+    return `WO ID already exists: ${conflict.value}`;
+  }
+
+  if (conflict.field === "soId") {
+    return `SO ID already exists: ${conflict.value}`;
+  }
+
+  return `Request number already exists: ${conflict.value}`;
+}
+
 function isFastDeliveryCity(city) {
   return FAST_DELIVERY_CITIES.includes(String(city || "").trim());
 }
@@ -3451,10 +3640,17 @@ async function readServiceOrderPhotosByOrderIds(env, orderIds = []) {
 }
 
 function mapServiceOrderRow(row, areaClusters = [], photos = []) {
+  const references = readServiceOrderReferenceIds({
+    request_number: row.request_number,
+    notes: row.notes,
+  });
+
   return {
     id: `ORD-${row.id}`,
     numericId: row.id,
     requestNumber: row.request_number || row.customer_name,
+    soId: references.soId,
+    woId: references.woId,
     customerName: row.customer_name,
     phone: row.phone,
     secondaryPhone: row.secondary_phone || "",
@@ -3553,7 +3749,8 @@ async function readOperationsSummary(env) {
       SUM(CASE WHEN status IN ('scheduled', 'in_transit') THEN 1 ELSE 0 END) AS active_orders,
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,
       SUM(CASE WHEN status = 'in_transit' THEN 1 ELSE 0 END) AS in_transit_orders,
-      SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) AS canceled_orders
+      SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) AS canceled_orders,
+      SUM(CASE WHEN status IN ('canceled', 'completed') THEN 0 ELSE COALESCE(ac_count, 0) END) AS total_devices
      FROM service_orders
      WHERE status != 'completed'`
   ).first();
@@ -3565,6 +3762,7 @@ async function readOperationsSummary(env) {
     completedOrders: Number(row?.completed_orders || 0),
     inTransitOrders: Number(row?.in_transit_orders || 0),
     canceledOrders: Number(row?.canceled_orders || 0),
+    totalDevices: Number(row?.total_devices || 0),
   };
 }
 
@@ -3577,6 +3775,9 @@ function buildOperationsSummary(orders, technicians) {
       completedOrders: summary.completedOrders + (order.status === "completed" ? 1 : 0),
       inTransitOrders: summary.inTransitOrders + (order.status === "in_transit" ? 1 : 0),
       canceledOrders: summary.canceledOrders + (order.status === "canceled" ? 1 : 0),
+      totalDevices:
+        summary.totalDevices +
+        (["canceled", "completed"].includes(order.status) ? 0 : Math.max(0, Number(order.acCount || order.ac_count) || 0)),
     }),
     {
       totalOrders: 0,
@@ -3585,6 +3786,7 @@ function buildOperationsSummary(orders, technicians) {
       completedOrders: 0,
       inTransitOrders: 0,
       canceledOrders: 0,
+      totalDevices: 0,
     }
   );
 }
@@ -3607,7 +3809,17 @@ function normalizeServiceOrderInput(body) {
   const priority = deliveryType === "none" ? String(body.priority || "normal").trim() : "urgent";
   const preferredDate = String(body.preferredDate || body.scheduledDate || "").trim();
   const preferredTime = String(body.preferredTime || body.scheduledTime || "").trim();
-  const notes = String(body.notes || "").trim();
+  const rawNotes = String(body.notes || "").trim();
+  const soId = String(
+    body.soId || extractImportReferenceValue(body, "soId") || extractImportReferenceValue(body, "SO ID") || requestNumber
+  ).trim();
+  const woId = String(
+    body.woId || extractImportReferenceValue(body, "woId") || extractImportReferenceValue(body, "WO ID") || ""
+  ).trim();
+  const notes = normalizeServiceOrderNotes(rawNotes, {
+    soId: soId || requestNumber,
+    woId,
+  });
   const acDetails = (Array.isArray(body.acDetails) ? body.acDetails : [])
     .map((item, index) => ({
       id: `ac-${Date.now()}-${index}`,
@@ -3648,6 +3860,8 @@ function normalizeServiceOrderInput(body) {
     preferredDate,
     preferredTime,
     notes,
+    soId: soId || requestNumber,
+    woId,
     acDetails,
     primaryAcType: acDetails[0]?.type || "split",
     totalQuantity: acDetails.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
@@ -3803,40 +4017,6 @@ async function notifyUsersByRoles(env, roles = [], title, body, relatedOrderId =
   for (const user of results || []) {
     await createNotification(env, user.id, title, body, "status_update", relatedOrderId);
   }
-}
-
-async function readExistingServiceOrderNumbers(env, requestNumbers = []) {
-  const normalized = Array.from(
-    new Set(
-      (requestNumbers || [])
-        .map((value) => String(value || "").trim())
-        .filter(Boolean)
-    )
-  );
-
-  const existing = new Set();
-  for (let index = 0; index < normalized.length; index += 50) {
-    const chunk = normalized.slice(index, index + 50);
-    if (!chunk.length) {
-      continue;
-    }
-
-    const placeholders = chunk.map(() => "?").join(", ");
-    const { results } = await env.DB.prepare(
-      `SELECT request_number FROM service_orders WHERE request_number IN (${placeholders})`
-    )
-      .bind(...chunk)
-      .all();
-
-    for (const row of results || []) {
-      const requestNumber = String(row?.request_number || "").trim();
-      if (requestNumber) {
-        existing.add(requestNumber);
-      }
-    }
-  }
-
-  return existing;
 }
 
 async function readServiceTimeStandards(env) {

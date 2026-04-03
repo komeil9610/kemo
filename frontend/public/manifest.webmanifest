@@ -1,0 +1,42 @@
+{
+  "name": "Tarkeeb Pro Internal",
+  "short_name": "Tarkeeb Pro",
+  "start_url": "/login",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f1e8",
+  "theme_color": "#d96b27",
+  "description": "Internal workspace for customer service, the operations manager, and regional accounts.",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Login",
+      "short_name": "Login",
+      "url": "/login"
+    },
+    {
+      "name": "Regional workspace",
+      "short_name": "Regions",
+      "url": "/regions"
+    },
+    {
+      "name": "Customer service",
+      "short_name": "Customer",
+      "url": "/customer-service"
+    },
+    {
+      "name": "Operations manager",
+      "short_name": "Operations",
+      "url": "/operations-manager"
+    }
+  ]
+}

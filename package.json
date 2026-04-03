@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "name": "tarkeeb-pro-monorepo",
+  "type": "module",
+  "scripts": {
+    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs"
+  }
+}

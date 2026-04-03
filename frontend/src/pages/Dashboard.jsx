@@ -21,6 +21,7 @@ import {
   getOrderDisplayStatus,
   getOrderPrimaryReference,
   getOrderReferenceText,
+  getOrderSearchMetaLines,
   orderMatchesDisplayStatus,
   getOrdersForView,
   nextStatusFor,
@@ -127,7 +128,7 @@ const copy = {
     dailyTasks: 'Daily tasks',
     customerServicePanel: 'Customer service intake',
     operationsPanel: 'Operations coordination',
-    operationsHint: 'Review incoming requests, update statuses, and follow up with regional accounts from the filtered task lists.',
+    operationsHint: 'Review incoming requests, update statuses, and follow up from the filtered task lists.',
     formHint: 'Capture the request in full detail so the operations manager can coordinate clearly from the first touch.',
     excelImportTitle: 'Excel intake',
     excelImportHint: 'Upload any Excel file from mobile or browser, ignore completed rows, keep each SO ID, and prepare valid orders for direct import.',
@@ -900,6 +901,16 @@ export default function Dashboard() {
               isRTL={isRTL}
               labels={t.compactList}
               orders={detailOrders}
+              renderCustomerCell={(order) => (
+                <div className="order-compact-cell-stack">
+                  <strong>{order.customerName || '—'}</strong>
+                  <div className="order-compact-meta">
+                    {getOrderSearchMetaLines(order, lang).map((line) => (
+                      <span key={`${order.id}-${line}`}>{line}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
               renderRowActions={
                 permissions.canManageStatuses
                   ? (order) => {

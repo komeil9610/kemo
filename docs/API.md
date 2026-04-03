@@ -2,9 +2,22 @@
 
 ## الأساسيات | Base URL
 
+للعملاء والتصفح العام استخدم مسار الواجهة:
+
+```
+https://tarkeeb-pro-frontend.bobkumeel.workers.dev/api
+```
+
+رابط الـ edge Worker المباشر محمي حاليًا عبر Cloudflare Access/OAuth:
+
 ```
 https://tarkeeb-pro-edge-api.bobkumeel.workers.dev/api
 ```
+
+يعني:
+- تطبيق الويب يستخدم `/api` على نفس دومين الواجهة
+- النداءات المباشرة إلى `tarkeeb-pro-edge-api...workers.dev` تحتاج Cloudflare Access token صالح إذا كانت الحماية مفعلة
+- أفضل فحص عام بعد النشر هو `https://tarkeeb-pro-frontend.bobkumeel.workers.dev/api/health`
 
 ---
 

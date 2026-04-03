@@ -1,0 +1,16 @@
+ALTER TABLE service_orders ADD COLUMN district TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN city TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN scheduled_time TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE service_orders ADD COLUMN work_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN ac_count INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE service_orders ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE service_orders ADD COLUMN proof_status TEXT NOT NULL DEFAULT 'pending_review';
+ALTER TABLE service_orders ADD COLUMN approved_at TEXT;
+ALTER TABLE service_orders ADD COLUMN approved_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN client_signature TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN suspension_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN suspension_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_orders ADD COLUMN suspended_at TEXT;
+ALTER TABLE service_orders ADD COLUMN exception_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE service_orders ADD COLUMN audit_log_json TEXT NOT NULL DEFAULT '[]';

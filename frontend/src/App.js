@@ -3,8 +3,10 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { LangProvider } from './context/LangContext';
+import { useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import AppAccessBanner from './components/AppAccessBanner';
 import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -12,39 +14,67 @@ import Dashboard from './pages/Dashboard';
 import InternalDailyTasks from './pages/InternalDailyTasks';
 import InternalWeeklyTasks from './pages/InternalWeeklyTasks';
 import InternalMonthlyTasks from './pages/InternalMonthlyTasks';
-import DailyTasks from './pages/DailyTasks';
-import Orders from './pages/Orders';
-import Register from './pages/Register';
-import MobileEntry from './pages/MobileEntry';
 import OperationsDatePage from './pages/OperationsDatePage';
 import './index.css';
 
-function AppChrome() {
+function getHomeRouteForRole(role) {
+  if (role === 'customer_service') {
+    return '/customer-service';
+  }
+
+  if (role === 'operations_manager') {
+    return '/operations-manager';
+  }
+
+  return '/login';
+}
+
+function WorkspaceRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={getHomeRouteForRole(user?.role)} replace />;
+}
+
+function LegacyDashboardRedirect() {
+  const { user } = useAuth();
   const location = useLocation();
-  const isMobileShell = location.pathname.startsWith('/mobile/') || location.pathname.startsWith('/tasks');
+  const nextBase = getHomeRouteForRole(user?.role);
+  const nextPath = location.pathname.replace(/^\/dashboard/, nextBase);
+  return <Navigate to={nextPath} replace />;
+}
+
+function AppChrome() {
+  const isMobileShell = false;
 
   return (
     <div className={`app-layout ${isMobileShell ? 'mobile-route-layout' : ''}`}>
       {isMobileShell ? null : <Navbar />}
+      <AppAccessBanner />
       <main className={`app-shell ${isMobileShell ? 'mobile-route-shell' : ''}`}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><Dashboard /></ProtectedRoute>} />
-          <Route path="/dashboard/operations-date" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><OperationsDatePage /></ProtectedRoute>} />
-          <Route path="/dashboard/daily" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><InternalDailyTasks /></ProtectedRoute>} />
-          <Route path="/dashboard/weekly" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><InternalWeeklyTasks /></ProtectedRoute>} />
-          <Route path="/dashboard/monthly" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><InternalMonthlyTasks /></ProtectedRoute>} />
-          <Route path="/dashboard/:viewKey" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/customer-service" element={<ProtectedRoute allowedRoles={['customer_service']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/customer-service/daily" element={<ProtectedRoute allowedRoles={['customer_service']}><InternalDailyTasks /></ProtectedRoute>} />
+          <Route path="/customer-service/weekly" element={<ProtectedRoute allowedRoles={['customer_service']}><InternalWeeklyTasks /></ProtectedRoute>} />
+          <Route path="/customer-service/monthly" element={<ProtectedRoute allowedRoles={['customer_service']}><InternalMonthlyTasks /></ProtectedRoute>} />
+          <Route path="/customer-service/operations-date" element={<ProtectedRoute allowedRoles={['customer_service']}><OperationsDatePage /></ProtectedRoute>} />
+          <Route path="/customer-service/:viewKey" element={<ProtectedRoute allowedRoles={['customer_service']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/operations-manager" element={<ProtectedRoute allowedRoles={['operations_manager']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/operations-manager/daily" element={<ProtectedRoute allowedRoles={['operations_manager']}><InternalDailyTasks /></ProtectedRoute>} />
+          <Route path="/operations-manager/weekly" element={<ProtectedRoute allowedRoles={['operations_manager']}><InternalWeeklyTasks /></ProtectedRoute>} />
+          <Route path="/operations-manager/monthly" element={<ProtectedRoute allowedRoles={['operations_manager']}><InternalMonthlyTasks /></ProtectedRoute>} />
+          <Route path="/operations-manager/operations-date" element={<ProtectedRoute allowedRoles={['operations_manager']}><OperationsDatePage /></ProtectedRoute>} />
+          <Route path="/operations-manager/:viewKey" element={<ProtectedRoute allowedRoles={['operations_manager']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><WorkspaceRedirect /></ProtectedRoute>} />
+          <Route path="/dashboard/operations-date" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+          <Route path="/dashboard/daily" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+          <Route path="/dashboard/weekly" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+          <Route path="/dashboard/monthly" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+          <Route path="/dashboard/:viewKey" element={<ProtectedRoute allowedRoles={['customer_service', 'operations_manager']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+          <Route path="/orders" element={<Navigate to="/dashboard/daily" replace />} />
+          <Route path="/tasks" element={<Navigate to="/dashboard/daily" replace />} />
+          <Route path="/tasks/daily" element={<Navigate to="/dashboard/daily" replace />} />
           <Route path="/register" element={<Navigate to="/login" replace />} />
-          <Route path="/orders" element={<Navigate to="/tasks" replace />} />
-          <Route path="/tasks" element={<ProtectedRoute allowedRoles={['technician', 'regional_dispatcher']}><Orders /></ProtectedRoute>} />
-          <Route path="/tasks/daily" element={<ProtectedRoute allowedRoles={['technician']}><DailyTasks /></ProtectedRoute>} />
-          <Route path="/mobile/admin" element={<MobileEntry mode="admin" />} />
-          <Route path="/mobile/technician" element={<MobileEntry mode="technician" />} />
-          <Route path="/mobile/admin/login" element={<Login appMode="operations" />} />
-          <Route path="/mobile/technician/login" element={<Login appMode="technician" />} />
-          <Route path="/mobile/technician/register" element={<Register />} />
           <Route path="/products" element={<Navigate to="/" replace />} />
           <Route path="/products/:id" element={<Navigate to="/" replace />} />
           <Route path="/cart" element={<Navigate to="/" replace />} />

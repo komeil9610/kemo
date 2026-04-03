@@ -15,7 +15,7 @@ const router = express.Router();
 
 const buildSafeUser = (user, technician = null) => {
   const technicianId = user.technicianId || technician?.id || user._id.toString();
-  const isFieldRole = ['technician', 'regional_dispatcher'].includes(user.role);
+  const isFieldRole = ['technician'].includes(user.role);
 
   return {
     id: user._id.toString(),
@@ -54,7 +54,7 @@ router.post(
         return res.status(401).json({ message: 'Invalid login details' });
       }
 
-      const technician = ['technician', 'regional_dispatcher'].includes(user.role)
+      const technician = ['technician'].includes(user.role)
         ? {
             id: user.technicianId || user._id.toString(),
             name: `${user.firstName} ${user.lastName}`.trim(),
@@ -71,7 +71,7 @@ router.post(
           userId: user._id.toString(),
           role: user.role,
           email: user.email,
-          technicianId: ['technician', 'regional_dispatcher'].includes(user.role) ? user.technicianId || user._id.toString() : null,
+          technicianId: ['technician'].includes(user.role) ? user.technicianId || user._id.toString() : null,
         },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }

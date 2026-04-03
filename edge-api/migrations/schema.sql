@@ -79,12 +79,12 @@ ON CONFLICT(id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS home_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   hero_kicker TEXT NOT NULL DEFAULT 'Tarkeeb Pro Operations',
-  hero_title TEXT NOT NULL DEFAULT 'Manage installation jobs and technicians in one place.',
-  hero_subtitle TEXT NOT NULL DEFAULT 'Assign field technicians, track execution, and manage service orders across Saudi Arabia.',
-  primary_button_text TEXT NOT NULL DEFAULT 'Open Dashboard',
-  primary_button_url TEXT NOT NULL DEFAULT '/dashboard',
-  secondary_button_text TEXT NOT NULL DEFAULT 'Technician View',
-  secondary_button_url TEXT NOT NULL DEFAULT '/tasks',
+  hero_title TEXT NOT NULL DEFAULT 'Manage customer service and operations from one internal system.',
+  hero_subtitle TEXT NOT NULL DEFAULT 'Dedicated workspaces for customer service and the operations manager.',
+  primary_button_text TEXT NOT NULL DEFAULT 'Sign in',
+  primary_button_url TEXT NOT NULL DEFAULT '/login',
+  secondary_button_text TEXT NOT NULL DEFAULT 'Open login',
+  secondary_button_url TEXT NOT NULL DEFAULT '/login',
   stats_json TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -103,13 +103,13 @@ INSERT INTO home_settings (
 VALUES (
   1,
   'Tarkeeb Pro Operations',
-  'Manage installation jobs and technicians in one place.',
-  'Assign field technicians, track execution, and manage service orders across Saudi Arabia.',
-  'Open Dashboard',
-  '/dashboard',
-  'Technician View',
-  '/tasks',
-  '[{"value":"1","label":"Admin account"},{"value":"2","label":"Seeded technicians"},{"value":"85 SAR","label":"Copper meter price"}]'
+  'Manage customer service and operations from one internal system.',
+  'Dedicated workspaces for customer service and the operations manager.',
+  'Sign in',
+  '/login',
+  'Open login',
+  '/login',
+  '[{"value":"2","label":"Office roles"},{"value":"1","label":"Unified operations system"},{"value":"Instant","label":"Live coordination"}]'
 )
 ON CONFLICT(id) DO NOTHING;
 
@@ -270,48 +270,13 @@ CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 
 INSERT INTO users (name, email, password_hash, role, status)
 VALUES
-  ('مسؤول تركيب برو', 'admin@tarkeebpro.sa', '6260a7306f61fcb20ec28f9a6b037bd4edbaaa66bfd73d94997faffa60141e95', 'admin', 'active'),
-  ('فهد القحطاني', 'fahad@tarkeebpro.sa', '57119cdea6dc559b0d80e71208737269598d08f23b04f20eda198b889ca95541', 'technician', 'active'),
-  ('سلمان الدوسري', 'salman@tarkeebpro.sa', '0aab8aeaa6d15ef0cac12a8a9e8aac27387e18abccc583036d66ac6bc7fadd4c', 'technician', 'active'),
-  ('محمود كميل', 'moreme112982@gmail.com', '5e480eeb5034e94dc686598221daaa44278e3864267a8d0b5cd187d3eb481b4a', 'technician', 'active')
+  ('خدمة العملاء', 'customer-service@tarkeebpro.sa', '70b4b3f2bbc28083db439cac1d94b3d85d41a3e5135faadc45deee8ff6974a29', 'customer_service', 'active'),
+  ('مدير العمليات', 'operations@tarkeebpro.sa', '7c31f434dcc0dfe876cdb3be7905406e0b0ea8a73e91e0ee48f4f855730e23fe', 'operations_manager', 'active')
 ON CONFLICT(email) DO UPDATE SET
   name = excluded.name,
   password_hash = excluded.password_hash,
   role = excluded.role,
   status = excluded.status;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'فهد القحطاني', '+966500001111', 'شرق الرياض', 'available', 'تغطية ميدانية لمنطقة شرق الرياض.'
-FROM users
-WHERE email = 'fahad@tarkeebpro.sa'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'سلمان الدوسري', '+966500002222', 'شمال الرياض', 'busy', 'تغطية ميدانية لمنطقة شمال الرياض.'
-FROM users
-WHERE email = 'salman@tarkeebpro.sa'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'محمود كميل', '05041102100', 'الرياض', 'available', 'تغطية فعلية لمنطقة الرياض.'
-FROM users
-WHERE email = 'moreme112982@gmail.com'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
 
 -- Push Notification Subscriptions
 CREATE TABLE IF NOT EXISTS push_subscriptions (

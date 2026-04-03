@@ -1,4 +1,4 @@
-name = "rentit-edge-api"
+name = "tarkeeb-pro-edge-api"
 main = "src/index.js"
 compatibility_date = "2026-03-26"
 compatibility_flags = ["nodejs_compat"]
@@ -8,6 +8,8 @@ workers_dev = true
 CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost,http://127.0.0.1,https://localhost,https://127.0.0.1,capacitor://localhost,https://tarkeeb-pro-frontend.bobkumeel.workers.dev"
 ACCESS_AUD = "282d6bbb5c79e6fa216dc031838ec36e641595f0c62f5ee0732e6d2f264eefa6"
 ACCESS_JWKS_URL = "https://bobkumeel.cloudflareaccess.com/cdn-cgi/access/certs"
+WEB_PUSH_PUBLIC_KEY = "BJDe1im_oVNRMdPrjtBjE7qwlb-CJUDIxxc_Dp-mhPwuiuSgTHcFxWgS3MX-gyVyy3YPMS8nGQ6YaJIb1rrGgyo"
+WEB_PUSH_CONTACT_EMAIL = "ops@tarkeebpro.sa"
 
 [[d1_databases]]
 binding = "DB"

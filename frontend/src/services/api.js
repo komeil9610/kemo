@@ -248,15 +248,15 @@ const defaultHomeSettings = {
   secondaryButtonUrl: '/login',
   stats: [
     { value: '3', label: 'Dedicated workspaces' },
-    { value: '4', label: 'Regional accounts' },
     { value: '2', label: 'Core office roles' },
+    { value: '1', label: 'Unified operations flow' },
     { value: 'Instant', label: 'Customer service alerts' },
   ],
 };
 
 const defaultFooter = {
   aboutText:
-    'A focused internal workspace for customer service, the operations manager, and the four regional accounts.',
+    'A focused internal workspace for customer service and the operations manager.',
   usefulLinks: [
     { label: 'Home', url: '/' },
     { label: 'Login', url: '/login' },
@@ -380,6 +380,62 @@ const sortOrders = (orders = []) =>
     return `${right.updatedAt || right.createdAt || ''}`.localeCompare(`${left.updatedAt || left.createdAt || ''}`);
   });
 
+const extractLocalOrderIdentifiers = (order = {}) => ({
+  requestNumber: String(order.requestNumber || order.request_number || '').trim(),
+  soId:
+    String(
+      order.soId ||
+        extractImportReferenceValue(order, 'soId') ||
+        extractImportReferenceValue(order, 'SO ID') ||
+        order.requestNumber ||
+        order.request_number ||
+        ''
+    ).trim(),
+  woId: String(order.woId || extractImportReferenceValue(order, 'woId') || extractImportReferenceValue(order, 'WO ID') || '').trim(),
+});
+
+const findDuplicateLocalOrder = (orders = [], candidate = {}, excludeId = '') => {
+  const refs = extractLocalOrderIdentifiers(candidate);
+  const normalizedExcludeId = String(excludeId || '').trim();
+
+  return (
+    (orders || []).find((order) => {
+      if (normalizedExcludeId && String(order.id) === normalizedExcludeId) {
+        return false;
+      }
+
+      const existingRefs = extractLocalOrderIdentifiers(order);
+      return (
+        (refs.requestNumber && existingRefs.requestNumber === refs.requestNumber) ||
+        (refs.soId && existingRefs.soId === refs.soId) ||
+        (refs.woId && existingRefs.woId === refs.woId)
+      );
+    }) || null
+  );
+};
+
+const buildLocalDuplicateMessage = (order, candidate = {}) => {
+  const existingRefs = extractLocalOrderIdentifiers(order);
+  const refs = extractLocalOrderIdentifiers(candidate);
+
+  if (refs.woId && existingRefs.woId === refs.woId) {
+    return `WO ID already exists: ${refs.woId}`;
+  }
+
+  if (refs.soId && existingRefs.soId === refs.soId) {
+    return `SO ID already exists: ${refs.soId}`;
+  }
+
+  return `Request number already exists: ${refs.requestNumber}`;
+};
+
+const getOrderDeviceCountForSummary = (order = {}) =>
+  Math.max(
+    0,
+    Number(order?.acCount || order?.ac_count) ||
+      normalizeAcDetails(order?.acDetails || order?.serviceItems).reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
+  ) || 0;
+
 const mapRemoteOrder = (order = {}) => ({
   id: order.id || `ORD-${order.numericId || Date.now()}`,
   numericId: Number(order.numericId) || Number(String(order.id || '').replace(/\D/g, '')) || Date.now(),
@@ -465,6 +521,7 @@ const buildSummary = (orders = []) => ({
   completedOrders: 0,
   inTransitOrders: orders.filter((order) => order.status === 'in_transit').length,
   canceledOrders: orders.filter((order) => order.status === 'canceled').length,
+  totalDevices: orders.reduce((sum, order) => sum + getOrderDeviceCountForSummary(order), 0),
 });
 
 const getDailyTasksPayload = (orders = [], selectedDate = todayString()) => {
@@ -685,11 +742,23 @@ const localOperationsService = {
     }
 
     const state = readState();
+    const duplicate = findDuplicateLocalOrder(state.orders || [], {
+      requestNumber,
+      soId: payload?.soId || requestNumber,
+      woId: payload?.woId || payload?.importMeta?.woId || '',
+      notes,
+    });
+    if (duplicate) {
+      throw new Error(buildLocalDuplicateMessage(duplicate, payload));
+    }
+
     const numericId = Date.now();
     const order = {
       id: `ORD-${numericId}`,
       numericId,
       requestNumber,
+      soId: String(payload?.soId || requestNumber).trim() || requestNumber,
+      woId: String(payload?.woId || payload?.importMeta?.woId || '').trim(),
       customerName,
       phone,
       secondaryPhone,
@@ -701,6 +770,7 @@ const localOperationsService = {
       mapLink,
       sourceChannel,
       serviceSummary,
+      acCount: acDetails.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0),
       priority,
       deliveryType,
       preferredDate,
@@ -895,6 +965,11 @@ const localOperationsService = {
     }
 
     nextOrder.updatedAt = nowIso();
+
+    const duplicate = findDuplicateLocalOrder(state.orders || [], nextOrder, orderId);
+    if (duplicate) {
+      throw new Error(buildLocalDuplicateMessage(duplicate, nextOrder));
+    }
 
     if (nextOrder.deliveryType === 'express_24h' && !isFastDeliveryCity(nextOrder.city)) {
       throw new Error('Fast delivery is only available in the listed major cities');

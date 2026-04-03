@@ -20,7 +20,7 @@ VALUES (
   1,
   'تركيب برو منصة موثوقة لإدارة خدمات التكييف والتركيب بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
   '[{"label":"الرئيسية","url":"/"},{"label":"الطلبات","url":"/orders"},{"label":"لوحة الإدارة","url":"/dashboard"}]',
-  '[{"label":"الدعم الفني","url":"mailto:ops@tarkeebpro.sa"},{"label":"واتساب","url":"https://wa.me/966500000000"},{"label":"التواصل","url":"/"}]',
+  '[{"label":"الدعم","url":"tel:+966558232644"},{"label":"واتساب","url":"https://wa.me/966558232644"},{"label":"اتصل بنا","url":"tel:+966558232644"}]',
   '[{"platform":"instagram","url":"https://instagram.com/tarkeebpro"},{"platform":"x","url":"https://x.com/tarkeebpro"},{"platform":"linkedin","url":"https://linkedin.com/company/tarkeebpro"}]',
   'جميع الحقوق محفوظة لكميل'
 )

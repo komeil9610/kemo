@@ -1,0 +1,42 @@
+{
+  "name": "rentit-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RentIT desktop app for Windows and Linux Mint",
+  "main": "main.js",
+  "scripts": {
+    "build:web": "cross-env REACT_APP_API_URL=https://rentit-edge-api.bobkumeel.workers.dev/api npm --prefix ../frontend run build",
+    "prepare:assets": "node scripts/prepare-web-assets.mjs",
+    "build:desktop": "npm run build:web && npm run prepare:assets",
+    "start": "npm run build:desktop && electron .",
+    "dist:linux": "npm run build:desktop && electron-builder --linux AppImage",
+    "dist:win": "npm run build:desktop && electron-builder --win portable"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.rentit.desktop",
+    "productName": "RentIT",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "app/**/*"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
+  }
+}
