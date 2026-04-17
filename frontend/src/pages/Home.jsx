@@ -1,238 +1,194 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
-import { homeService, operationsService } from '../services/api';
+import { buildWhatsAppUrl, homeService } from '../services/api';
+import { createDefaultHomeSettings, localizeHomeSettings, normalizeHomeSettings } from '../utils/homepageSettings';
+
+const heroFallbackImage = '/home-hero-collage.png';
+const galleryFallbackImages = ['/home-gallery-1.jpg', '/home-gallery-2.webp', '/home-gallery-3.jpg'];
 
 const copy = {
-  en: {
-    heroKicker: 'Made for the handoff',
-    heroTitle: 'Built with care for customer service and the operations manager.',
-    heroSubtitle:
-      'This program exists to make their day lighter: fewer scattered updates, faster request intake, and one clear path from a new Zamil request to final completion.',
-    primaryButton: 'Sign in',
-    secondaryButton: 'Sign in',
-    note: 'When request volume grows, the system stays calm, readable, and easy to act on.',
-    summaryTitle: "Today's snapshot",
-    devicesLabel: 'Devices in active work',
-    stats: [
-      { label: 'Waiting for operations' },
-      { label: 'Active requests' },
-      { label: 'Canceled requests' },
-      { label: 'In transit now' },
-    ],
-    promiseKicker: 'Why it exists',
-    promiseTitle: 'A friendlier workflow for the two people carrying the operation every day',
-    promises: [
-      {
-        title: 'Built for trust',
-        text: 'Customer service and operations share one source of truth instead of chasing updates across calls and scattered notes.',
-      },
-      {
-        title: 'Built for heavy volume',
-        text: 'Large daily batches stay organized through clear statuses and filtered task lists that surface what needs action now.',
-      },
-      {
-        title: 'Built for speed',
-        text: 'The intake form stays simple, the next step is always obvious, and notifications return the important update instantly.',
-      },
-    ],
-    workflowKicker: 'Smooth flow',
-    workflowTitle: 'Everything is arranged to make huge order loads easier to manage',
-    steps: [
-      {
-        title: '1. Fast intake from customer service',
-        text: 'Enter request number, customer mobile, AC details, map link, and notes in one quick action without extra screens.',
-      },
-      {
-        title: '2. Clear movement for operations',
-        text: 'Move requests across pending, scheduled, and in transit from one focused workflow designed for quick decisions.',
-      },
-      {
-        title: '3. Instant visibility back to customer service',
-        text: 'The moment the team is on the way or the work is done, customer service is updated without refreshing or manual follow-up.',
-      },
-    ],
-    featuresKicker: 'Operational value',
-    featuresTitle: 'Why this version works better for the new mission',
-    features: [
-      {
-        title: 'Role focus',
-        text: 'Only two roles are present, so every screen stays relevant and uncluttered.',
-      },
-      {
-        title: 'High-volume clarity',
-        text: 'The workspace keeps new and active requests separate for faster scanning under pressure.',
-      },
-      {
-        title: 'Direct communication',
-        text: 'The workflow is intentionally private between customer service and the operations manager.',
-      },
-      {
-        title: 'Status certainty',
-        text: 'Each request follows one controlled path, reducing confusion when many requests arrive together.',
-      },
-    ],
-  },
   ar: {
-    heroKicker: 'مصمم من أجل رحلة الفريق',
-    heroTitle: 'هذا البرنامج صُمم بكل عناية لتسهيل رحلة خدمة العملاء ومدير العمليات.',
-    heroSubtitle:
-      'فكرته أن يخفف الضغط عنهما: إدخال أسرع للطلبات، متابعة أوضح للحالات، ومسار واحد مرتب من لحظة ورود طلب الزامل حتى اكتماله.',
-    primaryButton: 'تسجيل الدخول',
-    secondaryButton: 'تسجيل الدخول',
-    note: 'حتى عندما تتضاعف الطلبات، يبقى النظام هادئاً وواضحاً وسهلاً في اتخاذ القرار.',
-    summaryTitle: 'ملخص سريع',
-    devicesLabel: 'إجمالي الأجهزة في العمل',
-    stats: [
-      { label: 'بانتظار العمليات' },
-      { label: 'طلبات نشطة' },
-      { label: 'طلبات ملغاة' },
-      { label: 'في الطريق الآن' },
-    ],
-    promiseKicker: 'لماذا هذا النظام؟',
-    promiseTitle: 'تجربة أهدأ وأوضح للطرفين اللذين يحملان عبء التشغيل يومياً',
-    promises: [
-      {
-        title: 'مبني على الوضوح',
-        text: 'خدمة العملاء ومدير العمليات يشاهدان نفس الحقيقة من شاشة واحدة بدلاً من التشتت بين المكالمات والملاحظات المتفرقة.',
-      },
-      {
-        title: 'مبني للضغط العالي',
-        text: 'حتى مع تدفق الطلبات الكبير يومياً، تبقى الحالات منظمة وقوائم العمل واضحة وما يحتاج تدخلاً يظهر بسرعة.',
-      },
-      {
-        title: 'مبني للسرعة',
-        text: 'نموذج الإدخال بسيط، والخطوة التالية واضحة دائماً، والتنبيه المهم يعود فوراً إلى خدمة العملاء.',
-      },
-    ],
-    workflowKicker: 'سلاسة التشغيل',
-    workflowTitle: 'كل شيء مرتب لتسهيل إدارة الطلبات الهائلة',
-    steps: [
-      {
-        title: '1. إدخال سريع من خدمة العملاء',
-        text: 'رقم الطلب، جوال العميل، تفاصيل المكيفات، رابط الموقع، والملاحظات كلها من خطوة واحدة بلا تعقيد.',
-      },
-      {
-        title: '2. تحريك واضح من مدير العمليات',
-        text: 'ينقل الطلب بين بانتظار العمليات، تمت الجدولة، وفي الطريق من مسار واحد واضح ومصمم للقرار السريع.',
-      },
-      {
-        title: '3. عودة فورية للمعلومة إلى خدمة العملاء',
-        text: 'عند تحرك الفريق أو انتهاء العمل تصل المعلومة مباشرة من غير تحديث يدوي أو متابعة مشتتة.',
-      },
-    ],
-    featuresKicker: 'قيمة تشغيلية',
-    featuresTitle: 'لماذا هذه النسخة أنسب لمهمة الموقع الجديدة',
-    features: [
-      {
-        title: 'تركيز كامل على الدورين',
-        text: 'وجود دورين فقط يجعل كل شاشة مرتبطة بالعمل الفعلي من دون عناصر زائدة.',
-      },
-      {
-        title: 'وضوح تحت الضغط',
-        text: 'فصل الطلبات الجديدة والنشطة داخل قوائم واضحة يسهّل القراءة عند ارتفاع العدد.',
-      },
-      {
-        title: 'تواصل مباشر',
-        text: 'سير العمل مقصود أن يكون خاصاً ومباشراً بين خدمة العملاء ومدير العمليات.',
-      },
-      {
-        title: 'يقين في الحالة',
-        text: 'كل طلب يسير في مسار واحد مضبوط، مما يقلل الارتباك عندما تتزاحم الطلبات.',
-      },
-    ],
+    adminCta: 'إدارة الصفحة الرئيسية',
+    heroVisualTitle: 'خدماتنا الأساسية',
+    featuredWork: 'أعمال مختارة',
+    contactPhone: 'رقم الجوال',
+    contactWhatsapp: 'واتساب',
+    contactCoverage: 'نطاق الخدمة',
+    contactHours: 'ساعات العمل',
+    footerNote: 'نرتب لك الزيارة سريعًا ونخدم جميع أنواع المكيفات باحترافية.',
+  },
+  en: {
+    adminCta: 'Edit homepage',
+    heroVisualTitle: 'Core services',
+    featuredWork: 'Featured work',
+    contactPhone: 'Phone',
+    contactWhatsapp: 'WhatsApp',
+    contactCoverage: 'Coverage',
+    contactHours: 'Working hours',
+    footerNote: 'Fast response across Saudi Arabia for installation, maintenance, and AC relocation.',
   },
 };
 
+const isExternalUrl = (url = '') => /^(https?:|tel:|mailto:)/i.test(url);
+const isHashUrl = (url = '') => String(url || '').startsWith('#');
+
+function ActionButton({ className, label, url }) {
+  if (isHashUrl(url) || isExternalUrl(url)) {
+    return (
+      <a
+        className={className}
+        href={url}
+        rel={isExternalUrl(url) && !String(url).startsWith('tel:') ? 'noreferrer' : undefined}
+        target={String(url).startsWith('http') ? '_blank' : undefined}
+      >
+        {label}
+      </a>
+    );
+  }
+
+  return (
+    <Link className={className} to={url || '/'}>
+      {label}
+    </Link>
+  );
+}
+
+function resolveGalleryImage(imageUrl, index) {
+  return imageUrl || galleryFallbackImages[index] || galleryFallbackImages[0];
+}
+
 export default function Home() {
   const { lang } = useLang();
-  const [homeSettings, setHomeSettings] = useState(null);
-  const [summary, setSummary] = useState(null);
+  const { user, isAdmin } = useAuth();
+  const ui = copy[lang] || copy.ar;
+  const [homeSettings, setHomeSettings] = useState(() => createDefaultHomeSettings());
+  const displaySettings = useMemo(() => localizeHomeSettings(homeSettings, lang), [homeSettings, lang]);
 
   useEffect(() => {
+    let mounted = true;
+
     const load = async () => {
       try {
-        const [homeResponse, summaryResponse] = await Promise.all([homeService.get(), operationsService.getSummary()]);
-        setHomeSettings(homeResponse.data?.homeSettings || null);
-        setSummary(summaryResponse.data?.summary || null);
+        const response = await homeService.get();
+        if (mounted) {
+          setHomeSettings(normalizeHomeSettings(response.data?.homeSettings));
+        }
       } catch {
-        setHomeSettings(null);
-        setSummary(null);
+        if (mounted) {
+          setHomeSettings(createDefaultHomeSettings());
+        }
       }
     };
 
     load();
-    window.addEventListener('operations-updated', load);
-    return () => window.removeEventListener('operations-updated', load);
+    window.addEventListener('home-settings-updated', load);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener('home-settings-updated', load);
+    };
   }, []);
 
-  const t = copy[lang] || copy.en;
-  const stats = lang === 'ar' ? t.stats : homeSettings?.stats?.length ? homeSettings.stats : t.stats;
+  const whatsappUrl = useMemo(
+    () => buildWhatsAppUrl(displaySettings.whatsappNumber || displaySettings.phone),
+    [displaySettings.phone, displaySettings.whatsappNumber]
+  );
+
+  const contactCards = [
+    { label: ui.contactPhone, value: displaySettings.phone, url: `tel:${displaySettings.phone}` },
+    { label: ui.contactWhatsapp, value: displaySettings.whatsappNumber || displaySettings.phone, url: whatsappUrl },
+    { label: ui.contactCoverage, value: displaySettings.coverageText, url: null },
+    { label: ui.contactHours, value: displaySettings.hoursText, url: null },
+  ];
 
   return (
-    <section className="home-page" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">{lang === 'ar' ? t.heroKicker : homeSettings?.heroKicker || t.heroKicker}</p>
-          <h1>{lang === 'ar' ? t.heroTitle : homeSettings?.heroTitle || t.heroTitle}</h1>
-          <p className="hero-text">{lang === 'ar' ? t.heroSubtitle : homeSettings?.heroSubtitle || t.heroSubtitle}</p>
+    <section className="home-page marketing-home" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      <div className="home-hero-shell">
+        <div className="home-hero-copy">
+          {isAdmin ? (
+            <div className="home-admin-bar">
+              <span>{user?.email}</span>
+              <Link className="btn-light" to="/admin/homepage">
+                {ui.adminCta}
+              </Link>
+            </div>
+          ) : null}
+
+          <p className="eyebrow">{displaySettings.heroKicker}</p>
+          <h1>{displaySettings.heroTitle}</h1>
+          <p className="hero-text">{displaySettings.heroSubtitle}</p>
+
+          <div className="home-highlight-row">
+            {displaySettings.heroHighlights.map((item) => (
+              <span className="home-highlight-pill" key={item}>
+                {item}
+              </span>
+            ))}
+          </div>
+
           <div className="hero-actions">
-            <Link className="btn-primary" to="/login">
-              {lang === 'ar' ? t.primaryButton : homeSettings?.primaryButtonText || t.primaryButton}
-            </Link>
-            <Link className="btn-light" to="/login">
-              {lang === 'ar' ? t.secondaryButton : homeSettings?.secondaryButtonText || t.secondaryButton}
-            </Link>
+            <ActionButton className="btn-primary" label={displaySettings.primaryButtonText} url={displaySettings.primaryButtonUrl} />
+            <ActionButton
+              className="btn-light"
+              label={displaySettings.secondaryButtonText}
+              url={displaySettings.secondaryButtonUrl || whatsappUrl}
+            />
           </div>
-          <div className="hero-note">{lang === 'ar' ? t.note : homeSettings?.heroNote || t.note}</div>
+
+          <div className="hero-note">{displaySettings.heroNote}</div>
         </div>
 
-        <div className="hero-card">
-          <h3>{t.summaryTitle}</h3>
-          <div className="mini-stats">
-            <article>
-              <strong>{summary?.pendingOrders ?? 0}</strong>
-              <span>{t.stats[0].label}</span>
-            </article>
-            <article>
-              <strong>{summary?.activeOrders ?? 0}</strong>
-              <span>{t.stats[1].label}</span>
-            </article>
-            <article>
-              <strong>{summary?.canceledOrders ?? 0}</strong>
-              <span>{t.stats[2].label}</span>
-            </article>
-            <article>
-              <strong>{summary?.inTransitOrders ?? 0}</strong>
-              <span>{t.stats[3].label}</span>
-            </article>
-            <article>
-              <strong>{summary?.totalDevices ?? 0}</strong>
-              <span>{t.devicesLabel}</span>
-            </article>
+        <div className="home-hero-visual">
+          <div className="home-hero-image-card">
+            <img alt={displaySettings.heroTitle} src={heroFallbackImage} />
+          </div>
+
+          <div className="home-hero-side-panel">
+            <div className="panel">
+              <div className="panel-header">
+                <p className="eyebrow">{ui.heroVisualTitle}</p>
+                <h2>{displaySettings.servicesTitle}</h2>
+              </div>
+              <div className="home-service-mini-list">
+                {displaySettings.services.slice(0, 4).map((item) => (
+                  <span className="home-service-mini-pill" key={item}>
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="home-stats-grid">
+              {displaySettings.stats.map((item) => (
+                <article className="stat-card" key={`${item.value}-${item.label}`}>
+                  <strong>{item.value}</strong>
+                  <span>{item.label}</span>
+                </article>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="stats-grid">
-        {stats.map((item) => (
-          <article className="stat-card" key={`${item.label}-${item.value || ''}`}>
-            <strong>{item.value}</strong>
-            <span>{item.label}</span>
-          </article>
-        ))}
+      <div className="panel home-about-panel">
+        <div className="section-heading">
+          <p className="eyebrow">{displaySettings.aboutTitle}</p>
+          <h2>{displaySettings.aboutTitle}</h2>
+        </div>
+        <p className="home-section-body">{displaySettings.aboutText}</p>
       </div>
 
       <div className="feature-section">
         <div className="section-heading">
-          <p className="eyebrow">{t.promiseKicker}</p>
-          <h2>{t.promiseTitle}</h2>
+          <p className="eyebrow">{displaySettings.servicesTitle}</p>
+          <h2>{displaySettings.servicesTitle}</h2>
         </div>
-        <div className="home-value-grid">
-          {t.promises.map((item) => (
-            <article className="workflow-card home-value-card" key={item.title}>
-              <h3>{item.title}</h3>
-              <p>{item.text}</p>
+        <div className="home-service-grid">
+          {displaySettings.services.map((item) => (
+            <article className="home-service-card" key={item}>
+              <strong>{item}</strong>
             </article>
           ))}
         </div>
@@ -240,14 +196,14 @@ export default function Home() {
 
       <div className="feature-section">
         <div className="section-heading">
-          <p className="eyebrow">{t.workflowKicker}</p>
-          <h2>{t.workflowTitle}</h2>
+          <p className="eyebrow">{displaySettings.featuresTitle}</p>
+          <h2>{displaySettings.featuresTitle}</h2>
         </div>
-        <div className="workflow-grid">
-          {t.steps.map((step) => (
-            <article className="workflow-card" key={step.title}>
-              <h3>{step.title}</h3>
-              <p>{step.text}</p>
+        <div className="home-why-grid">
+          {displaySettings.features.map((item) => (
+            <article className="workflow-card home-why-card" key={item}>
+              <h3>{item}</h3>
+              <p>{ui.footerNote}</p>
             </article>
           ))}
         </div>
@@ -255,16 +211,62 @@ export default function Home() {
 
       <div className="feature-section">
         <div className="section-heading">
-          <p className="eyebrow">{t.featuresKicker}</p>
-          <h2>{t.featuresTitle}</h2>
+          <p className="eyebrow">{ui.featuredWork}</p>
+          <h2>{displaySettings.galleryTitle}</h2>
         </div>
-        <div className="home-feature-grid">
-          {t.features.map((item) => (
-            <article className="stat-card home-feature-card" key={item.title}>
-              <strong>{item.title}</strong>
-              <span>{item.text}</span>
+        <div className="home-gallery-grid">
+          {displaySettings.galleryImages.map((item, index) => (
+            <article className="home-gallery-card" key={`${item.title}-${index}`}>
+              <img alt={item.title || displaySettings.galleryTitle} src={resolveGalleryImage(item.imageUrl, index)} />
+              <div className="home-gallery-copy">
+                <strong>{item.title}</strong>
+                <p>{item.caption}</p>
+              </div>
             </article>
           ))}
+        </div>
+      </div>
+
+      <div className="feature-section">
+        <div className="section-heading">
+          <p className="eyebrow">{displaySettings.testimonialsTitle}</p>
+          <h2>{displaySettings.testimonialsTitle}</h2>
+        </div>
+        <div className="home-testimonials-grid">
+          {displaySettings.testimonials.map((item) => (
+            <article className="home-testimonial-card" key={item}>
+              <p>"{item}"</p>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="home-contact-section" id="contact">
+        <div className="panel home-contact-panel">
+          <div className="section-heading">
+            <p className="eyebrow">{displaySettings.contactTitle}</p>
+            <h2>{displaySettings.contactTitle}</h2>
+          </div>
+
+          <div className="home-contact-grid">
+            {contactCards.map((item) => (
+              <article className="home-contact-card" key={item.label}>
+                <span>{item.label}</span>
+                {item.url ? (
+                  <a href={item.url} rel={String(item.url).startsWith('http') ? 'noreferrer' : undefined} target={String(item.url).startsWith('http') ? '_blank' : undefined}>
+                    {item.value}
+                  </a>
+                ) : (
+                  <strong>{item.value}</strong>
+                )}
+              </article>
+            ))}
+          </div>
+
+          <div className="hero-actions">
+            <ActionButton className="btn-primary" label={homeSettings.primaryButtonText} url={`tel:${homeSettings.phone}`} />
+            <ActionButton className="btn-light" label={homeSettings.secondaryButtonText} url={whatsappUrl} />
+          </div>
         </div>
       </div>
     </section>

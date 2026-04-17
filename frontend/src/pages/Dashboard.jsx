@@ -9,33 +9,38 @@ import {
   buildWhatsAppUrl,
   canUploadExcelSource,
   formatSaudiPhoneDisplay,
-  normalizeSaudiPhoneNumber,
   operationsService,
 } from '../services/api';
 import {
   buildDisplayStatusBuckets,
   buildCallUrl,
-  exportOrdersReport,
   formatDateTimeLabel,
   getOperationalDate,
+  getOrderAreaName,
   getOrderDeviceCount,
   getOrderDisplayStatus,
+  getOrderEmail,
+  getOrderExceedSLA,
+  getOrderChatLog,
+  getOrderCourier,
+  getOrderCourierNum,
+  getOrderInstallationDate,
   getOrderPrimaryReference,
   getOrderReferenceText,
   getOrderSearchMetaLines,
+  getOrderPickupDate,
+  getOrderTechId,
+  getOrderTechShortName,
+  getOrderTaskDate,
+  getOrderWithinSLA,
   orderMatchesDisplayStatus,
+  orderMatchesDailyTaskDate,
   getOrdersForView,
   nextStatusFor,
   todayString,
 } from '../utils/internalOrders';
-
-const acTypeOptions = [
-  { value: 'split', ar: 'سبليت', en: 'Split' },
-  { value: 'window', ar: 'شباك', en: 'Window' },
-  { value: 'duct', ar: 'دكت', en: 'Duct' },
-  { value: 'cassette', ar: 'كاسيت', en: 'Cassette' },
-  { value: 'concealed', ar: 'مخفي', en: 'Concealed' },
-];
+import { canUserPrintEndOfDayReports } from '../utils/workspaceAccess';
+import { getWorkspaceBasePath } from '../utils/workspaceRoles';
 
 const priorityOptions = [
   { value: 'normal', ar: 'عادية', en: 'Normal' },
@@ -66,34 +71,40 @@ const zamilCoverageByRegion = [
   { key: 'central', ar: 'المنطقة الوسطى', en: 'Central region', cities: ['الرياض', 'القصيم'] },
 ];
 
-const regionOptions = zamilCoverageByRegion.map((region) => ({
-  key: region.key,
-  ar: region.ar,
-  en: region.en,
-}));
-
-const fastDeliveryCities = ['الدمام', 'جدة', 'الرياض', 'الخبر', 'الظهران', 'جازان', 'رأس تنورة'];
+const installationStatusOptions = [
+  'Completed',
+  'Partially Completed',
+  'Scheduled',
+  'Schedule Confirmed',
+  'Assigned',
+  'Ready To Pickup',
+  'Pick Up Requested',
+  'Shipped',
+  'Delivered',
+  'Rescheduled',
+  'Waiting Customer Confirmation',
+  'Return Request',
+  'Canceled',
+];
 
 const createEmptyForm = (preferredDate = todayString()) => ({
-  requestNumber: '',
-  customerName: '',
+  soId: '',
+  woId: '',
+  customer: '',
+  email: '',
   phone: '',
-  secondaryPhone: '',
-  whatsappPhone: '',
-  region: 'central',
-  city: 'الرياض',
-  district: '',
-  addressText: '',
-  landmark: '',
-  mapLink: '',
-  sourceChannel: 'الزامل',
-  serviceSummary: '',
-  priority: 'normal',
-  deliveryType: 'none',
-  preferredDate,
-  preferredTime: '',
-  notes: '',
-  acDetails: [{ id: `ac-${Date.now()}`, type: 'split', quantity: 1 }],
+  installationDate: preferredDate,
+  pickupDate: '',
+  devices: '',
+  bundledItems: '1',
+  status: 'Scheduled',
+  shippingCity: '',
+  shippingAddress: '',
+  withinSLA: '',
+  exceedSLA: '',
+  courier: '',
+  courierNum: '',
+  chatLog: '',
 });
 
 const copy = {
@@ -130,9 +141,16 @@ const copy = {
     customerServicePanel: 'Customer service intake',
     operationsPanel: 'Operations coordination',
     operationsHint: 'Review incoming requests, update statuses, and follow up from the filtered task lists.',
-    formHint: 'Capture the request in full detail so the operations manager can coordinate clearly from the first touch.',
+    formHint: 'Enter the request manually using the same columns as the Excel source so manual and imported rows follow one structure.',
     excelImportTitle: 'Excel intake',
+<<<<<<< Updated upstream
     excelImportHint: 'Upload any Excel file from mobile or browser, ignore completed rows, keep each SO ID, and prepare valid orders for direct import.',
+=======
+    excelImportHint: 'Upload an Excel file, sync rows by SO ID, update only changed orders, and archive completed requests automatically.',
+    excelImportUpsertNote: 'Existing requests are updated automatically, new requests are added, and duplicate rows inside the same file are merged intelligently.',
+    excelOnlyTitle: 'Manual intake follows the Excel schema',
+    excelOnlyNotice: 'Use the same Zamil-style columns here so manual requests behave like imported Excel rows.',
+>>>>>>> Stashed changes
     excelImportFile: 'Source file: latest uploaded Excel file',
     operationsDate: 'Operations date',
     saveOperationsDate: 'Update date',
@@ -176,6 +194,8 @@ const copy = {
     uploadingExcelSource: 'Uploading...',
     importExcel: 'Import Excel file',
     importingExcel: 'Importing...',
+    importingExcelProgress: ({ processed, total, currentChunk, totalChunks }) =>
+      `Importing in batches: ${processed}/${total} rows, batch ${currentChunk}/${totalChunks}.`,
     creating: 'Creating...',
     exportCsr: 'Export GM report',
     exportOps: 'Export team report',
@@ -200,6 +220,8 @@ const copy = {
     reschedulePrompt: 'Write the reschedule reason for operations',
     cancelPrompt: 'Write the cancellation reason',
     contactCustomer: 'Called customer',
+    assignTechnician: 'Assign technician',
+    assignTechnicianPrompt: 'Assigned technician',
     contactPrompt: 'Write the call note for the customer',
     coordination: 'Coordination',
     coordinationNote: 'Coordination note',
@@ -209,6 +231,7 @@ const copy = {
     customerAction: 'Customer service action',
     noAction: 'No special action',
     roleBadges: {
+      admin: 'Admin',
       customer_service: 'Customer service',
       operations_manager: 'Operations manager',
     },
@@ -226,7 +249,12 @@ const copy = {
     regionTaskCount: 'Requests in this region',
     deviceCount: 'Devices',
     devicesTitle: 'Devices in this request',
+<<<<<<< Updated upstream
     successExcelUpload: 'Excel file parsed and prepared for import successfully.',
+=======
+    successExcelUpload: (valid, invalid, deduplicated) =>
+      `Excel file parsed successfully. ${valid} valid row${valid === 1 ? '' : 's'} ready${invalid ? `, ${invalid} row${invalid === 1 ? '' : 's'} need review` : ''}${deduplicated ? `, ${deduplicated} duplicate row${deduplicated === 1 ? '' : 's'} merged automatically` : ''}.`,
+>>>>>>> Stashed changes
     successCreate: 'Request created successfully.',
     successImport: (imported, skipped) =>
       `Imported ${imported} request${imported === 1 ? '' : 's'} from Excel${skipped ? ` and skipped ${skipped} duplicate or invalid row${skipped === 1 ? '' : 's'}` : ''}.`,
@@ -277,10 +305,20 @@ const copy = {
     customerServicePanel: 'إدخال خدمة العملاء',
     operationsPanel: 'تنسيق مدير العمليات',
     operationsHint: 'راجع الطلبات الواردة وحدّث حالاتها وتابع حسابات المناطق من قوائم المهام المفلترة.',
+<<<<<<< Updated upstream
     formHint: 'اكتب الطلب كاملاً وبوضوح حتى يستطيع مدير العمليات فهم الحالة وتنسيق الموعد دون أي نقص.',
     excelImportTitle: 'استيراد Excel',
     excelImportHint: 'ارفع أي ملف Excel من الجوال أو المتصفح، وسيتم تجاهل الصفوف المكتملة، والحفاظ على SO ID، وتجهيز الطلبات الصالحة للاستيراد المباشر.',
     excelImportFile: 'ملف المصدر: آخر ملف Excel تم رفعه',
+=======
+    formHint: 'أدخل الطلب يدويًا بنفس أعمدة ملف الإكسل حتى يتعامل النظام معه بنفس منطق الصفوف المستوردة.',
+    excelImportTitle: 'استيراد الإكسل',
+    excelImportHint: 'ارفع ملف الإكسل ليتم ربط الصفوف حسب SO ID، وتحديث الطلبات المتغيرة فقط، وأرشفة الطلبات المكتملة تلقائيًا.',
+    excelImportUpsertNote: 'الطلبات الموجودة يتم تحديثها تلقائيًا، والطلبات الجديدة تُضاف، والصفوف المكررة داخل نفس الملف يتم دمجها بذكاء.',
+    excelOnlyTitle: 'الإدخال اليدوي مطابق لجدول الإكسل',
+    excelOnlyNotice: 'استخدم نفس أعمدة ملف الزامل هنا حتى يتعامل النظام مع الطلب اليدوي مثل صفوف الإكسل المستوردة.',
+    excelImportFile: 'ملف المصدر: آخر ملف إكسل تم رفعه',
+>>>>>>> Stashed changes
     operationsDate: 'تاريخ التشغيل',
     saveOperationsDate: 'تحديث التاريخ',
     moveToNextDate: 'تصدير اليوم والانتقال لليوم التالي',
@@ -319,15 +357,17 @@ const copy = {
     addAc: 'إضافة نوع مكيف آخر',
     remove: 'حذف',
     create: 'إنشاء الطلب',
-    uploadExcelSource: 'رفع ملف Excel جديد',
+    uploadExcelSource: 'رفع ملف إكسل جديد',
     uploadingExcelSource: 'جارٍ الرفع...',
-    importExcel: 'استيراد ملف Excel',
+    importExcel: 'استيراد ملف إكسل',
     importingExcel: 'جارٍ الاستيراد...',
+    importingExcelProgress: ({ processed, total, currentChunk, totalChunks }) =>
+      `جارٍ الاستيراد على دفعات: ${processed}/${total} صف، الدفعة ${currentChunk}/${totalChunks}.`,
     creating: 'جارٍ الإنشاء...',
     exportCsr: 'تصدير تقرير للمدير العام',
     exportOps: 'تصدير تقرير تنسيق الفريق',
     exportPdf: 'ملف PDF',
-    exportExcel: 'ملف Excel',
+    exportExcel: 'ملف إكسل',
     emptyColumn: 'لا توجد طلبات هنا حالياً.',
     emptyDetail: 'لا توجد مهام في هذا التصنيف حالياً.',
     preferredSlot: 'الموعد المفضل',
@@ -347,6 +387,8 @@ const copy = {
     reschedulePrompt: 'اكتب سبب إعادة الجدولة ليطلع عليه مدير العمليات',
     cancelPrompt: 'اكتب سبب الإلغاء',
     contactCustomer: 'تم التواصل مع العميل',
+    assignTechnician: 'إسناد لفني',
+    assignTechnicianPrompt: 'الفني المسند',
     contactPrompt: 'اكتب ملاحظة الاتصال مع العميل',
     coordination: 'تنسيق الموعد',
     coordinationNote: 'ملاحظة التنسيق',
@@ -356,6 +398,7 @@ const copy = {
     customerAction: 'إجراء خدمة العملاء',
     noAction: 'لا يوجد إجراء خاص',
     roleBadges: {
+      admin: 'الإدارة',
       customer_service: 'خدمة العملاء',
       operations_manager: 'مدير العمليات',
     },
@@ -373,10 +416,18 @@ const copy = {
     regionTaskCount: 'طلبات هذه المنطقة',
     deviceCount: 'عدد الأجهزة',
     devicesTitle: 'أجهزة هذا الطلب',
+<<<<<<< Updated upstream
     successExcelUpload: 'تمت قراءة ملف Excel وتجهيزه للاستيراد بنجاح.',
     successCreate: 'تم إنشاء الطلب بنجاح.',
     successImport: (imported, skipped) =>
       `تم استيراد ${imported} طلب${imported === 1 ? '' : 'ات'} من ملف Excel${skipped ? ` مع تجاوز ${skipped} صف${skipped === 1 ? '' : 'وف'} مكرر أو غير صالح` : ''}.`,
+=======
+    successExcelUpload: (valid, invalid, deduplicated) =>
+      `تمت قراءة ملف الإكسل بنجاح. يوجد ${valid} صف صالح للاستيراد${invalid ? ` و${invalid} صف يحتاج مراجعة` : ''}${deduplicated ? ` مع دمج ${deduplicated} صف مكرر تلقائيًا` : ''}.`,
+    successCreate: 'تم إنشاء الطلب بنجاح.',
+    successImport: ({ imported, created, updated, archived, restored, unchanged, skipped }) =>
+      `اكتملت مزامنة الإكسل. تمت معالجة ${imported} صف، إنشاء ${created}، تحديث ${updated}، أرشفة ${archived}، استعادة ${restored}${unchanged ? `، بدون تغيير ${unchanged}` : ''}${skipped ? `، وتجاوز ${skipped}` : ''}.`,
+>>>>>>> Stashed changes
     successStatus: 'تم تحديث الطلب بنجاح.',
     successSchedule: 'تم حفظ الموعد بنجاح.',
     successReport: 'تم تصدير التقرير بنجاح.',
@@ -403,12 +454,56 @@ const deliveryLabel = (value, lang) => {
   return match ? (lang === 'ar' ? match.ar : match.en) : value;
 };
 
+<<<<<<< Updated upstream
 const getRegionConfig = (regionKey) => zamilCoverageByRegion.find((region) => region.key === regionKey) || null;
+=======
+const formatExcelIssueLine = (issue, lang) => {
+  const rowLabel = lang === 'ar' ? 'الصف' : 'Row';
+  const fieldLabel = lang === 'ar' ? 'الحقل' : 'Field';
+  const parts = [`${rowLabel} ${issue?.rowNumber || '—'}`];
+
+  if (issue?.sheetName) {
+    parts.push(issue.sheetName);
+  }
+
+  if (issue?.field) {
+    parts.push(`${fieldLabel}: ${issue.field}`);
+  }
+
+  if (issue?.reason) {
+    parts.push(issue.reason);
+  }
+
+  return parts.join(' - ');
+};
+
+const buildExcelIssuesToast = (issues = [], lang = 'ar', limit = 3) => {
+  const visible = (Array.isArray(issues) ? issues : []).slice(0, limit).map((issue) => formatExcelIssueLine(issue, lang));
+  if (!visible.length) {
+    return '';
+  }
+
+  const remaining = Math.max(0, (issues?.length || 0) - visible.length);
+  if (!remaining) {
+    return visible.join('\n');
+  }
+
+  return `${visible.join('\n')}\n${lang === 'ar' ? `و${remaining} صفوف أخرى بها مشاكل` : `and ${remaining} more rows with issues`}`;
+};
+
+const buildExcelImportToastPayload = (data = {}) => ({
+  imported: Number(data?.importedCount) || 0,
+  created: Number(data?.createdCount) || 0,
+  updated: Number(data?.updatedCount) || 0,
+  archived: Number(data?.archivedCount) || 0,
+  restored: Number(data?.restoredCount) || 0,
+  unchanged: Number(data?.unchangedCount) || 0,
+  skipped: Number(data?.skippedCount) || 0,
+});
+>>>>>>> Stashed changes
 
 const getRegionByCity = (city) =>
   zamilCoverageByRegion.find((region) => region.cities.includes(String(city || '').trim())) || null;
-
-const isFastDeliveryCity = (city) => fastDeliveryCities.includes(String(city || '').trim());
 
 const getOrderRegionKey = (order) => getRegionByCity(order.city)?.key || 'other';
 
@@ -447,15 +542,66 @@ const customerActionLabel = (value, lang) =>
   )[lang];
 
 const buildDashboardSummary = (orders = []) => ({
-  totalOrders: orders.filter((order) => !['canceled', 'completed'].includes(order.status)).length,
+  totalOrders: orders.filter((order) => order.status !== 'canceled').length,
   pendingOrders: orders.filter((order) => order.status === 'pending').length,
   activeOrders: orders.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length,
-  completedOrders: 0,
+  completedOrders: orders.filter((order) => order.status === 'completed').length,
   inTransitOrders: orders.filter((order) => order.status === 'in_transit').length,
   canceledOrders: orders.filter((order) => order.status === 'canceled').length,
 });
 
-const getWorkspaceBasePath = (role) => (role === 'operations_manager' ? '/operations-manager' : '/customer-service');
+const shiftDateString = (value, amount) => {
+  const source = value || todayString();
+  const date = new Date(`${source}T12:00:00`);
+  date.setDate(date.getDate() + amount);
+  return date.toISOString().slice(0, 10);
+};
+
+const compareCities = (left, right) => `${left || ''}`.localeCompare(`${right || ''}`, 'ar');
+
+const buildCityInsights = (orders = [], todayDate, tomorrowDate) => {
+  const grouped = new Map();
+
+  orders.forEach((order) => {
+    const city = String(order.city || '').trim() || 'غير محدد';
+    const current = grouped.get(city) || {
+      city,
+      totalOrders: 0,
+      activeOrders: 0,
+      todayOrders: 0,
+      tomorrowOrders: 0,
+      totalDevices: 0,
+    };
+
+    current.totalOrders += 1;
+    current.totalDevices += getOrderDeviceCount(order);
+    if (!['completed', 'canceled'].includes(order.status)) {
+      current.activeOrders += 1;
+    }
+    if (orderMatchesDailyTaskDate(order, todayDate)) {
+      current.todayOrders += 1;
+    }
+    if (orderMatchesDailyTaskDate(order, tomorrowDate)) {
+      current.tomorrowOrders += 1;
+    }
+
+    grouped.set(city, current);
+  });
+
+  return [...grouped.values()].sort((left, right) => {
+    const totalDiff = right.totalOrders - left.totalOrders;
+    if (totalDiff !== 0) {
+      return totalDiff;
+    }
+
+    const deviceDiff = right.totalDevices - left.totalDevices;
+    if (deviceDiff !== 0) {
+      return deviceDiff;
+    }
+
+    return compareCities(left.city, right.city);
+  });
+};
 
 export default function Dashboard() {
   const { viewKey } = useParams();
@@ -463,16 +609,69 @@ export default function Dashboard() {
   const { lang, isRTL } = useLang();
   const t = copy[lang] || copy.en;
   const workspaceBasePath = getWorkspaceBasePath(user?.role);
+  const canPrintReports = canUserPrintEndOfDayReports(user);
+  const analyticsCopy =
+    lang === 'ar'
+      ? {
+          spotlight: 'المشهد التشغيلي',
+          spotlightText: 'ملخص تحليلي سريع يوضح ضغط الطلبات وعدد الأجهزة ومهام اليوم والغد وترتيب المدن قبل النزول للتفاصيل.',
+          today: 'مهام اليوم',
+          tomorrow: 'مهام الغد',
+          cityLoad: 'ترتيب المدن',
+          activeOrders: 'طلبات نشطة',
+          totalDevices: 'إجمالي الأجهزة',
+          dueToday: 'مرتبطة بتاريخ اليوم',
+          dueTomorrow: 'مرتبطة بتاريخ الغد',
+          urgent: 'عاجلة أو بها توصيل',
+          archive: 'مكتمل أو ملغي',
+          openTasks: 'المتبقي لليوم',
+          endOfDay: 'تقرير نهاية اليوم',
+          endOfDayHint: 'نقطة واحدة للوصول إلى تقرير اليوم وإغلاقه بشكل منظم.',
+          printOwner: 'الطباعة متاحة لهذا الحساب',
+          restricted: 'طباعة تقارير اليوم محصورة بالحساب المعتمد.',
+          devices: 'الأجهزة',
+          active: 'نشطة',
+          noToday: 'لا توجد مهام مرتبطة بتاريخ اليوم الحالي.',
+          noTomorrow: 'لا توجد مهام مرتبطة بتاريخ الغد.',
+          openBoard: 'فتح لوحة المهام',
+        }
+      : {
+          spotlight: 'Operational snapshot',
+          spotlightText: 'A concise analytical view of order pressure, devices, today and tomorrow tasks, and city load.',
+          today: 'Today tasks',
+          tomorrow: 'Tomorrow tasks',
+          cityLoad: 'City ranking',
+          activeOrders: 'Active orders',
+          totalDevices: 'Total devices',
+          dueToday: 'Linked to today',
+          dueTomorrow: 'Linked to tomorrow',
+          urgent: 'Urgent or delivery',
+          archive: 'Completed or canceled',
+          openTasks: 'Still open today',
+          endOfDay: 'End-of-day report',
+          endOfDayHint: 'One clear route for day reporting and orderly closure.',
+          printOwner: 'Printing is enabled for this account',
+          restricted: 'Daily report printing is limited to the approved account.',
+          devices: 'Devices',
+          active: 'Active',
+          noToday: 'No tasks are linked to the active day.',
+          noTomorrow: 'No tasks are linked to tomorrow yet.',
+          openBoard: 'Open tasks board',
+        };
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const saving = false;
   const [uploadingExcel, setUploadingExcel] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
-  const [exportingFormat, setExportingFormat] = useState('');
   const [updatingId, setUpdatingId] = useState('');
   const [schedulingId, setSchedulingId] = useState('');
   const [excelSourceFileName, setExcelSourceFileName] = useState('data.xlsx');
   const [excelPreview, setExcelPreview] = useState(null);
+<<<<<<< Updated upstream
+=======
+  const [excelImportReport, setExcelImportReport] = useState(null);
+  const [excelImportProgress, setExcelImportProgress] = useState(null);
+>>>>>>> Stashed changes
   const [operationalDate, setOperationalDateState] = useState(() => getOperationalDate());
   const [form, setForm] = useState(() => createEmptyForm(getOperationalDate()));
   const [scheduleDrafts, setScheduleDrafts] = useState({});
@@ -480,9 +679,6 @@ export default function Dashboard() {
   const [inlineStatusDrafts, setInlineStatusDrafts] = useState({});
   const formPanelRef = useRef(null);
   const excelUploadInputRef = useRef(null);
-  const effectivePriority = form.deliveryType === 'none' ? form.priority : 'urgent';
-  const selectedRegion = getRegionConfig(form.region) || zamilCoverageByRegion[0];
-  const cityOptions = selectedRegion?.cities || [];
 
   useEffect(() => {
     const load = async (silent = false) => {
@@ -524,7 +720,8 @@ export default function Dashboard() {
       setOperationalDateState(nextValue);
       setForm((current) => ({
         ...current,
-        preferredDate: !current.preferredDate || current.preferredDate === operationalDate ? nextValue : current.preferredDate,
+        installationDate:
+          !current.installationDate || current.installationDate === operationalDate ? nextValue : current.installationDate,
       }));
     };
 
@@ -533,6 +730,56 @@ export default function Dashboard() {
   }, [operationalDate]);
 
   const orders = useMemo(() => dashboard?.orders || [], [dashboard]);
+  const technicians = useMemo(() => dashboard?.technicians || [], [dashboard]);
+  const tomorrowDate = useMemo(() => shiftDateString(operationalDate, 1), [operationalDate]);
+  const todayOrders = useMemo(
+    () => orders.filter((order) => orderMatchesDailyTaskDate(order, operationalDate)).slice().sort(compareOrdersByOperationsRegion),
+    [operationalDate, orders]
+  );
+  const tomorrowOrders = useMemo(
+    () => orders.filter((order) => orderMatchesDailyTaskDate(order, tomorrowDate)).slice().sort(compareOrdersByOperationsRegion),
+    [orders, tomorrowDate]
+  );
+  const cityInsights = useMemo(() => buildCityInsights(orders, operationalDate, tomorrowDate), [operationalDate, orders, tomorrowDate]);
+  const totalDevices = useMemo(() => orders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0), [orders]);
+  const todayDevices = useMemo(() => todayOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0), [todayOrders]);
+  const tomorrowDevices = useMemo(() => tomorrowOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0), [tomorrowOrders]);
+  const urgentOrdersCount = useMemo(
+    () => orders.filter((order) => order.priority === 'urgent' || order.deliveryType !== 'none').length,
+    [orders]
+  );
+  const archiveOrdersCount = useMemo(
+    () => orders.filter((order) => ['completed', 'canceled'].includes(order.status)).length,
+    [orders]
+  );
+  const openTodayCount = useMemo(
+    () => todayOrders.filter((order) => !['completed', 'canceled'].includes(order.status)).length,
+    [todayOrders]
+  );
+  const heroCards = useMemo(
+    () => [
+      { key: 'active', value: orders.filter((order) => !['completed', 'canceled'].includes(order.status)).length, label: analyticsCopy.activeOrders },
+      { key: 'devices', value: totalDevices, label: analyticsCopy.totalDevices },
+      { key: 'today', value: todayOrders.length, label: analyticsCopy.dueToday },
+      { key: 'tomorrow', value: tomorrowOrders.length, label: analyticsCopy.dueTomorrow },
+      { key: 'urgent', value: urgentOrdersCount, label: analyticsCopy.urgent },
+      { key: 'archive', value: archiveOrdersCount, label: analyticsCopy.archive },
+    ],
+    [
+      analyticsCopy.activeOrders,
+      analyticsCopy.archive,
+      analyticsCopy.dueToday,
+      analyticsCopy.dueTomorrow,
+      analyticsCopy.totalDevices,
+      analyticsCopy.urgent,
+      archiveOrdersCount,
+      orders,
+      todayOrders.length,
+      tomorrowOrders.length,
+      totalDevices,
+      urgentOrdersCount,
+    ]
+  );
   const displayStatusBuckets = useMemo(
     () => buildDisplayStatusBuckets(orders, lang).filter((item) => item.key !== 'pending'),
     [orders, lang]
@@ -548,8 +795,6 @@ export default function Dashboard() {
     () => displayStatusBuckets,
     [displayStatusBuckets]
   );
-
-  const reportOrders = useMemo(() => orders.slice(), [orders]);
 
   const applyOrderUpdate = (updatedOrder) => {
     if (!updatedOrder?.id) {
@@ -570,36 +815,12 @@ export default function Dashboard() {
     });
   };
 
-  const updateAcRow = (id, key, value) => {
-    setForm((current) => ({
-      ...current,
-      acDetails: current.acDetails.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
-    }));
-  };
-
-  const addAcRow = () => {
-    setForm((current) => ({
-      ...current,
-      acDetails: [
-        ...current.acDetails,
-        { id: `ac-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type: 'split', quantity: 1 },
-      ],
-    }));
-  };
-
-  const removeAcRow = (id) => {
-    setForm((current) => ({
-      ...current,
-      acDetails: current.acDetails.length === 1 ? current.acDetails : current.acDetails.filter((item) => item.id !== id),
-    }));
-  };
-
   const openScheduleEditor = (order) => {
     setExpandedScheduleId((current) => (current === order.id ? '' : order.id));
     setScheduleDrafts((current) => ({
       ...current,
       [order.id]: current[order.id] || {
-        scheduledDate: order.scheduledDate || order.preferredDate || todayString(),
+        scheduledDate: order.scheduledDate || getOrderTaskDate(order) || todayString(),
         scheduledTime: order.scheduledTime || order.preferredTime || '',
         coordinationNote: order.coordinationNote || '',
       },
@@ -618,31 +839,18 @@ export default function Dashboard() {
 
   const onCreateOrder = async (event) => {
     event.preventDefault();
-    if (form.deliveryType === 'express_24h' && !isFastDeliveryCity(form.city)) {
-      toast.error(t.expressCityError);
+
+    if (!form.installationDate && !form.pickupDate) {
+      toast.error(lang === 'ar' ? 'أدخل تاريخ التركيب أو تاريخ الاستلام على الأقل.' : 'Enter installation date or pickup date.');
       return;
     }
 
     try {
-      setSaving(true);
-      const payload = {
-        ...form,
-        priority: effectivePriority,
-        phone: normalizeSaudiPhoneNumber(form.phone),
-        secondaryPhone: normalizeSaudiPhoneNumber(form.secondaryPhone),
-        whatsappPhone: normalizeSaudiPhoneNumber(form.whatsappPhone || form.phone),
-        acDetails: form.acDetails.map((item) => ({
-          type: item.type,
-          quantity: Math.max(1, Number(item.quantity) || 1),
-        })),
-      };
-      await operationsService.createOrder(payload);
-      toast.success(t.successCreate);
+      await operationsService.createOrder(form);
       setForm(createEmptyForm(operationalDate));
+      toast.success(t.successCreate);
     } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || 'Unable to save request');
-    } finally {
-      setSaving(false);
+      toast.error(error?.response?.data?.message || error.message || (lang === 'ar' ? 'تعذر إنشاء الطلب' : 'Unable to create request'));
     }
   };
 
@@ -659,9 +867,26 @@ export default function Dashboard() {
       const nextPreview = response.data?.preview || null;
       setExcelSourceFileName(savedFileName);
       setExcelPreview(nextPreview);
+<<<<<<< Updated upstream
       toast.success(t.successExcelUpload);
+=======
+      setExcelImportReport(null);
+      setExcelImportProgress(null);
+      toast.success(
+        t.successExcelUpload(
+          Number(nextPreview?.summary?.validOrders) || 0,
+          Number(nextPreview?.summary?.invalidRows) || 0,
+          Number(nextPreview?.summary?.deduplicatedRows) || 0
+        )
+      );
+      if (Array.isArray(nextPreview?.invalidRows) && nextPreview.invalidRows.length) {
+        toast.error(buildExcelIssuesToast(nextPreview.invalidRows, lang), {
+          duration: 7000,
+        });
+      }
+>>>>>>> Stashed changes
     } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || 'Unable to upload Excel file');
+      toast.error(error?.response?.data?.message || error.message || (lang === 'ar' ? 'تعذر رفع ملف الإكسل.' : 'Unable to upload Excel file'));
     } finally {
       setUploadingExcel(false);
       event.target.value = '';
@@ -671,21 +896,38 @@ export default function Dashboard() {
   const onImportExcel = async () => {
     try {
       setImportingExcel(true);
-      const response = await operationsService.importOrdersFromExcel(excelSourceFileName, excelPreview);
+      setExcelImportProgress(null);
+      const response = await operationsService.importOrdersFromExcel(excelSourceFileName, excelPreview, {
+        chunkSize: 30,
+        interChunkDelayMs: 120,
+        maxRetries: 2,
+        onProgress: (progress) => setExcelImportProgress(progress),
+      });
       const importedCount = Number(response.data?.importedCount) || 0;
       const skippedCount = Number(response.data?.skippedCount) || 0;
 
       if (!importedCount && !skippedCount) {
+<<<<<<< Updated upstream
         toast.error(lang === 'ar' ? 'لم يتم العثور على طلبات صالحة داخل ملف Excel.' : 'No valid Excel orders were found.');
+=======
+        toast.error(
+          previewIssues.length
+            ? buildExcelIssuesToast(previewIssues, lang)
+            : lang === 'ar'
+              ? 'لم يتم العثور على طلبات صالحة داخل ملف الإكسل.'
+              : 'No valid Excel orders were found.'
+        );
+>>>>>>> Stashed changes
         return;
       }
 
       toast.success(t.successImport(importedCount, skippedCount));
       setExcelPreview(null);
     } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || 'Unable to import Excel orders');
+      toast.error(error?.response?.data?.message || error.message || (lang === 'ar' ? 'تعذر استيراد طلبات الإكسل.' : 'Unable to import Excel orders'));
     } finally {
       setImportingExcel(false);
+      setExcelImportProgress(null);
     }
   };
 
@@ -811,40 +1053,18 @@ export default function Dashboard() {
     }
   };
 
-  const onContactCustomer = async (order) => {
-    const note = window.prompt(t.contactPrompt, '');
-    if (!note) {
-      return;
-    }
-
+  const onAssignTechnician = async (order, technicianId) => {
     try {
       setUpdatingId(order.id);
       const response = await operationsService.updateOrder(order.id, {
-        contactCustomerNote: note,
+        technicianId: technicianId || null,
       });
       applyOrderUpdate(response.data?.order || null);
       toast.success(t.successStatus);
     } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || 'Unable to save customer call note');
+      toast.error(error?.response?.data?.message || error.message || 'Unable to assign technician');
     } finally {
       setUpdatingId('');
-    }
-  };
-
-  const onExport = async (scopeLabel, format) => {
-    try {
-      setExportingFormat(format);
-      await exportOrdersReport({
-        orders: reportOrders,
-        lang,
-        scopeLabel,
-        format,
-      });
-      toast.success(t.successReport);
-    } catch (error) {
-      toast.error(error?.message || (lang === 'ar' ? 'تعذر تصدير التقرير.' : 'Unable to export report.'));
-    } finally {
-      setExportingFormat('');
     }
   };
 
@@ -866,26 +1086,145 @@ export default function Dashboard() {
         <p className="section-subtitle">{t.subtitle}</p>
       </div>
 
+      <div className="dashboard-hero-grid">
+        <section className="panel analytics-hero-panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow analytics-mini-kicker">{analyticsCopy.spotlight}</p>
+              <h2>{analyticsCopy.spotlight}</h2>
+              <p>{analyticsCopy.spotlightText}</p>
+            </div>
+            <div className="analytics-toolbar">
+              <Link className="btn-light" to={`${workspaceBasePath}/daily`}>
+                {analyticsCopy.openBoard}
+              </Link>
+              {canPrintReports ? (
+                <Link className="btn-primary" to={`${workspaceBasePath}/operations-date`}>
+                  {analyticsCopy.endOfDay}
+                </Link>
+              ) : (
+                <span className="user-chip">{analyticsCopy.restricted}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="analytics-kpi-grid">
+            {heroCards.map((item) => (
+              <article className="analytics-kpi-card" key={item.key}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel analytics-side-panel">
+          <div className="panel-header">
+            <div>
+              <h2>{analyticsCopy.cityLoad}</h2>
+              <p>{analyticsCopy.endOfDayHint}</p>
+            </div>
+            <span className="user-chip">{canPrintReports ? analyticsCopy.printOwner : analyticsCopy.restricted}</span>
+          </div>
+
+          <div className="analytics-city-table">
+            {cityInsights.slice(0, 6).map((city) => (
+              <div className="analytics-city-row" key={city.city}>
+                <div>
+                  <strong>{city.city}</strong>
+                  <small>
+                    {analyticsCopy.active}: {city.activeOrders} • {analyticsCopy.devices}: {city.totalDevices}
+                  </small>
+                </div>
+                <div className="analytics-city-numbers">
+                  <span>{city.totalOrders}</span>
+                  <small>
+                    {city.todayOrders}/{city.tomorrowOrders}
+                  </small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="dashboard-insight-grid">
+        <section className="panel analytics-orders-panel">
+          <div className="panel-header">
+            <div>
+              <h2>{analyticsCopy.today}</h2>
+              <p>
+                {analyticsCopy.openTasks}: {openTodayCount} • {analyticsCopy.devices}: {todayDevices}
+              </p>
+            </div>
+          </div>
+
+          <div className="analytics-order-list">
+            {todayOrders.length ? (
+              todayOrders.slice(0, 6).map((order) => (
+                <article className="analytics-order-item" key={`today-${order.id}`}>
+                  <div>
+                    <strong>{getOrderReferenceText(order, lang)}</strong>
+                    <p>{`${order.customerName || '—'} • ${order.city || '—'}`}</p>
+                  </div>
+                  <div className="analytics-order-meta">
+                    <span>{getOrderDeviceCount(order)} {analyticsCopy.devices}</span>
+                    <small>{getOrderDisplayStatus(order, lang)}</small>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="muted">{analyticsCopy.noToday}</p>
+            )}
+          </div>
+        </section>
+
+        <section className="panel analytics-orders-panel">
+          <div className="panel-header">
+            <div>
+              <h2>{analyticsCopy.tomorrow}</h2>
+              <p>
+                {analyticsCopy.dueTomorrow}: {tomorrowOrders.length} • {analyticsCopy.devices}: {tomorrowDevices}
+              </p>
+            </div>
+          </div>
+
+          <div className="analytics-order-list">
+            {tomorrowOrders.length ? (
+              tomorrowOrders.slice(0, 6).map((order) => (
+                <article className="analytics-order-item" key={`tomorrow-${order.id}`}>
+                  <div>
+                    <strong>{getOrderReferenceText(order, lang)}</strong>
+                    <p>{`${order.customerName || '—'} • ${order.city || '—'}`}</p>
+                  </div>
+                  <div className="analytics-order-meta">
+                    <span>{getOrderDeviceCount(order)} {analyticsCopy.devices}</span>
+                    <small>{getOrderDisplayStatus(order, lang)}</small>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="muted">{analyticsCopy.noTomorrow}</p>
+            )}
+          </div>
+        </section>
+      </div>
+
       <div className="dashboard-toolbar-links">
         <Link className="btn-light" to={`${workspaceBasePath}/daily`}>
           {t.dailyTasks}
         </Link>
-        <button
-          className="btn-primary"
-          type="button"
-          disabled={Boolean(exportingFormat)}
-          onClick={() => onExport(permissions.canCreateOrders ? 'csr-report' : 'ops-report', 'pdf')}
-        >
-          {exportingFormat === 'pdf' ? '...' : `${permissions.canCreateOrders ? t.exportCsr : t.exportOps} - ${t.exportPdf}`}
-        </button>
-        <button
-          className="btn-secondary"
-          type="button"
-          disabled={Boolean(exportingFormat)}
-          onClick={() => onExport(permissions.canCreateOrders ? 'csr-report' : 'ops-report', 'excel')}
-        >
-          {exportingFormat === 'excel' ? '...' : `${permissions.canCreateOrders ? t.exportCsr : t.exportOps} - ${t.exportExcel}`}
-        </button>
+        <Link className="btn-light" to={`${workspaceBasePath}/weekly`}>
+          {lang === 'ar' ? 'المهام الأسبوعية' : 'Weekly tasks'}
+        </Link>
+        <Link className="btn-light" to={`${workspaceBasePath}/monthly`}>
+          {lang === 'ar' ? 'المهام الشهرية' : 'Monthly tasks'}
+        </Link>
+        {canPrintReports ? (
+          <Link className="btn-primary" to={`${workspaceBasePath}/operations-date`}>
+            {analyticsCopy.endOfDay}
+          </Link>
+        ) : null}
       </div>
 
       <div className="internal-stats-grid dashboard-stats-links">
@@ -973,7 +1312,8 @@ export default function Dashboard() {
                     onAdvanceStatus={onAdvanceStatus}
                     onRequestReschedule={onRequestReschedule}
                     onCancelOrder={onCancelOrder}
-                    onContactCustomer={onContactCustomer}
+                    onAssignTechnician={onAssignTechnician}
+                    technicians={technicians}
                     onOpenSchedule={openScheduleEditor}
                     scheduleDraft={scheduleDrafts[order.id]}
                     updateScheduleDraft={updateScheduleDraft}
@@ -1017,37 +1357,73 @@ export default function Dashboard() {
                     {uploadingExcel ? t.uploadingExcelSource : t.uploadExcelSource}
                   </button>
                 ) : null}
-                <button className="btn-light" type="button" disabled={uploadingExcel || importingExcel || saving} onClick={onImportExcel}>
+                <button
+                  className="btn-light"
+                  type="button"
+                  disabled={uploadingExcel || importingExcel || saving || !(Number(excelPreview?.summary?.validOrders) || 0)}
+                  onClick={onImportExcel}
+                >
                   {importingExcel ? t.importingExcel : t.importExcel}
                 </button>
                 <span className="user-chip">{t.roleBadges[user?.role]}</span>
               </div>
             </div>
+            {importingExcel && excelImportProgress ? (
+              <p className="muted">
+                {t.importingExcelProgress({
+                  processed: Number(excelImportProgress.processedRows) || 0,
+                  total: Number(excelImportProgress.totalRows) || 0,
+                  currentChunk: Number(excelImportProgress.currentChunk) || 0,
+                  totalChunks: Number(excelImportProgress.totalChunks) || 0,
+                })}
+              </p>
+            ) : null}
 
             <div className="order-reference-panel">
               <div className="reference-card">
-                <span className="reference-label">{t.intakeGuide}</span>
-                <h3>{t.fastDeliveryTitle}</h3>
-                <p>
+                <span className="reference-label">{lang === 'ar' ? 'مرجع الإدخال' : 'Intake guide'}</span>
+                <h3>{t.excelOnlyTitle}</h3>
+                <p>{t.excelOnlyNotice}</p>
+                <small>
                   {lang === 'ar'
-                    ? 'يسري العرض على التوصيل خلال 24 ساعة داخل المدن الرئيسية (الدمام – جدة – الرياض – الخبر – الظهران – جازان – رأس تنورة)، وذلك خلال أيام العمل الرسمية، والكمية محدودة.'
-                    : `${t.fastDeliveryText} ${fastDeliveryCities.join(', ')}.`}
-                </p>
-                <small>{t.packageOfferNote}</small>
+                    ? 'الحقول الأساسية هنا هي نفسها: SO ID وWO ID واسم العميل والبريد والجوال والتواريخ والأجهزة والحالة والشحن والمندوب وسجل المحادثة.'
+                    : 'The form mirrors the Excel columns: SO ID, WO ID, Customer, Email, Phone, Dates, Devices, Status, Shipping, Courier, and Chat Log.'}
+                </small>
               </div>
               <div className="reference-card">
-                <span className="reference-label">{t.coverageTitle}</span>
+                <span className="reference-label">{lang === 'ar' ? 'قواعد الأجهزة' : 'Device rules'}</span>
+                <h3>{lang === 'ar' ? 'تنسيق حقل Devices' : 'Devices field format'}</h3>
                 <div className="coverage-list">
-                  {zamilCoverageByRegion.map((region) => (
-                    <p key={region.key}>
-                      <strong>{lang === 'ar' ? region.ar : region.en}:</strong> {region.cities.join(' - ')}
-                    </p>
-                  ))}
+                  <p>{lang === 'ar' ? 'كل سطر يمثل جهازًا واحدًا.' : 'Each line represents one device.'}</p>
+                  <p>{lang === 'ar' ? 'إذا كان السطر مثل 3 X Device Name فسيُحسب 3 أجهزة.' : 'A line like 3 X Device Name counts as 3 devices.'}</p>
+                  <p>{lang === 'ar' ? 'يتم حذف * من البداية و ( With Installation ) من النهاية تلقائيًا.' : 'The parser strips leading * and trailing ( With Installation ) automatically.'}</p>
+                </div>
+              </div>
+              <div className="reference-card">
+                <span className="reference-label">{lang === 'ar' ? 'الحالة وسجل المحادثة' : 'Status and Chat Log'}</span>
+                <h3>{lang === 'ar' ? 'مطابقة نفس منطق ملف الإكسل' : 'Same rules as the Excel import'}</h3>
+                <div className="coverage-list">
+                  <p>
+                    {lang === 'ar'
+                      ? 'يعتمد النظام على Delivery date أولًا كتاريخ المهمة، وإذا وُجد Installation date يُصنَّف الطلب كطلب تركيب.'
+                      : 'The system uses Delivery date first as the task date. If Installation date exists, the request is classified as an installation task.'}
+                  </p>
+                  <p>
+                    {lang === 'ar'
+                      ? 'آخر كود فني صالح داخل سجل المحادثة هو الذي يُعتمد.'
+                      : 'The last valid technician code found in Chat Log wins.'}
+                  </p>
+                  <p>
+                    {lang === 'ar'
+                      ? 'يمكنك استخدام حالات مثل Scheduled وAssigned وShipped وCompleted وCanceled وغيرها كما تظهر في ملف الإكسل.'
+                      : 'Use statuses like Scheduled, Assigned, Shipped, Completed, Canceled, and the other Excel statuses as-is.'}
+                  </p>
                 </div>
               </div>
               <div className="reference-card">
                 <span className="reference-label">{t.excelImportTitle}</span>
                 <h3>{t.importExcel}</h3>
+<<<<<<< Updated upstream
                 <p>{t.excelImportHint}</p>
                 <small>
                   {excelPreview?.summary?.validOrders
@@ -1056,34 +1432,89 @@ export default function Dashboard() {
                       }`
                     : excelSourceFileName}
                 </small>
+=======
+                <div className="coverage-list">
+                  <small>
+                    {excelPreview?.summary
+                      ? `${excelSourceFileName} • ${Number(excelPreview.summary.validOrders) || 0} ${
+                          lang === 'ar' ? 'صف صالح' : 'valid rows'
+                        } • ${Number(excelPreview.summary.invalidRows) || 0} ${lang === 'ar' ? 'أخطاء' : 'issues'}${
+                          Number(excelPreview.summary.deduplicatedRows)
+                            ? ` • ${Number(excelPreview.summary.deduplicatedRows)} ${lang === 'ar' ? 'مكرر تم دمجه' : 'duplicates merged'}`
+                            : ''
+                        }${
+                          Number(excelPreview.summary.completedOrders)
+                            ? ` • ${Number(excelPreview.summary.completedOrders)} ${lang === 'ar' ? 'مكتمل' : 'completed'}`
+                            : ''
+                        }`
+                      : excelSourceFileName}
+                  </small>
+                  <small>{t.excelImportUpsertNote}</small>
+                </div>
+                {excelImportReport ? (
+                  <div className="coverage-list">
+                    <p>
+                      <strong>{lang === 'ar' ? 'آخر مزامنة:' : 'Last sync:'}</strong>{' '}
+                      {t.successImport(buildExcelImportToastPayload(excelImportReport))}
+                    </p>
+                    {(excelImportReport.skippedOrders || []).slice(0, 3).map((issue, index) => (
+                      <p key={`skip-${index}`}>{formatExcelIssueLine(issue, lang)}</p>
+                    ))}
+                  </div>
+                ) : null}
+                {excelPreview?.invalidRows?.length ? (
+                  <div className="coverage-list">
+                    {(excelPreview.invalidRows || []).slice(0, 4).map((issue, index) => (
+                      <p key={`excel-issue-${index}`}>{formatExcelIssueLine(issue, lang)}</p>
+                    ))}
+                  </div>
+                ) : null}
+>>>>>>> Stashed changes
               </div>
             </div>
 
             <form className="form-panel intake-form" onSubmit={onCreateOrder}>
               <div className="grid-two">
                 <div>
-                  <label>{t.requestNumber}</label>
+                  <label>SO ID</label>
                   <input
                     className="input"
-                    value={form.requestNumber}
-                    onChange={(event) => setForm((current) => ({ ...current, requestNumber: event.target.value }))}
+                    value={form.soId}
+                    onChange={(event) => setForm((current) => ({ ...current, soId: event.target.value }))}
                     required
                   />
                 </div>
                 <div>
-                  <label>{t.customerName}</label>
+                  <label>WO ID</label>
                   <input
                     className="input"
-                    value={form.customerName}
-                    onChange={(event) => setForm((current) => ({ ...current, customerName: event.target.value }))}
-                    required
+                    value={form.woId}
+                    onChange={(event) => setForm((current) => ({ ...current, woId: event.target.value }))}
                   />
                 </div>
               </div>
 
               <div className="grid-three">
                 <div>
-                  <label>{t.phone}</label>
+                  <label>Customer</label>
+                  <input
+                    className="input"
+                    value={form.customer}
+                    onChange={(event) => setForm((current) => ({ ...current, customer: event.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label>Email</label>
+                  <input
+                    className="input"
+                    type="email"
+                    value={form.email}
+                    onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label>Phone</label>
                   <input
                     className="input"
                     value={form.phone}
@@ -1091,269 +1522,169 @@ export default function Dashboard() {
                     required
                   />
                 </div>
-                <div>
-                  <label>{t.secondaryPhone}</label>
-                  <input
-                    className="input"
-                    value={form.secondaryPhone}
-                    onChange={(event) => setForm((current) => ({ ...current, secondaryPhone: event.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label>{t.whatsappPhone}</label>
-                  <input
-                    className="input"
-                    value={form.whatsappPhone}
-                    onChange={(event) => setForm((current) => ({ ...current, whatsappPhone: event.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid-three">
-                <div>
-                  <label>{t.region}</label>
-                  <select
-                    className="input"
-                    value={form.region}
-                    onChange={(event) =>
-                      setForm((current) => {
-                        const nextRegion = event.target.value;
-                        const nextRegionConfig = getRegionConfig(nextRegion) || zamilCoverageByRegion[0];
-                        return {
-                          ...current,
-                          region: nextRegion,
-                          city: nextRegionConfig?.cities?.[0] || '',
-                        };
-                      })
-                    }
-                    required
-                  >
-                    {regionOptions.map((option) => (
-                      <option key={option.key} value={option.key}>
-                        {lang === 'ar' ? option.ar : option.en}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label>{t.city}</label>
-                  <select
-                    className="input"
-                    value={form.city}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        city: event.target.value,
-                        region: getRegionByCity(event.target.value)?.key || current.region,
-                      }))
-                    }
-                    required
-                  >
-                    {cityOptions.map((city) => (
-                      <option key={city} value={city}>
-                        {city}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label>{t.district}</label>
-                  <input
-                    className="input"
-                    value={form.district}
-                    onChange={(event) => setForm((current) => ({ ...current, district: event.target.value }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <label>{t.landmark}</label>
-                  <input
-                    className="input"
-                    value={form.landmark}
-                    onChange={(event) => setForm((current) => ({ ...current, landmark: event.target.value }))}
-                  />
-                </div>
               </div>
 
               <div className="grid-two">
                 <div>
-                  <label>{t.addressText}</label>
-                  <textarea
-                    className="input textarea"
-                    rows={3}
-                    value={form.addressText}
-                    onChange={(event) => setForm((current) => ({ ...current, addressText: event.target.value }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <label>{t.mapLink}</label>
-                  <input
-                    className="input"
-                    type="url"
-                    value={form.mapLink}
-                    onChange={(event) => setForm((current) => ({ ...current, mapLink: event.target.value }))}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid-three">
-                <div>
-                  <label>{t.sourceChannel}</label>
-                  <input
-                    className="input"
-                    value={form.sourceChannel}
-                    onChange={(event) => setForm((current) => ({ ...current, sourceChannel: event.target.value }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <label>{t.priority}</label>
-                  <select
-                    className="input"
-                    value={effectivePriority}
-                    disabled={form.deliveryType !== 'none'}
-                    onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value }))}
-                  >
-                    {priorityOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {lang === 'ar' ? option.ar : option.en}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label>{t.serviceSummary}</label>
-                  <input
-                    className="input"
-                    value={form.serviceSummary}
-                    onChange={(event) => setForm((current) => ({ ...current, serviceSummary: event.target.value }))}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid-two">
-                <div>
-                  <label>{t.deliveryType}</label>
-                  <select
-                    className="input"
-                    value={form.deliveryType}
-                    onChange={(event) => setForm((current) => ({ ...current, deliveryType: event.target.value }))}
-                  >
-                    {deliveryOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {lang === 'ar' ? option.ar : option.en}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="delivery-help-block">
-                  <label>{lang === 'ar' ? 'تنبيه التشغيل' : 'Operations alert'}</label>
-                  <div className={`delivery-alert ${form.deliveryType === 'none' ? '' : 'delivery-alert-active'}`}>
-                    <strong>{form.deliveryType === 'express_24h' ? deliveryLabel('express_24h', lang) : deliveryLabel(form.deliveryType, lang)}</strong>
-                    <small>
-                      {form.deliveryType === 'express_24h'
-                        ? lang === 'ar'
-                          ? 'التوصيل السريع خلال 24 ساعة داخل المدن الرئيسية فقط، وفي أيام العمل الرسمية، والكمية محدودة.'
-                          : 'Fast delivery applies within 24 hours in the listed major cities, on official workdays, with limited quantities.'
-                        : form.deliveryType !== 'none'
-                          ? t.deliveryEscalationHint
-                          : lang === 'ar'
-                            ? 'بدون مسار توصيل خاص.'
-                            : 'No special delivery flow.'}
-                    </small>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid-two">
-                <div>
-                  <label>{t.preferredDate}</label>
+                  <label>{lang === 'ar' ? 'تاريخ التركيب' : 'Installation date'}</label>
                   <input
                     className="input"
                     type="date"
-                    value={form.preferredDate}
-                    onChange={(event) => setForm((current) => ({ ...current, preferredDate: event.target.value }))}
-                    required
+                    value={form.installationDate}
+                    onChange={(event) => setForm((current) => ({ ...current, installationDate: event.target.value }))}
                   />
                 </div>
                 <div>
-                  <label>{t.preferredTime}</label>
+                  <label>{lang === 'ar' ? 'تاريخ الاستلام' : 'Pickup date'}</label>
                   <input
                     className="input"
-                    type="time"
-                    value={form.preferredTime}
-                    onChange={(event) => setForm((current) => ({ ...current, preferredTime: event.target.value }))}
-                    required
+                    type="date"
+                    value={form.pickupDate}
+                    onChange={(event) => setForm((current) => ({ ...current, pickupDate: event.target.value }))}
                   />
-                </div>
-              </div>
-
-              <div className="ac-details-panel">
-                <div className="panel-header compact-panel-header">
-                  <div>
-                    <h3>{t.acDetails}</h3>
-                  </div>
-                  <button className="btn-light" type="button" onClick={addAcRow}>
-                    {t.addAc}
-                  </button>
-                </div>
-
-                <div className="ac-details-list">
-                  {form.acDetails.map((item) => (
-                    <div className="ac-detail-row" key={item.id}>
-                      <div>
-                        <label>{t.acType}</label>
-                        <select
-                          className="input"
-                          value={item.type}
-                          onChange={(event) => updateAcRow(item.id, 'type', event.target.value)}
-                        >
-                          {acTypeOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {lang === 'ar' ? option.ar : option.en}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label>{t.quantity}</label>
-                        <input
-                          className="input"
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(event) => updateAcRow(item.id, 'quantity', event.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="ac-detail-remove">
-                        <button className="btn-danger" type="button" onClick={() => removeAcRow(item.id)}>
-                          {t.remove}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
 
               <div>
-                <label>{t.notes}</label>
+                <label>Devices</label>
                 <textarea
                   className="input textarea"
-                  rows={4}
-                  value={form.notes}
-                  onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                  rows={5}
+                  value={form.devices}
+                  onChange={(event) => setForm((current) => ({ ...current, devices: event.target.value }))}
+                  placeholder={`* 2 X Cooline Split AC\n* Cooline Windows AC 17200 BTU Cold`}
+                  required
                 />
               </div>
 
-              <div className="helper-actions">
-                <button className="btn-primary" disabled={saving} type="submit">
-                  {saving ? t.creating : t.create}
-                </button>
+              <div className="grid-three">
+                <div>
+                  <label>Bundled Items</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    value={form.bundledItems}
+                    onChange={(event) => setForm((current) => ({ ...current, bundledItems: event.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label>Status</label>
+                  <select
+                    className="input"
+                    value={form.status}
+                    onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}
+                    required
+                  >
+                    {installationStatusOptions.map((statusValue) => (
+                      <option key={statusValue} value={statusValue}>
+                        {statusValue}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Shipping City</label>
+                  <input
+                    className="input"
+                    value={form.shippingCity}
+                    onChange={(event) => setForm((current) => ({ ...current, shippingCity: event.target.value }))}
+                    required
+                  />
+                </div>
               </div>
+
+              <div>
+                <label>Shipping Address</label>
+                <textarea
+                  className="input textarea"
+                  rows={3}
+                  value={form.shippingAddress}
+                  onChange={(event) => setForm((current) => ({ ...current, shippingAddress: event.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="grid-two">
+                <div>
+                  <label>Courier</label>
+                  <input
+                    className="input"
+                    value={form.courier}
+                    onChange={(event) => setForm((current) => ({ ...current, courier: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label>Courier number</label>
+                  <input
+                    className="input"
+                    value={form.courierNum}
+                    onChange={(event) => setForm((current) => ({ ...current, courierNum: event.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid-two">
+                <label className="user-chip" style={{ justifyContent: 'flex-start', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.withinSLA === 'Yes'}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        withinSLA: event.target.checked ? 'Yes' : '',
+                        exceedSLA: event.target.checked ? '' : current.exceedSLA,
+                      }))
+                    }
+                  />
+                  <span>{lang === 'ar' ? 'مكتمل ضمن المدة' : 'Completed within SLA'}</span>
+                </label>
+                <label className="user-chip" style={{ justifyContent: 'flex-start', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.exceedSLA === 'Yes'}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        exceedSLA: event.target.checked ? 'Yes' : '',
+                        withinSLA: event.target.checked ? '' : current.withinSLA,
+                      }))
+                    }
+                  />
+                  <span>{lang === 'ar' ? 'مكتمل متجاوز للمدة' : 'Completed Exceed SLA'}</span>
+                </label>
+              </div>
+
+              <div>
+                <label>Chat Log</label>
+                <textarea
+                  className="input textarea"
+                  rows={4}
+                  value={form.chatLog}
+                  onChange={(event) => setForm((current) => ({ ...current, chatLog: event.target.value }))}
+                  placeholder={`* JED-W - by: trkeebpro comp.\n* customer requested Friday - by: trkeebpro comp.`}
+                />
+              </div>
+
+              <div className="coverage-list">
+                <p>
+                  {lang === 'ar'
+                    ? 'سيُستخرج كود الفني من سجل المحادثة تلقائيًا، وسيُستخدم آخر كود مطابق داخل الخلية.'
+                    : 'The technician code is extracted from Chat Log automatically, and the last valid code wins.'}
+                </p>
+                <p>
+                  {lang === 'ar'
+                    ? 'تاريخ المهمة الفعلي يعتمد على Delivery date أولًا، ثم يُستخدم Installation date لتصنيف الطلب كتركيب عند وجوده.'
+                    : 'The effective task date uses Delivery date first, while Installation date is used to classify the request as an installation when present.'}
+                </p>
+              </div>
+
+              <div className="helper-actions">
+                <button className="btn-primary" type="submit">
+                  {t.create}
+                </button>
+                </div>
             </form>
           </section>
         ) : (
@@ -1383,7 +1714,8 @@ function TaskCardBody({
   onAdvanceStatus,
   onRequestReschedule,
   onCancelOrder,
-  onContactCustomer,
+  onAssignTechnician,
+  technicians = [],
   onOpenSchedule,
   scheduleDraft,
   updateScheduleDraft,
@@ -1399,6 +1731,18 @@ function TaskCardBody({
   const displayPhones = [order.phone, order.secondaryPhone].filter(Boolean);
   const showAcceptAction = canManageStatuses && order.status === 'pending';
   const showRejectAction = canManageStatuses && !['completed', 'canceled'].includes(order.status);
+  const orderEmail = getOrderEmail(order);
+  const pickupDate = getOrderPickupDate(order);
+  const installationDate = getOrderInstallationDate(order);
+  const courier = getOrderCourier(order);
+  const courierNum = getOrderCourierNum(order);
+  const withinSLA = getOrderWithinSLA(order);
+  const exceedSLA = getOrderExceedSLA(order);
+  const techId = getOrderTechId(order);
+  const techShortName = getOrderTechShortName(order);
+  const areaName = getOrderAreaName(order);
+  const chatLog = getOrderChatLog(order);
+  const taskDate = getOrderTaskDate(order);
 
   return (
     <>
@@ -1414,6 +1758,25 @@ function TaskCardBody({
         <p>{`${getOrderRegionLabel(order, lang)}${order.city ? ` - ${order.city}` : ''}${order.district ? ` - ${order.district}` : ''}`}</p>
         <p>{order.addressText || order.address || '—'}</p>
         <p>{order.landmark || '—'}</p>
+      </div>
+
+      <div className="task-timing-grid">
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'بيانات الإكسل' : 'Excel fields'}</span>
+          <strong>{getOrderReferenceText(order, lang)}</strong>
+          <small>{orderEmail || '—'}</small>
+        </div>
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'تواريخ المصدر' : 'Source dates'}</span>
+          <strong>{taskDate || installationDate || pickupDate || '—'}</strong>
+          <small>
+            {pickupDate
+              ? `${lang === 'ar' ? 'الاستلام' : 'Pickup'}: ${pickupDate}`
+              : lang === 'ar'
+                ? 'لا يوجد تاريخ استلام'
+                : 'No pickup date'}
+          </small>
+        </div>
       </div>
 
       <div className="task-timing-grid">
@@ -1438,6 +1801,38 @@ function TaskCardBody({
         <strong>{getOrderDeviceCount(order)}</strong>
       </div>
 
+      {(techId || techShortName || areaName) ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'إسناد الفني' : 'Technician assignment'}</span>
+          <strong>{techId || '—'}</strong>
+          <small>{[techShortName, areaName].filter(Boolean).join(' • ') || '—'}</small>
+        </div>
+      ) : null}
+
+      {(courier || courierNum) ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'بيانات الشحن' : 'Courier details'}</span>
+          <strong>{courier || '—'}</strong>
+          <small>{courierNum || '—'}</small>
+        </div>
+      ) : null}
+
+      {(withinSLA || exceedSLA) ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'مدة التنفيذ' : 'SLA'}</span>
+          <strong>{withinSLA || exceedSLA || '—'}</strong>
+          <small>
+            {withinSLA
+              ? lang === 'ar'
+                ? 'مكتمل ضمن المدة'
+                : 'Completed within SLA'
+              : lang === 'ar'
+                ? 'مكتمل متجاوز للمدة'
+                : 'Completed exceed SLA'}
+          </small>
+        </div>
+      ) : null}
+
       {order.deliveryType && order.deliveryType !== 'none' ? (
         <div className="task-mini-panel attention-panel">
           <span>{t.deliveryType}</span>
@@ -1447,6 +1842,13 @@ function TaskCardBody({
       ) : null}
 
       <OrderDeviceBreakdown lang={lang} order={order} title={t.devicesTitle} />
+
+      {chatLog ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'Chat Log' : 'Chat Log'}</span>
+          <strong style={{ whiteSpace: 'pre-wrap' }}>{chatLog}</strong>
+        </div>
+      ) : null}
 
       <div className="task-contact-actions">
         {displayPhones.map((phoneValue, index) => (
@@ -1512,9 +1914,19 @@ function TaskCardBody({
         ) : null}
 
         {canManageStatuses && !['completed', 'canceled'].includes(order.status) ? (
-          <button className="btn-light" type="button" disabled={updatingId === order.id} onClick={() => onContactCustomer(order)}>
-            {t.contactCustomer}
-          </button>
+          <select
+            className="input compact-input order-inline-select"
+            disabled={updatingId === order.id}
+            value={order.technicianId || ''}
+            onChange={(event) => onAssignTechnician(order, event.target.value)}
+          >
+            <option value="">{t.assignTechnician}</option>
+            {(technicians || []).map((technician) => (
+              <option key={technician.id} value={technician.id}>
+                {technician.name}
+              </option>
+            ))}
+          </select>
         ) : null}
 
         {showCustomerActions ? (

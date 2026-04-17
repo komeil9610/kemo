@@ -1,9 +1,0 @@
-{
-  "appId": "com.tarkeebpro.technician",
-  "appName": "Tarkeeb Pro Technician",
-  "webDir": "www",
-  "server": {
-    "url": "https://tarkeeb-pro-frontend.bobkumeel.workers.dev/mobile/technician",
-    "androidScheme": "https"
-  }
-}

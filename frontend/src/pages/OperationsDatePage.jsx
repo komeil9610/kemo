@@ -4,13 +4,15 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { operationsService } from '../services/api';
-import { exportOrdersReport, getOperationalDate, getOrderTaskDate, nextDateString, setOperationalDate } from '../utils/internalOrders';
+import { exportOrdersReport, getOperationalDate, nextDateString, orderMatchesDailyTaskDate, setOperationalDate } from '../utils/internalOrders';
+import { canUserPrintEndOfDayReports } from '../utils/workspaceAccess';
+import { getWorkspaceBasePath } from '../utils/workspaceRoles';
 
 const copy = {
   en: {
     eyebrow: 'Operations day',
     title: 'Operational date and day export',
-    subtitle: 'A shared page for customer service and operations manager to control the active operating date and close the day cleanly.',
+    subtitle: 'An admin-only page to control the operational date and close the day cleanly.',
     loading: 'Loading day controls...',
     backDashboard: 'Back to dashboard',
     date: 'Operational date',
@@ -18,11 +20,12 @@ const copy = {
     exportDayPdf: 'Export PDF reports',
     exportDayExcel: 'Export Excel reports',
     closeDay: 'Export day and move forward',
-    hint: 'Closing the day exports both customer service and operations reports for the active date before moving to the next day.',
+    hint: 'Closing the day exports the admin and operations reports for the active date before moving to the next day.',
     dateUpdated: 'Operational date updated.',
     dayExported: 'Current day reports exported.',
     dayClosed: 'Current day reports exported and the system moved to the next date.',
     roleBadges: {
+      admin: 'Admin',
       customer_service: 'Customer service',
       operations_manager: 'Operations manager',
     },
@@ -30,32 +33,32 @@ const copy = {
   ar: {
     eyebrow: 'يوم التشغيل',
     title: 'تاريخ التشغيل وتصدير اليوم',
-    subtitle: 'صفحة مشتركة بين خدمة العملاء ومدير العمليات للتحكم بتاريخ التشغيل وإغلاق اليوم بشكل منظم.',
+    subtitle: 'صفحة خاصة بالإدارة للتحكم بتاريخ التشغيل وإغلاق اليوم بشكل منظم.',
     loading: 'جارٍ تحميل صفحة التشغيل...',
     backDashboard: 'العودة إلى اللوحة',
     date: 'تاريخ التشغيل',
     updateDate: 'تحديث التاريخ',
     exportDayPdf: 'تصدير تقارير PDF',
-    exportDayExcel: 'تصدير تقارير Excel',
+    exportDayExcel: 'تصدير تقارير إكسل',
     closeDay: 'تصدير اليوم والانتقال لليوم التالي',
-    hint: 'عند إغلاق اليوم يتم تصدير تقارير خدمة العملاء ومدير العمليات لنفس تاريخ التشغيل أولاً ثم الانتقال إلى التاريخ التالي.',
+    hint: 'عند إغلاق اليوم يتم تصدير تقارير الإدارة ومدير العمليات لنفس تاريخ التشغيل أولاً ثم الانتقال إلى التاريخ التالي.',
     dateUpdated: 'تم تحديث تاريخ التشغيل.',
     dayExported: 'تم تصدير تقارير اليوم الحالي.',
     dayClosed: 'تم تصدير تقارير اليوم الحالي والانتقال إلى اليوم التالي.',
     roleBadges: {
+      admin: 'الإدارة',
       customer_service: 'خدمة العملاء',
       operations_manager: 'مدير العمليات',
     },
   },
 };
 
-const getWorkspaceBasePath = (role) => (role === 'operations_manager' ? '/operations-manager' : '/customer-service');
-
 export default function OperationsDatePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLang();
   const t = copy[lang] || copy.en;
   const workspaceBasePath = getWorkspaceBasePath(user?.role);
+  const canPrintReports = canUserPrintEndOfDayReports(user);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [operationalDate, setOperationalDateState] = useState(() => getOperationalDate());
@@ -70,7 +73,7 @@ export default function OperationsDatePage() {
         const response = await operationsService.getDashboard();
         setOrders(response.data?.orders || []);
       } catch (error) {
-        toast.error(error?.response?.data?.message || error.message || 'Unable to load day controls');
+        toast.error(error?.response?.data?.message || error.message || 'تعذر تحميل إعدادات يوم التشغيل.');
       } finally {
         if (!silent) {
           setLoading(false);
@@ -95,7 +98,7 @@ export default function OperationsDatePage() {
 
   const reportOrders = useMemo(() => orders.slice(), [orders]);
   const dailyOrders = useMemo(
-    () => reportOrders.filter((order) => getOrderTaskDate(order) === operationalDate),
+    () => reportOrders.filter((order) => orderMatchesDailyTaskDate(order, operationalDate)),
     [operationalDate, reportOrders]
   );
 
@@ -181,16 +184,23 @@ export default function OperationsDatePage() {
           <button className="btn-light" type="button" onClick={onSaveDate}>
             {t.updateDate}
           </button>
-          <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportCurrentDay('pdf')}>
-            {exportingFormat === 'pdf' ? '...' : t.exportDayPdf}
-          </button>
-          <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportCurrentDay('excel')}>
-            {exportingFormat === 'excel' ? '...' : t.exportDayExcel}
-          </button>
-          <button className="btn-primary" disabled={Boolean(exportingFormat)} type="button" onClick={onCloseDay}>
-            {exportingFormat === 'excel' || exportingFormat === 'pdf' ? '...' : t.closeDay}
-          </button>
+          {canPrintReports ? (
+            <>
+              <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportCurrentDay('pdf')}>
+                {exportingFormat === 'pdf' ? '...' : t.exportDayPdf}
+              </button>
+              <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportCurrentDay('excel')}>
+                {exportingFormat === 'excel' ? '...' : t.exportDayExcel}
+              </button>
+              <button className="btn-primary" disabled={Boolean(exportingFormat)} type="button" onClick={onCloseDay}>
+                {exportingFormat === 'excel' || exportingFormat === 'pdf' ? '...' : t.closeDay}
+              </button>
+            </>
+          ) : null}
           <p className="muted">{t.hint}</p>
+          {canPrintReports ? null : (
+            <p className="muted">{lang === 'ar' ? 'طباعة وإغلاق اليوم متاحان فقط للحساب المعتمد.' : 'Printing and closing the day are only available to the approved account.'}</p>
+          )}
         </div>
       </section>
     </section>

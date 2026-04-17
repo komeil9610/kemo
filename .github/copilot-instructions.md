@@ -3,11 +3,11 @@
 # RentIT Project Customization Instructions
 
 ## Project Overview
-مشروع RentIT هو منصة تأجير شاملة تتضمن:
-- Backend API (Node.js + Express)
-- Web Frontend (React)
-- Mobile App (React Native)
-- Database (MongoDB)
+مشروع RentIT الحالي هو نظام داخلي لإدارة الطلبات بين خدمة العملاء ومدير العمليات، ويعمل عبر:
+- Frontend React
+- Cloudflare Workers
+- Cloudflare D1
+- Electron Desktop App
 
 ## Code Standards
 
@@ -18,14 +18,9 @@
 
 ### File Organization
 ```
-backend/src/
-  ├── models/         # Mongoose Schemas
-  ├── controllers/    # Business Logic
-  ├── routes/         # API Routes
-  ├── middleware/     # Custom Middleware
-  ├── services/       # External Services
-  ├── utils/          # Helper Functions
-  └── config/         # Configuration Files
+edge-api/src/
+  ├── index.js        # Worker routes and business logic
+  └── excelImport.js  # Excel parsing and normalization
 
 frontend/src/
   ├── components/     # Reusable Components
@@ -36,38 +31,33 @@ frontend/src/
 ```
 
 ### Naming Conventions
-- Models: `User.js`, `Product.js` (PascalCase)
-- Controllers: `userController.js` (camelCase)
-- Routes: `authRoutes.js` (camelCase + Routes suffix)
 - Components: `UserCard.jsx` (PascalCase)
 - Functions: `getUserById()` (camelCase)
 - Constants: `MAX_PRICE = 10000` (UPPER_SNAKE_CASE)
 
 ### Security Requirements
-- ✅ Validate all inputs on Backend
+- ✅ Validate all inputs on the Worker API
 - ✅ Use JWT for authentication
-- ✅ Hash passwords with bcryptjs
+- ✅ Hash passwords before storing them in D1
 - ✅ Use CORS properly
 - ✅ Sanitize user input
 - ✅ Use environment variables for secrets
 - ✅ Implement rate limiting
+- ✅ Keep Cloudflare Access enabled in production
 
 ### Database Schema Rules
-- ✅ Use Mongoose for MongoDB
-- ✅ Add timestamps to all schemas
-- ✅ Use proper indexes
-- ✅ Implement soft deletes when needed
-- ✅ Use references for relationships
+- ✅ Keep D1 as the only operational database
+- ✅ Apply schema changes through migrations
+- ✅ Add indexes for role, status, and routing-heavy fields
 
 ## API Development Guidelines
 
 ### Route Naming Convention
 ```
-GET    /api/products              # List all
-GET    /api/products/:id          # Get one
-POST   /api/products              # Create
-PUT    /api/products/:id          # Update
-DELETE /api/products/:id          # Delete
+GET    /api/operations/dashboard
+POST   /api/operations/orders
+PUT    /api/operations/orders/:id/status
+GET    /api/notifications
 ```
 
 ### Response Format
@@ -89,15 +79,15 @@ DELETE /api/products/:id          # Delete
 
 ### Authentication
 - Use Bearer tokens in Authorization header
-- Token should be JWT with userId and role
+- Token should be JWT with user id and workspace roles
 - Token expiration: 7 days
 
 ## Frontend Development Guidelines
 
 ### Component Structure
 - Use Functional Components with Hooks
-- Use React Context for global state
-- Use Zustand for complex state
+- Use React Context for auth and language state
+- Preserve shared-account role switching via `X-Workspace-Role`
 - Implement proper error boundaries
 
 ### Styling
@@ -105,18 +95,10 @@ DELETE /api/products/:id          # Delete
 - Custom CSS in separate `.module.css` files
 - Mobile-first responsive design
 
-## Mobile Development Guidelines
-
-- Use React Native standards
-- Test on both iOS and Android emulators
-- Use Firebase for push notifications
-- Implement proper error handling
-
 ## Testing Requirements
 - Write unit tests for utilities
 - Write integration tests for APIs
-- Minimum 70% code coverage
-- All tests must pass before push
+- Run build and smoke checks before shipping
 
 ## Commit Message Format
 ```
@@ -136,6 +118,7 @@ chore:    تحديثات البناء والتبعيات
 - ❌ Never use var, always use const/let
 - ❌ Don't commit node_modules
 - ❌ Avoid callback hell, use async/await
+- ❌ Do not reintroduce MongoDB, Supabase, Streamlit, or React Native into the active path
 
 ## Team Communication
 - Use GitHub Issues for bug reports
@@ -145,4 +128,4 @@ chore:    تحديثات البناء والتبعيات
 
 ---
 
-**Last Updated:** March 8, 2024
+**Last Updated:** April 5, 2026

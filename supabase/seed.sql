@@ -1,0 +1,2 @@
+-- Seed file reserved for the Supabase migration path.
+-- Keep production data migration separate from static seed data.

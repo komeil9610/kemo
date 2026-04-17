@@ -1,10 +1,28 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function ProtectedRoute({ children, adminOnly = false, allowedRoles = [] }) {
-  const { token, user, permissions } = useAuth();
+  const { token, user, permissions, setActiveRole } = useAuth();
   const location = useLocation();
+  const workspaceRoles = Array.isArray(user?.workspaceRoles) ? user.workspaceRoles : [];
+  const adminCanAccess =
+    user?.role === 'admin' &&
+    allowedRoles.some((role) => ['admin', 'customer_service', 'operations_manager'].includes(role));
+  const matchedRole =
+    allowedRoles.length === 0
+      ? user?.role
+      : allowedRoles.includes(user?.role)
+        ? user?.role
+        : adminCanAccess
+          ? 'admin'
+        : allowedRoles.find((role) => workspaceRoles.includes(role));
+
+  useEffect(() => {
+    if (matchedRole && matchedRole !== user?.role) {
+      setActiveRole(matchedRole);
+    }
+  }, [matchedRole, setActiveRole, user?.role]);
 
   if (!token) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -14,8 +32,12 @@ export default function ProtectedRoute({ children, adminOnly = false, allowedRol
     return <Navigate to="/" replace />;
   }
 
-  if (allowedRoles.length && !allowedRoles.includes(user?.role)) {
+  if (allowedRoles.length && !matchedRole) {
     return <Navigate to="/" replace />;
+  }
+
+  if (allowedRoles.length && matchedRole !== user?.role) {
+    return null;
   }
 
   return children;

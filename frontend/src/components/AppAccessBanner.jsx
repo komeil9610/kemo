@@ -7,7 +7,6 @@ import { getNotificationPermissionState, requestNotificationPermissions } from '
 import {
   isIosInstallableDevice,
   isStandaloneApp,
-  registerAppServiceWorker,
   subscribeBrowserPush,
   supportsBrowserPush,
 } from '../utils/pwa';
@@ -66,12 +65,12 @@ export default function AppAccessBanner() {
             install: 'إضافة إلى الشاشة',
             enableAlerts: 'تفعيل الإشعارات',
             close: 'إخفاء',
-            iosHint: 'في iPhone افتح مشاركة Safari ثم اختر "Add to Home Screen".',
+            iosHint: 'في آيفون افتح قائمة المشاركة في Safari ثم اختر "إضافة إلى الشاشة الرئيسية".',
             installDone: 'أصبح التطبيق جاهزًا على الشاشة الرئيسية.',
             installLater: 'يمكنك التثبيت لاحقًا من نفس المتصفح.',
             alertsDone: 'تم تفعيل تنبيهات الجوال لهذا الحساب.',
             alertsDenied: 'اسمح بالإشعارات من المتصفح أو النظام أولًا.',
-            alertsUnavailable: 'Push notifications غير جاهزة حاليًا على هذا الجهاز.',
+            alertsUnavailable: 'الإشعارات الفورية غير متاحة حاليًا على هذا الجهاز.',
             alertsError: 'تعذر تفعيل الإشعارات الآن.',
             installBadge: 'وضع التطبيق',
             alertsBadge: 'تنبيهات مباشرة',
@@ -97,7 +96,6 @@ export default function AppAccessBanner() {
   );
 
   useEffect(() => {
-    registerAppServiceWorker().catch(() => null);
     getNotificationPermissionState().then((value) => setPermission(value || 'prompt'));
   }, []);
 

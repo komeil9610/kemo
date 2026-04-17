@@ -1,4 +1,16 @@
-import { parseExcelOrdersFromArrayBuffer } from "./excelImport.js";
+/**
+ * Developed by [Kumeel Taher Al Nahab / كميل طاهر ال نهاب]
+ * For TrkeebPro
+ * Build date: 2026-04-10
+ */
+import {
+  getTechnicianAssignmentIssues,
+  normalizeInstallationWorkOrderRow,
+  parseExcelOrdersFromArrayBuffer,
+  parseInstallationWorkOrderReportFromArrayBuffer,
+  parseTechnicianAssignment,
+} from "./excelImport.js";
+import { EmailMessage } from "cloudflare:email";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:3000",
@@ -10,10 +22,13 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "capacitor://localhost",
 ];
 
-const INTERNAL_PROXY_HEADER = "X-Tarkeeb-Pro-Internal";
-const DEFAULT_ACCESS_AUD = "282d6bbb5c79e6fa216dc031838ec36e641595f0c62f5ee0732e6d2f264eefa6";
-const DEFAULT_ACCESS_JWKS_URL = "https://bobkumeel.cloudflareaccess.com/cdn-cgi/access/certs";
-const jwksCache = new Map();
+const LOGIN_EMAIL_ALIASES = new Map([
+  ["bobomorgann2@gmail.com", "bobmorgann2@gmail.com"],
+]);
+const PRIVILEGED_INTERNAL_EMAILS = new Map([
+  ["bobmorgann2@gmail.com", ["admin", "customer_service", "operations_manager"]],
+  ["bobomorgann2@gmail.com", ["admin", "customer_service", "operations_manager"]],
+]);
 
 const DEFAULT_PRODUCT_IMAGE =
   "https://images.unsplash.com/photo-1581093458791-9d15482442f0?auto=format&fit=crop&w=900&q=80";
@@ -29,13 +44,6 @@ export default {
     try {
       const url = new URL(request.url);
       const path = url.pathname;
-
-      if (!isInternalProxyRequest(request)) {
-        const accessResponse = await validateCloudflareAccess(request, env);
-        if (accessResponse) {
-          return accessResponse;
-        }
-      }
 
       if (path === "/api/health" && request.method === "GET") {
         return json(
@@ -86,7 +94,25 @@ export default {
         return importServiceOrders(request, env);
       }
 
+      if (path === "/api/operations/orders/import-jobs" && request.method === "POST") {
+        return createImportJob(request, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/import-jobs/") && path.endsWith("/process") && request.method === "POST") {
+        const id = path.split("/").slice(-2, -1)[0];
+        return processImportJob(request, id, env);
+      }
+
+      if (path.startsWith("/api/operations/orders/import-jobs/") && request.method === "GET") {
+        const id = path.split("/").pop();
+        return getImportJob(request, id, env);
+      }
+
       if (path === "/api/operations/excel-import/preview-upload" && request.method === "POST") {
+        return previewExcelUpload(request, env);
+      }
+
+      if (path === "/api/operations/excel-import/upload" && request.method === "POST") {
         return previewExcelUpload(request, env);
       }
 
@@ -291,12 +317,62 @@ export default {
       );
     }
   },
+
+  async email(message, env, ctx) {
+    const receivedAddress = sanitizeEmailHeaderValue(message.to).toLowerCase();
+    const allowedInboundAddresses = getAllowedInboundEmailAddresses(env);
+    const forwardRecipients = parseEmailAddressList(env.INBOUND_EMAIL_FORWARD_TO);
+    const alertRecipients = parseEmailAddressList(env.INBOUND_EMAIL_ALERT_TO);
+
+    if (!allowedInboundAddresses.includes(receivedAddress)) {
+      message.setReject("This inbox is not configured for the worker.");
+      return;
+    }
+
+    if (!forwardRecipients.length && !alertRecipients.length) {
+      message.setReject("Inbound email routing is not configured.");
+      return;
+    }
+
+    for (const recipient of forwardRecipients) {
+      await message.forward(recipient);
+    }
+
+    if (alertRecipients.length && env.SEND_EMAIL) {
+      ctx.waitUntil(sendInboundEmailAlert(message, env, alertRecipients));
+    }
+  },
+
+  async queue(batch, env) {
+    for (const message of batch.messages || []) {
+      const jobId = String(message?.body?.jobId || "").trim();
+      if (!jobId) {
+        message.ack();
+        continue;
+      }
+
+      try {
+        await processImportJobInBackground(env, jobId);
+        message.ack();
+      } catch (error) {
+        console.error("Import queue job failed", { jobId, error: String(error?.message || error || "") });
+        message.retry();
+      }
+    }
+  },
 };
 
 import webpush from "web-push";
 
 const DEFAULT_VAPID_PUBLIC_KEY = "BJDe1im_oVNRMdPrjtBjE7qwlb-CJUDIxxc_Dp-mhPwuiuSgTHcFxWgS3MX-gyVyy3YPMS8nGQ6YaJIb1rrGgyo";
 const DEFAULT_VAPID_CONTACT_EMAIL = "ops@tarkeebpro.sa";
+const DEFAULT_EMAIL_ALERT_SUBJECT_PREFIX = "[Kumeel Al Nahab]";
+const DEFAULT_INBOUND_EMAIL_ADDRESSES = [
+  "hashimaldrweish@kumeelalnahab.com",
+  "bookings@kumeelalnahab.com",
+  "customerservice@kumeelalnahab.com",
+  "info@kumeelalnahab.com",
+];
 let webPushConfigCacheKey = "";
 
 function getWebPushConfig(env = {}) {
@@ -328,8 +404,92 @@ function ensureWebPushConfigured(env = {}) {
   return config;
 }
 
+function parseEmailAddressList(value) {
+  const seen = new Set();
+
+  return String(value || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .filter((entry) => {
+      const key = entry.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+function getAllowedInboundEmailAddresses(env = {}) {
+  const configured = parseEmailAddressList(env.INBOUND_EMAIL_ALLOWED_TO);
+  const list = configured.length ? configured : DEFAULT_INBOUND_EMAIL_ADDRESSES;
+  return list.map((entry) => entry.toLowerCase());
+}
+
+function sanitizeEmailHeaderValue(value) {
+  return String(value || "")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+}
+
+function getEmailHeader(message, name) {
+  return sanitizeEmailHeaderValue(message?.headers?.get?.(name) || "");
+}
+
+function buildPlainTextEmail({ from, to, subject, text }) {
+  const safeFrom = sanitizeEmailHeaderValue(from);
+  const safeTo = sanitizeEmailHeaderValue(to);
+  const safeSubject = sanitizeEmailHeaderValue(subject);
+  const normalizedText = String(text || "").replace(/\r?\n/g, "\r\n");
+  const raw = [
+    `From: <${safeFrom}>`,
+    `To: <${safeTo}>`,
+    `Subject: ${safeSubject}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    normalizedText,
+    "",
+  ].join("\r\n");
+
+  return new EmailMessage(safeFrom, safeTo, raw);
+}
+
+async function sendInboundEmailAlert(message, env, recipients = []) {
+  const receivedAddress = sanitizeEmailHeaderValue(message.to);
+  const senderAddress = sanitizeEmailHeaderValue(message.from);
+  const originalSubject = getEmailHeader(message, "subject") || "(no subject)";
+  const originalDate = getEmailHeader(message, "date") || new Date().toISOString();
+  const alertSubject = `${DEFAULT_EMAIL_ALERT_SUBJECT_PREFIX} New inbound email for ${receivedAddress}`;
+  const alertBody = [
+    "A new inbound email was received by the API worker.",
+    "",
+    `To: ${receivedAddress}`,
+    `From: ${senderAddress || "(empty envelope sender)"}`,
+    `Subject: ${originalSubject}`,
+    `Date: ${originalDate}`,
+  ].join("\n");
+
+  await Promise.all(
+    recipients.map((recipient) =>
+      env.SEND_EMAIL.send(
+        buildPlainTextEmail({
+          from: receivedAddress,
+          to: recipient,
+          subject: alertSubject,
+          text: alertBody,
+        })
+      )
+    )
+  );
+}
+
 function getWorkspacePathForRole(role) {
   return {
+    admin: "/admin",
     customer_service: "/customer-service",
     operations_manager: "/operations-manager",
   }[String(role || "").trim()] || "/login";
@@ -377,7 +537,7 @@ async function pushNotification(request, env) {
   }
 
   const body = await readJson(request);
-  const { message, title = "Tarkeeb Pro", url = "/login", tag = "broadcast" } = body;
+  const { message, title = "TrkeebPro", url = "/login", tag = "broadcast" } = body;
 
   if (!message) {
     return json({ message: "Message is required" }, 400, request, env);
@@ -434,7 +594,7 @@ async function sendPushToUser(env, userId, payload = {}) {
 
   const targetUrl = payload.url || getWorkspacePathForRole(results[0]?.role);
   const message = JSON.stringify({
-    title: payload.title || "Tarkeeb Pro",
+    title: payload.title || "TrkeebPro",
     body: payload.body || "",
     url: targetUrl,
     tag: payload.tag || (payload.relatedOrderId ? `order-${payload.relatedOrderId}` : `user-${userId}`),
@@ -482,7 +642,7 @@ async function register(request, env) {
     return json({ message: "Email already exists" }, 409, request, env);
   }
 
-  const passwordHash = await hashPassword(password, email);
+  const passwordHash = await hashPassword(password, user.email);
   const created = await env.DB.prepare(
     "INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)"
   )
@@ -502,8 +662,9 @@ async function register(request, env) {
 
 async function login(request, env) {
   const body = await readJson(request);
-  const email = (body.email || "").toLowerCase().trim();
+  const email = normalizeLoginEmail(body.email || "");
   const password = body.password || "";
+  const requestedWorkspaceRole = body.workspaceRole || request.headers.get("X-Workspace-Role") || "";
 
   if (!email || !password) {
     return json({ message: "Email and password are required" }, 400, request, env);
@@ -523,15 +684,18 @@ async function login(request, env) {
     return json({ message: "This account is inactive" }, 403, request, env);
   }
 
-  const passwordHash = await hashPassword(password, email);
+  const passwordHash = await hashPassword(password, user.email);
   if (passwordHash !== user.password_hash) {
     return json({ message: "Invalid credentials" }, 401, request, env);
   }
 
+  const workspaceRoles = await readUserWorkspaceRoles(env, user.id, user.role);
+  const activeRole = resolveRequestedWorkspaceRole(requestedWorkspaceRole, workspaceRoles);
+
   const technician =
     ["technician"].includes(normalizeServerRole(user.role))
       ? await env.DB.prepare(
-          "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
+          "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
         )
           .bind(Number(user.id))
           .first()
@@ -543,7 +707,8 @@ async function login(request, env) {
       sub: String(user.id),
       email: user.email,
       name: user.name,
-      role: normalizeServerRole(user.role),
+      role: activeRole,
+      roles: workspaceRoles,
       status: user.status || "active",
     },
     jwtSecret
@@ -556,7 +721,8 @@ async function login(request, env) {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: normalizeServerRole(user.role),
+        role: activeRole,
+        workspaceRoles,
         status: user.status || "active",
         technicianId: technician ? String(technician.id) : null,
         region: technician ? mapTechnician(technician).region : null,
@@ -569,6 +735,16 @@ async function login(request, env) {
     request,
     env
   );
+}
+
+function normalizeLoginEmail(value) {
+  const normalized = String(value || "").toLowerCase().trim();
+  return LOGIN_EMAIL_ALIASES.get(normalized) || normalized;
+}
+
+function getPrivilegedWorkspaceRolesForEmail(value) {
+  const normalized = normalizeLoginEmail(value);
+  return PRIVILEGED_INTERNAL_EMAILS.get(normalized) || [];
 }
 
 async function listProducts(request, url, env) {
@@ -863,7 +1039,27 @@ async function updateAdminHomeSettings(request, env) {
       normalized.primaryButtonUrl,
       normalized.secondaryButtonText,
       normalized.secondaryButtonUrl,
-      JSON.stringify(normalized.stats)
+      JSON.stringify({
+        contentVersion: 2,
+        heroNote: normalized.heroNote,
+        heroHighlights: normalized.heroHighlights,
+        stats: normalized.stats,
+        aboutTitle: normalized.aboutTitle,
+        aboutText: normalized.aboutText,
+        servicesTitle: normalized.servicesTitle,
+        services: normalized.services,
+        featuresTitle: normalized.featuresTitle,
+        features: normalized.features,
+        galleryTitle: normalized.galleryTitle,
+        galleryImages: normalized.galleryImages,
+        testimonialsTitle: normalized.testimonialsTitle,
+        testimonials: normalized.testimonials,
+        contactTitle: normalized.contactTitle,
+        phone: normalized.phone,
+        whatsappNumber: normalized.whatsappNumber,
+        coverageText: normalized.coverageText,
+        hoursText: normalized.hoursText,
+      })
     )
     .run();
 
@@ -1309,8 +1505,75 @@ const OPERATIONS_REGIONS = [
   },
 ];
 
+const TECHNICIAN_COVERAGE_OPTIONS = [
+  { key: "riyadh", type: "city", ar: "الرياض", en: "Riyadh", aliases: ["r", "riy", "riyadh", "الرياض"] },
+  { key: "al_kharj", type: "city", ar: "الخرج", en: "Al Kharj", aliases: ["kharj", "al kharj", "al_kharj", "الخرج"] },
+  { key: "jeddah", type: "city", ar: "جدة", en: "Jeddah", aliases: ["j", "jd", "jed", "jeddah", "جدة", "جده"] },
+  { key: "makkah", type: "city", ar: "مكة", en: "Makkah", aliases: ["m", "makkah", "mecca", "مكة"] },
+  { key: "madinah", type: "city", ar: "المدينة المنورة", en: "Madinah", aliases: ["md", "madinah", "medina", "المدينة", "المدينة المنورة"] },
+  { key: "taif", type: "city", ar: "الطائف", en: "Taif", aliases: ["taif", "الطائف"] },
+  { key: "yanbu", type: "city", ar: "ينبع", en: "Yanbu", aliases: ["yan", "yanbu", "ينبع"] },
+  { key: "rabigh", type: "city", ar: "رابغ", en: "Rabigh", aliases: ["rabigh", "رابغ"] },
+  { key: "al_ula", type: "city", ar: "العلا", en: "Al Ula", aliases: ["ula", "al ula", "al_ula", "العلا"] },
+  { key: "dammam", type: "city", ar: "الدمام", en: "Dammam", aliases: ["d", "dammam", "الدمام"] },
+  { key: "khobar", type: "city", ar: "الخبر", en: "Khobar", aliases: ["kh", "khf", "khobar", "الخبر"] },
+  { key: "dhahran", type: "city", ar: "الظهران", en: "Dhahran", aliases: ["dh", "dhahran", "الظهران"] },
+  { key: "hofuf", type: "city", ar: "الأحساء", en: "Al Ahsa", aliases: ["h", "a", "ahsa", "alahsa", "hofuf", "الاحساء", "الأحساء", "الهفوف"] },
+  { key: "qatif", type: "city", ar: "القطيف", en: "Qatif", aliases: ["q", "qatif", "القطيف"] },
+  { key: "jubail", type: "city", ar: "الجبيل", en: "Jubail", aliases: ["jubail", "الجبيل"] },
+  { key: "hafr_al_batin", type: "city", ar: "حفر الباطن", en: "Hafar Al Batin", aliases: ["hafr", "hafr al batin", "hafr_al_batin", "حفر الباطن"] },
+  { key: "khafji", type: "city", ar: "الخفجي", en: "Khafji", aliases: ["khafji", "الخفجي"] },
+  { key: "bqaiq", type: "city", ar: "بقيق", en: "Bqaiq", aliases: ["b", "bqaiq", "buqayq", "بقيق"] },
+  { key: "ras_tanura", type: "city", ar: "رأس تنورة", en: "Ras Tanura", aliases: ["rs", "ras", "ras_tanura", "rastanura", "رأس تنورة"] },
+  { key: "abha", type: "city", ar: "أبها", en: "Abha", aliases: ["abha", "أبها"] },
+  { key: "khamis_mushait", type: "city", ar: "خميس مشيط", en: "Khamis Mushait", aliases: ["km", "khamis", "khamis mushait", "khamis_mushait", "خميس مشيط"] },
+  { key: "najran", type: "city", ar: "نجران", en: "Najran", aliases: ["najran", "نجران"] },
+  { key: "jazan", type: "city", ar: "جازان", en: "Jazan", aliases: ["g", "jazan", "جازان"] },
+  { key: "abu_arish", type: "city", ar: "أبو عريش", en: "Abu Arish", aliases: ["abu_arish", "abu arish", "abuarish", "أبو عريش"] },
+  { key: "sabya", type: "city", ar: "صبيا", en: "Sabya", aliases: ["sabya", "صبيا"] },
+  { key: "bisha", type: "city", ar: "بيشة", en: "Bisha", aliases: ["bisha", "بيشة"] },
+  { key: "al_baha", type: "city", ar: "الباحة", en: "Al Baha", aliases: ["baha", "al baha", "al_baha", "الباحة"] },
+  { key: "buraidah", type: "city", ar: "بريدة", en: "Buraidah", aliases: ["bur", "br", "buraidah", "buraida", "بريدة"] },
+  { key: "unaizah", type: "city", ar: "عنيزة", en: "Unaizah", aliases: ["unaizah", "unaiza", "عنيزة"] },
+  { key: "qassim", type: "city", ar: "القصيم", en: "Qassim", aliases: ["qas", "qassim", "القصيم"] },
+  { key: "hail", type: "city", ar: "حائل", en: "Hail", aliases: ["hail", "حائل"] },
+  { key: "tabuk", type: "city", ar: "تبوك", en: "Tabuk", aliases: ["tabuk", "تبوك"] },
+  { key: "sakaka", type: "city", ar: "سكاكا", en: "Sakaka", aliases: ["sakaka", "سكاكا"] },
+  { key: "arar", type: "city", ar: "عرعر", en: "Arar", aliases: ["arar", "عرعر"] },
+  { key: "qurayyat", type: "city", ar: "القريات", en: "Qurayyat", aliases: ["qurayyat", "القريات"] },
+  { key: "east", type: "region", ar: "المنطقة الشرقية", en: "Eastern region", aliases: ["east", "eastern", "الشرقية", "المنطقة الشرقية"] },
+  { key: "west", type: "region", ar: "المنطقة الغربية", en: "Western region", aliases: ["west", "western", "الغربية", "المنطقة الغربية"] },
+  { key: "south", type: "region", ar: "المنطقة الجنوبية", en: "Southern region", aliases: ["south", "southern", "الجنوبية", "المنطقة الجنوبية"] },
+  { key: "central", type: "region", ar: "المنطقة الوسطى", en: "Central region", aliases: ["central", "الوسطى", "المنطقة الوسطى"] },
+];
+
+const TECHNICIAN_COVERAGE_LOOKUP = new Map(
+  TECHNICIAN_COVERAGE_OPTIONS.flatMap((item) =>
+    [item.key, item.ar, item.en, ...(item.aliases || [])]
+      .map((alias) => String(alias || "").trim().toLowerCase())
+      .filter(Boolean)
+      .map((alias) => [alias, item.key])
+  )
+);
+
 function normalizeRegionKey(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeTechnicianCoverageKey(value) {
+  const normalized = normalizeRegionKey(value);
+  if (!normalized) {
+    return "";
+  }
+  return TECHNICIAN_COVERAGE_LOOKUP.get(normalized) || normalized;
+}
+
+function getTechnicianCoverageByKey(value) {
+  const normalized = normalizeTechnicianCoverageKey(value);
+  if (!normalized) {
+    return null;
+  }
+  return TECHNICIAN_COVERAGE_OPTIONS.find((item) => item.key === normalized) || null;
 }
 
 function getOperationsRegionByKey(value) {
@@ -1336,18 +1599,24 @@ function getOrderRegionKey(order = {}) {
 }
 
 async function getOperationsDashboard(request, env) {
-  const user = await requireRoles(request, env, ["customer_service", "operations_manager"]);
+  const user = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
   if (!user) {
     return json({ message: "Internal access required" }, 403, request, env);
   }
 
   const orders = await readServiceOrders(env);
   const summary = await readOperationsSummary(env);
+  const technicians = await readTechnicians(env);
+  const timeStandards = await readServiceTimeStandards(env);
+  const areaClusters = await readInternalAreaClusters(env);
 
   return json(
     {
       orders,
       summary,
+      technicians,
+      timeStandards,
+      areaClusters,
       currentUser: user,
     },
     200,
@@ -1363,7 +1632,7 @@ async function getOperationsSummary(request, env) {
 }
 
 async function getServiceTimeStandards(request, env) {
-  const user = await requireRoles(request, env, ["customer_service", "operations_manager"]);
+  const user = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
   if (!user) {
     return json({ message: "Unauthorized" }, 401, request, env);
   }
@@ -1373,7 +1642,7 @@ async function getServiceTimeStandards(request, env) {
 }
 
 async function getInternalAreaClusters(request, env) {
-  const user = await requireRoles(request, env, ["customer_service", "operations_manager"]);
+  const user = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
   if (!user) {
     return json({ message: "Unauthorized" }, 401, request, env);
   }
@@ -1446,17 +1715,19 @@ async function updateInternalAreaClusters(request, env) {
 }
 
 async function createServiceOrder(request, env) {
-  const csr = await requireRoles(request, env, ["customer_service"]);
-  if (!csr) {
-    return json({ message: "Customer service access required" }, 403, request, env);
+  const actor = await requireRoles(request, env, ["admin", "customer_service"]);
+  if (!actor) {
+    return json({ message: "Admin or customer service access required" }, 403, request, env);
   }
 
   const body = await readJson(request);
-  const normalized = normalizeServiceOrderInput(body);
+  const normalized = normalizeManualInstallationServiceOrderInput(body || {});
+
   if (normalized.error) {
     return json({ message: normalized.error }, 400, request, env);
   }
 
+<<<<<<< Updated upstream
   const referenceRegistry = await readServiceOrderReferenceRegistry(env);
   const duplicateReference = findDuplicateOrderReference(referenceRegistry, normalized);
   if (duplicateReference) {
@@ -1477,32 +1748,273 @@ async function createServiceOrder(request, env) {
       : `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويتضمن ${normalized.deliveryType === "express_24h" ? "توصيلاً سريعاً خلال 24 ساعة" : "توصيلاً"} ويحتاج إلى متابعة عاجلة.`,
     createdOrderId
   );
+=======
+  const registry = await readServiceOrderReferenceRegistry(env, null, { includeArchived: true });
+  const conflict = findDuplicateOrderReference(registry, normalized);
+  if (conflict) {
+    return json({ message: buildDuplicateOrderMessage(conflict) }, 409, request, env);
+  }
 
-  const order = await readServiceOrderById(env, createdOrderId);
-  return json({ order }, 201, request, env);
+  const normalizedActorRole = normalizeServerRole(actor.role);
+  const actorRole = normalizedActorRole === "admin" ? "admin" : "customer_service";
+  const orderId = await insertServiceOrderRecord(env, normalized, Number(actor.sub), {
+    actor: actorRole,
+    message:
+      actorRole === "admin"
+        ? `تم إنشاء الطلب ${normalized.requestNumber} يدويًا بنفس جدول Excel بواسطة الإدارة.`
+        : `تم إنشاء الطلب ${normalized.requestNumber} يدويًا بنفس جدول Excel بواسطة خدمة العملاء.`,
+  });
+
+  if (!orderId) {
+    return json({ message: "Failed to create manual order" }, 500, request, env);
+  }
+>>>>>>> Stashed changes
+
+  await notifyOperationsManagersAboutNewOrder(env, normalized, orderId);
+  await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId);
+  const order = await readServiceOrderById(env, orderId);
+  return json(
+    {
+      message: "Manual order created successfully",
+      order,
+    },
+    201,
+    request,
+    env
+  );
 }
 
+<<<<<<< Updated upstream
 async function importServiceOrders(request, env) {
   const csr = await requireRoles(request, env, ["customer_service"]);
   if (!csr) {
     return json({ message: "Customer service access required" }, 403, request, env);
+=======
+function resolveImportActorRole(actor = {}) {
+  const normalizedActorRole = normalizeServerRole(actor.role);
+  return normalizedActorRole === "admin"
+    ? "admin"
+    : normalizedActorRole === "operations_manager"
+      ? "operations_manager"
+      : "customer_service";
+}
+
+function buildImportJobId() {
+  if (typeof crypto?.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return base64UrlEncode(`${Date.now()}-${Math.random()}-${Math.random()}`);
+}
+
+function buildImportPreviewId() {
+  if (typeof crypto?.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return base64UrlEncode(`preview-${Date.now()}-${Math.random()}-${Math.random()}`);
+}
+
+function mapImportJobRow(row = {}) {
+  return {
+    id: String(row.id || ""),
+    fileName: String(row.file_name || "Excel"),
+    status: String(row.status || "pending"),
+    totalRows: Number(row.total_rows || 0),
+    processedRows: Number(row.processed_rows || 0),
+    importedCount: Number(row.imported_count || 0),
+    createdCount: Number(row.created_count || 0),
+    updatedCount: Number(row.updated_count || 0),
+    archivedCount: Number(row.archived_count || 0),
+    restoredCount: Number(row.restored_count || 0),
+    unchangedCount: Number(row.unchanged_count || 0),
+    skippedCount: Number(row.skipped_count || 0),
+    skippedOrders: parseJsonArray(row.skipped_orders_json),
+    lastError: String(row.last_error || "").trim(),
+    createdByUserId: row.created_by_user_id ? Number(row.created_by_user_id) : null,
+    createdByRole: String(row.created_by_role || ""),
+    startedAt: String(row.started_at || ""),
+    completedAt: String(row.completed_at || ""),
+    createdAt: String(row.created_at || ""),
+    updatedAt: String(row.updated_at || ""),
+  };
+}
+
+async function readImportJobById(env, jobId) {
+  const row = await env.DB.prepare("SELECT * FROM import_jobs WHERE id = ?").bind(String(jobId || "")).first();
+  return row ? mapImportJobRow(row) : null;
+}
+
+async function readImportPreviewById(env, previewId) {
+  const row = await env.DB.prepare("SELECT * FROM import_previews WHERE id = ?").bind(String(previewId || "")).first();
+  if (!row) {
+    return null;
+>>>>>>> Stashed changes
   }
 
-  const body = await readJson(request);
-  const rawOrders = Array.isArray(body?.orders) ? body.orders : [];
-  const sourceFileName = String(body?.fileName || "Excel").trim();
-  if (!rawOrders.length) {
-    return json({ message: "At least one Excel order is required" }, 400, request, env);
+  return {
+    id: String(row.id || ""),
+    fileName: String(row.file_name || "Excel"),
+    orders: parseJsonArray(row.orders_json),
+    createdByUserId: row.created_by_user_id ? Number(row.created_by_user_id) : null,
+    createdByRole: String(row.created_by_role || ""),
+  };
+}
+
+async function enqueueImportJobIfSupported(env, jobId) {
+  const queue = env?.IMPORT_JOBS_QUEUE;
+  if (!queue || typeof queue.send !== "function") {
+    return false;
   }
 
+<<<<<<< Updated upstream
   const existingReferences = await readServiceOrderReferenceRegistry(env);
   const seenRequestNumbers = new Set();
   const seenSoIds = new Set();
   const seenWoIds = new Set();
   const validOrders = [];
   const skippedOrders = [];
+=======
+  await queue.send({
+    jobId: String(jobId || "").trim(),
+    queuedAt: new Date().toISOString(),
+  });
+  return true;
+}
 
-  for (const item of rawOrders) {
+async function processImportJobStep(env, jobId, actor = null) {
+  const row = await env.DB.prepare("SELECT * FROM import_jobs WHERE id = ?").bind(String(jobId || "")).first();
+  if (!row) {
+    throw new Error("Import job not found");
+  }
+
+  const currentJob = mapImportJobRow(row);
+  if (["completed", "failed"].includes(currentJob.status)) {
+    return { job: currentJob, progressed: false };
+  }
+
+  const nextChunkRow = await env.DB.prepare(
+    `SELECT chunk_index, row_count, orders_json
+     FROM import_job_chunks
+     WHERE job_id = ? AND processed_at IS NULL
+     ORDER BY chunk_index ASC
+     LIMIT 1`
+  )
+    .bind(String(jobId))
+    .first();
+
+  if (!nextChunkRow) {
+    await env.DB.prepare(
+      "UPDATE import_jobs SET status = 'completed', completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    )
+      .bind(String(jobId))
+      .run();
+    return { job: await readImportJobById(env, jobId), progressed: false };
+  }
+
+  const nextChunk = parseJsonArray(nextChunkRow.orders_json);
+  if (!nextChunk.length) {
+    await env.DB.prepare("UPDATE import_job_chunks SET processed_at = CURRENT_TIMESTAMP WHERE job_id = ? AND chunk_index = ?")
+      .bind(String(jobId), Number(nextChunkRow.chunk_index || 0))
+      .run();
+    return { job: await readImportJobById(env, jobId), progressed: true };
+  }
+
+  const createdByActor = actor || {
+    role: String(row.created_by_role || "customer_service"),
+    sub: Number(row.created_by_user_id || 0),
+  };
+
+  await env.DB.prepare(
+    "UPDATE import_jobs SET status = 'processing', started_at = COALESCE(started_at, CURRENT_TIMESTAMP), last_error = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+  )
+    .bind(String(jobId))
+    .run();
+
+  try {
+    const report = await processImportedServiceOrders(env, nextChunk, createdByActor, {
+      fileName: row.file_name,
+      notify: false,
+    });
+    await env.DB.prepare("UPDATE import_job_chunks SET processed_at = CURRENT_TIMESTAMP WHERE job_id = ? AND chunk_index = ?")
+      .bind(String(jobId), Number(nextChunkRow.chunk_index || 0))
+      .run();
+
+    const processedRows = Math.max(0, Number(row.processed_rows || 0)) + Number(nextChunkRow.row_count || nextChunk.length || 0);
+    const totalRows = Number(row.total_rows || 0);
+    const completed = processedRows >= totalRows;
+    const skippedOrders = [...parseJsonArray(row.skipped_orders_json), ...(report.skippedOrders || [])];
+
+    await env.DB.prepare(
+      `UPDATE import_jobs
+       SET status = ?, processed_rows = ?, imported_count = imported_count + ?, created_count = created_count + ?,
+           updated_count = updated_count + ?, archived_count = archived_count + ?, restored_count = restored_count + ?,
+           unchanged_count = unchanged_count + ?, skipped_count = skipped_count + ?, skipped_orders_json = ?, completed_at = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+      .bind(
+        completed ? "completed" : "processing",
+        processedRows,
+        Number(report.importedCount || 0),
+        Number(report.createdCount || 0),
+        Number(report.updatedCount || 0),
+        Number(report.archivedCount || 0),
+        Number(report.restoredCount || 0),
+        Number(report.unchangedCount || 0),
+        Number(report.skippedCount || 0),
+        JSON.stringify(skippedOrders),
+        completed ? new Date().toISOString() : null,
+        String(jobId)
+      )
+      .run();
+
+    return { job: await readImportJobById(env, jobId), progressed: true };
+  } catch (error) {
+    const message = String(error?.message || error || "Import job failed").trim() || "Import job failed";
+    await env.DB.prepare(
+      "UPDATE import_jobs SET status = 'failed', last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    )
+      .bind(message, String(jobId))
+      .run();
+    throw error;
+  }
+}
+
+async function processImportJobInBackground(env, jobId) {
+  let safetyCounter = 0;
+  let currentJob = await readImportJobById(env, jobId);
+
+  while (currentJob && !["completed", "failed"].includes(String(currentJob.status || "").trim()) && safetyCounter < 1000) {
+    const step = await processImportJobStep(env, jobId);
+    currentJob = step.job;
+    safetyCounter += 1;
+    if (!step.progressed) {
+      break;
+    }
+  }
+
+  return currentJob || (await readImportJobById(env, jobId));
+}
+
+async function processImportedServiceOrders(env, rawOrders = [], actor = {}, options = {}) {
+  const sourceFileName = String(options.fileName || "Excel").trim() || "Excel";
+  const notify = options.notify !== false;
+  const existingReferences = await readServiceOrderReferenceRegistry(env, null, { includeArchived: true });
+  const workingRegistry = {
+    requestNumbers: new Map(existingReferences.requestNumbers),
+    idRefs: new Map(existingReferences.idRefs),
+    soIds: new Map(existingReferences.soIds),
+    woIds: new Map(existingReferences.woIds),
+  };
+  const skippedOrders = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+  let archivedCount = 0;
+  let restoredCount = 0;
+  let unchangedCount = 0;
+  const actorRole = resolveImportActorRole(actor);
+>>>>>>> Stashed changes
+
+  for (const item of Array.isArray(rawOrders) ? rawOrders : []) {
     const normalized = normalizeServiceOrderInput(item);
     const requestNumber = String(item?.requestNumber || normalized.requestNumber || "").trim();
 
@@ -1514,6 +2026,7 @@ async function importServiceOrders(request, env) {
       continue;
     }
 
+<<<<<<< Updated upstream
     if (normalized.importStatus === "completed") {
       skippedOrders.push({
         requestNumber: normalized.requestNumber,
@@ -1563,6 +2076,74 @@ async function importServiceOrders(request, env) {
     seenRequestNumbers.add(requestKey);
     if (soKey) {
       seenSoIds.add(soKey);
+=======
+    const duplicateReference = findDuplicateOrderReference(workingRegistry, normalized);
+
+    if (duplicateReference) {
+      const syncResult =
+        duplicateReference.scope === "archived" && duplicateReference.archiveId
+          ? await syncArchivedServiceOrderFromIncomingData(
+              env,
+              duplicateReference.archiveId,
+              normalized,
+              {
+                role: actorRole,
+                sub: actor.sub,
+              },
+              { notify }
+            )
+          : await syncExistingServiceOrderFromIncomingData(
+              env,
+              duplicateReference.orderId,
+              normalized,
+              {
+                role: actorRole,
+                sub: actor.sub,
+              },
+              { notify }
+            );
+      registerOrderReferenceIds(workingRegistry, normalized, {
+        orderId: syncResult?.order?.numericId || duplicateReference.orderId,
+        archiveId: duplicateReference.archiveId,
+        customerName: normalized.customerName,
+        scope: syncResult?.archived ? "archived" : "active",
+      });
+      if (syncResult?.action === "updated_existing") {
+        updatedCount += 1;
+      } else if (syncResult?.action === "archived_existing" || syncResult?.action === "restored_and_archived") {
+        archivedCount += 1;
+      } else if (syncResult?.action === "restored_existing") {
+        restoredCount += 1;
+      } else if (
+        syncResult?.action === "restored_unchanged" ||
+        syncResult?.action === "unchanged_existing" ||
+        syncResult?.action === "updated_archived"
+      ) {
+        unchangedCount += 1;
+      }
+      continue;
+    }
+
+    const orderId = await insertServiceOrderRecord(env, normalized, Number(actor.sub || 0) || null, {
+      actor: actorRole,
+      message:
+        actorRole === "admin"
+          ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة الإدارة.`
+          : actorRole === "operations_manager"
+            ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة مدير العمليات.`
+            : `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil وإرساله إلى مدير العمليات.`,
+    });
+    if (orderId) {
+      registerOrderReferenceIds(workingRegistry, normalized, {
+        orderId,
+        customerName: normalized.customerName,
+      });
+      if (notify) {
+        await notifyOperationsManagersAboutNewOrder(env, normalized, orderId);
+        await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId);
+      }
+      createdCount += 1;
+>>>>>>> Stashed changes
     }
     if (woKey) {
       seenWoIds.add(woKey);
@@ -1593,6 +2174,7 @@ async function importServiceOrders(request, env) {
     importedCount += orderId ? 1 : 0;
   }
 
+<<<<<<< Updated upstream
   return json(
     {
       fileName: sourceFileName,
@@ -1604,15 +2186,152 @@ async function importServiceOrders(request, env) {
     request,
     env
   );
+=======
+  return {
+    fileName: sourceFileName,
+    importedCount: createdCount + updatedCount + archivedCount + restoredCount + unchangedCount,
+    createdCount,
+    updatedCount,
+    archivedCount,
+    restoredCount,
+    unchangedCount,
+    skippedCount: skippedOrders.length,
+    skippedOrders,
+  };
+}
+
+async function importServiceOrders(request, env) {
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  if (!actor) {
+    return json({ message: "Admin, customer service, or operations manager access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const rawOrders = Array.isArray(body?.orders) ? body.orders : [];
+  const sourceFileName = String(body?.fileName || "Excel").trim();
+  if (!rawOrders.length) {
+    return json({ message: "At least one Excel order is required" }, 400, request, env);
+  }
+
+  const report = await processImportedServiceOrders(env, rawOrders, actor, {
+    fileName: sourceFileName,
+    notify: false,
+  });
+
+  return json(report, 201, request, env);
+}
+
+async function createImportJob(request, env) {
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  if (!actor) {
+    return json({ message: "Admin, customer service, or operations manager access required" }, 403, request, env);
+  }
+
+  const body = await readJson(request);
+  const previewToken = String(body?.previewToken || "").trim();
+  const requestedProcessMode = String(body?.processMode || "").trim().toLowerCase();
+  const previewRecord = previewToken ? await readImportPreviewById(env, previewToken) : null;
+  const rawOrders = previewRecord ? previewRecord.orders : Array.isArray(body?.orders) ? body.orders : [];
+  const fileName = String(body?.fileName || previewRecord?.fileName || "Excel").trim() || "Excel";
+  const requestedChunkSize = Math.max(1, Math.min(100, Number(body?.chunkSize) || 30));
+  if (!rawOrders.length) {
+    return json({ message: "At least one Excel order is required" }, 400, request, env);
+  }
+
+  const jobId = buildImportJobId();
+  const actorRole = resolveImportActorRole(actor);
+  await env.DB.prepare(
+    `INSERT INTO import_jobs (
+      id, file_name, status, orders_json, total_rows, processed_rows,
+      imported_count, created_count, updated_count, archived_count, restored_count, unchanged_count, skipped_count,
+      skipped_orders_json, last_error, created_by_user_id, created_by_role, created_at, updated_at
+    ) VALUES (?, ?, 'pending', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, '[]', '', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+  )
+    .bind(
+      jobId,
+      fileName,
+      "[]",
+      rawOrders.length,
+      Number(actor.sub || 0) || null,
+      actorRole
+    )
+    .run();
+
+  for (let index = 0; index < rawOrders.length; index += requestedChunkSize) {
+    const chunkOrders = rawOrders.slice(index, index + requestedChunkSize);
+    await env.DB.prepare(
+      `INSERT INTO import_job_chunks (
+        job_id, chunk_index, row_count, orders_json, created_at
+      ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`
+    )
+      .bind(jobId, Math.floor(index / requestedChunkSize), chunkOrders.length, JSON.stringify(chunkOrders))
+      .run();
+  }
+
+  if (previewToken) {
+    await env.DB.prepare("DELETE FROM import_previews WHERE id = ?").bind(previewToken).run();
+  }
+
+  const job = await readImportJobById(env, jobId);
+  const backgroundQueued = requestedProcessMode !== "manual" ? await enqueueImportJobIfSupported(env, jobId) : false;
+  return json({ message: "Import job created", job, backgroundQueued }, 201, request, env);
+}
+
+async function getImportJob(request, jobId, env) {
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  if (!actor) {
+    return json({ message: "Admin, customer service, or operations manager access required" }, 403, request, env);
+  }
+
+  const job = await readImportJobById(env, jobId);
+  if (!job) {
+    return json({ message: "Import job not found" }, 404, request, env);
+  }
+
+  return json({ job }, 200, request, env);
+}
+
+async function processImportJob(request, jobId, env) {
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  if (!actor) {
+    return json({ message: "Admin, customer service, or operations manager access required" }, 403, request, env);
+  }
+
+  await readJson(request);
+  try {
+    const step = await processImportJobStep(env, jobId, {
+      role: String(actor.role || "customer_service"),
+      sub: Number(actor.sub || 0),
+    });
+    return json({ job: step.job }, 200, request, env);
+  } catch (error) {
+    const message = String(error?.message || error || "Import job failed").trim() || "Import job failed";
+    return json({ message, job: await readImportJobById(env, jobId) }, 500, request, env);
+  }
+>>>>>>> Stashed changes
 }
 
 async function previewExcelUpload(request, env) {
-  const csr = await requireRoles(request, env, ["customer_service"]);
-  if (!csr) {
-    return json({ message: "Customer service access required" }, 403, request, env);
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  if (!actor) {
+    return json({ message: "Internal access required" }, 403, request, env);
   }
 
-  const formData = await request.formData();
+  let formData;
+  try {
+    formData = await request.formData();
+  } catch (error) {
+    console.error("Failed to parse Excel upload form data", error);
+    return json(
+      {
+        message: "تعذر قراءة ملف الرفع. أعد اختيار ملف Excel من الجهاز وحاول مرة أخرى.",
+      },
+      400,
+      request,
+      env
+    );
+  }
+
   const file = formData.get("file");
   if (!file || typeof file === "string") {
     return json({ message: "يرجى اختيار ملف Excel أولاً" }, 400, request, env);
@@ -1623,7 +2342,25 @@ async function previewExcelUpload(request, env) {
     return json({ message: "يرجى رفع ملف Excel بصيغة xlsx أو xls" }, 400, request, env);
   }
 
-  const preview = parseExcelOrdersFromArrayBuffer(await file.arrayBuffer(), originalFileName);
+  const arrayBuffer = await file.arrayBuffer();
+  const preview = parseExcelOrdersFromArrayBuffer(arrayBuffer, originalFileName);
+  const installationReport = parseInstallationWorkOrderReportFromArrayBuffer(arrayBuffer);
+  const previewToken = buildImportPreviewId();
+  const actorRole = resolveImportActorRole(actor);
+
+  await env.DB.prepare(
+    `INSERT INTO import_previews (
+      id, file_name, orders_json, created_by_user_id, created_by_role, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+  )
+    .bind(
+      previewToken,
+      originalFileName,
+      JSON.stringify(Array.isArray(preview?.orders) ? preview.orders : []),
+      Number(actor.sub || 0) || null,
+      actorRole
+    )
+    .run();
 
   return json(
     {
@@ -1631,7 +2368,13 @@ async function previewExcelUpload(request, env) {
       originalFileName,
       savedFileName: originalFileName,
       fileName: originalFileName,
-      preview,
+      preview: {
+        ...preview,
+        orders: [],
+        previewToken,
+        installationSummary: installationReport.summary,
+        analytics: installationReport.analytics,
+      },
     },
     200,
     request,
@@ -1713,10 +2456,521 @@ async function insertServiceOrderRecord(env, normalized, createdByUserId, auditE
   return created.meta.last_row_id;
 }
 
+<<<<<<< Updated upstream
+=======
+async function readArchivedServiceOrderRowById(env, archiveId) {
+  try {
+    return await env.DB.prepare(
+      `SELECT
+        id, original_order_id, customer_name, request_number, phone, secondary_phone, whatsapp_phone, district, city, address,
+        address_text, landmark, map_link, ac_type, service_category, standard_duration_minutes, work_started_at, completion_note,
+        delay_reason, delay_note, work_type, ac_count, status, priority, delivery_type, preferred_date, preferred_time,
+        scheduled_date, scheduled_time, coordination_note, source, notes, customer_action, reschedule_reason, cancellation_reason,
+        canceled_at, completed_at, approval_status, proof_status, approved_at, approved_by, client_signature,
+        zamil_closure_status, zamil_close_requested_at, zamil_otp_code, zamil_otp_submitted_at, zamil_closed_at, suspension_reason,
+        suspension_note, suspended_at, exception_status, audit_log_json, technician_id, copper_meters, base_included, extras_total,
+        service_items_json, created_by_user_id, original_created_at, original_updated_at, archived_at, archive_reason
+       FROM service_order_archives
+       WHERE id = ?`
+    )
+      .bind(Number(archiveId))
+      .first();
+  } catch (error) {
+    if (isMissingArchiveTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function archiveServiceOrderById(env, orderId, options = {}) {
+  const normalizedOrderId = Number(orderId);
+  if (!Number.isInteger(normalizedOrderId) || normalizedOrderId <= 0) {
+    return null;
+  }
+
+  const archiveReason = String(options.reason || "completed_import").trim() || "completed_import";
+  let inserted;
+  try {
+    inserted = await env.DB.prepare(
+      `INSERT INTO service_order_archives (
+        original_order_id, customer_name, request_number, phone, secondary_phone, whatsapp_phone, district, city, address, address_text,
+        landmark, map_link, ac_type, service_category, standard_duration_minutes, work_started_at, completion_note, delay_reason,
+        delay_note, work_type, ac_count, status, priority, delivery_type, preferred_date, preferred_time, scheduled_date, scheduled_time,
+        coordination_note, source, notes, customer_action, reschedule_reason, cancellation_reason, canceled_at, completed_at,
+        approval_status, proof_status, approved_at, approved_by, client_signature, zamil_closure_status, zamil_close_requested_at,
+        zamil_otp_code, zamil_otp_submitted_at, zamil_closed_at, suspension_reason, suspension_note, suspended_at, exception_status,
+        audit_log_json, technician_id, copper_meters, base_included, extras_total, service_items_json, created_by_user_id,
+        original_created_at, original_updated_at, archived_at, archive_reason
+      )
+      SELECT
+        id, customer_name, request_number, phone, secondary_phone, whatsapp_phone, district, city, address, address_text,
+        landmark, map_link, ac_type, service_category, standard_duration_minutes, work_started_at, completion_note, delay_reason,
+        delay_note, work_type, ac_count, status, priority, delivery_type, preferred_date, preferred_time, scheduled_date, scheduled_time,
+        coordination_note, source, notes, customer_action, reschedule_reason, cancellation_reason, canceled_at, completed_at,
+        approval_status, proof_status, approved_at, approved_by, client_signature, zamil_closure_status, zamil_close_requested_at,
+        zamil_otp_code, zamil_otp_submitted_at, zamil_closed_at, suspension_reason, suspension_note, suspended_at, exception_status,
+        audit_log_json, technician_id, copper_meters, base_included, extras_total, service_items_json, created_by_user_id,
+        created_at, updated_at, CURRENT_TIMESTAMP, ?
+      FROM service_orders
+      WHERE id = ?`
+    )
+      .bind(archiveReason, normalizedOrderId)
+      .run();
+  } catch (error) {
+    if (isMissingArchiveTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+
+  if (!Number(inserted?.meta?.changes || 0)) {
+    return null;
+  }
+
+  await env.DB.prepare("DELETE FROM service_orders WHERE id = ?").bind(normalizedOrderId).run();
+  try {
+    return await env.DB.prepare(
+      "SELECT id, original_order_id, request_number, customer_name, archived_at, archive_reason FROM service_order_archives WHERE original_order_id = ? ORDER BY id DESC LIMIT 1"
+    )
+      .bind(normalizedOrderId)
+      .first();
+  } catch (error) {
+    if (isMissingArchiveTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function restoreArchivedServiceOrder(env, archiveId) {
+  const normalizedArchiveId = Number(archiveId);
+  if (!Number.isInteger(normalizedArchiveId) || normalizedArchiveId <= 0) {
+    return null;
+  }
+
+  let restored;
+  try {
+    restored = await env.DB.prepare(
+      `INSERT INTO service_orders (
+        customer_name, request_number, phone, secondary_phone, whatsapp_phone, district, city, address, address_text, landmark, map_link,
+        ac_type, service_category, standard_duration_minutes, work_started_at, completion_note, delay_reason, delay_note, work_type,
+        ac_count, status, priority, delivery_type, preferred_date, preferred_time, scheduled_date, scheduled_time, coordination_note,
+        source, notes, customer_action, reschedule_reason, cancellation_reason, canceled_at, completed_at, approval_status, proof_status,
+        approved_at, approved_by, client_signature, zamil_closure_status, zamil_close_requested_at, zamil_otp_code, zamil_otp_submitted_at,
+        zamil_closed_at, suspension_reason, suspension_note, suspended_at, exception_status, audit_log_json, technician_id, copper_meters,
+        base_included, extras_total, service_items_json, created_by_user_id, created_at, updated_at
+      )
+      SELECT
+        customer_name, request_number, phone, secondary_phone, whatsapp_phone, district, city, address, address_text, landmark, map_link,
+        ac_type, service_category, standard_duration_minutes, work_started_at, completion_note, delay_reason, delay_note, work_type,
+        ac_count, status, priority, delivery_type, preferred_date, preferred_time, scheduled_date, scheduled_time, coordination_note,
+        source, notes, customer_action, reschedule_reason, cancellation_reason, canceled_at, completed_at, approval_status, proof_status,
+        approved_at, approved_by, client_signature, zamil_closure_status, zamil_close_requested_at, zamil_otp_code, zamil_otp_submitted_at,
+        zamil_closed_at, suspension_reason, suspension_note, suspended_at, exception_status, audit_log_json, technician_id, copper_meters,
+        base_included, extras_total, service_items_json, created_by_user_id, original_created_at, CURRENT_TIMESTAMP
+      FROM service_order_archives
+      WHERE id = ?`
+    )
+      .bind(normalizedArchiveId)
+      .run();
+  } catch (error) {
+    if (isMissingArchiveTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+
+  const restoredOrderId = Number(restored?.meta?.last_row_id || 0);
+  if (!restoredOrderId) {
+    return null;
+  }
+
+  try {
+    await env.DB.prepare("DELETE FROM service_order_archives WHERE id = ?").bind(normalizedArchiveId).run();
+  } catch (error) {
+    if (!isMissingArchiveTableError(error)) {
+      throw error;
+    }
+  }
+  return {
+    orderId: restoredOrderId,
+  };
+}
+
+function getRiyadhTodayString() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function shiftRiyadhDateString(dateValue = getRiyadhTodayString(), offsetDays = 0) {
+  const normalizedDate = String(dateValue || "").trim() || getRiyadhTodayString();
+  const base = new Date(`${normalizedDate}T12:00:00+03:00`);
+  if (Number.isNaN(base.getTime())) {
+    return getRiyadhTodayString();
+  }
+
+  base.setUTCDate(base.getUTCDate() + Number(offsetDays || 0));
+  return base.toISOString().slice(0, 10);
+}
+
+function isSameDayInstallationDate(dateValue) {
+  return String(dateValue || "").trim() === getRiyadhTodayString();
+}
+
+function buildOperationsNewOrderNotification(normalized) {
+  const sameDayInstallation = isSameDayInstallationDate(normalized.preferredDate);
+  const deliveryHint =
+    normalized.deliveryType === "express_24h"
+      ? " ويتضمن توصيلاً سريعاً خلال 24 ساعة"
+      : normalized.deliveryType === "standard"
+        ? " ويتضمن طلب توصيل"
+        : "";
+
+  return sameDayInstallation
+    ? {
+        title: "تنبيه عاجل: طلب تركيب لنفس اليوم",
+        body: `الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} موعد تركيبه اليوم ${normalized.preferredDate}${deliveryHint}. يرجى الانتباه والمتابعة العاجلة.`,
+      }
+    : {
+        title: "طلب جديد بانتظار العمليات",
+        body: `تمت إضافة الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} وموعد التركيب ${normalized.preferredDate || "-"}.${deliveryHint}`,
+      };
+}
+
+function mergeImportedOrderStatus(currentStatus, incomingStatus) {
+  const normalizedCurrent = ["pending", "scheduled", "in_transit", "completed", "canceled"].includes(
+    String(currentStatus || "").trim()
+  )
+    ? String(currentStatus || "").trim()
+    : "pending";
+  const normalizedIncoming = normalizeImportedOrderStatus(incomingStatus);
+
+  if (["completed", "canceled"].includes(normalizedCurrent)) {
+    return normalizedCurrent;
+  }
+
+  if (["completed", "canceled"].includes(normalizedIncoming)) {
+    return normalizedIncoming;
+  }
+
+  const statusRank = {
+    pending: 1,
+    scheduled: 2,
+    in_transit: 3,
+  };
+
+  return (statusRank[normalizedIncoming] || 0) > (statusRank[normalizedCurrent] || 0)
+    ? normalizedIncoming
+    : normalizedCurrent;
+}
+
+async function syncExistingServiceOrderFromIncomingData(env, existingOrderId, normalized, actor = {}, options = {}) {
+  const orderId = Number(existingOrderId);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return null;
+  }
+
+  const existingOrder = await readServiceOrderById(env, orderId);
+  if (!existingOrder) {
+    return null;
+  }
+
+  const actorRole = String(actor.role || actor.actor || "system").trim() || "system";
+  const previousStatus = String(existingOrder.status || "pending").trim() || "pending";
+  const nextStatus = mergeImportedOrderStatus(previousStatus, normalized.importStatus);
+  const nextPreferredDate = normalized.preferredDate || existingOrder.preferredDate || existingOrder.scheduledDate || "";
+  const nextPreferredTime = normalized.preferredTime || existingOrder.preferredTime || existingOrder.scheduledTime || "";
+  const shouldRefreshSchedule = !existingOrder.technicianId && !String(existingOrder.coordinationNote || "").trim();
+  const nextScheduledDate = shouldRefreshSchedule
+    ? normalized.preferredDate || existingOrder.scheduledDate || nextPreferredDate
+    : existingOrder.scheduledDate || nextPreferredDate;
+  const nextScheduledTime = shouldRefreshSchedule
+    ? normalized.preferredTime || existingOrder.scheduledTime || nextPreferredTime
+    : existingOrder.scheduledTime || nextPreferredTime;
+  const nextReferences = {
+    idRef: normalized.idRef || existingOrder.requestNumber || existingOrder.soId,
+    soId: normalized.soId || existingOrder.soId || normalized.requestNumber,
+    woId: normalized.woId || existingOrder.woId,
+  };
+  const nextNotes = mergeImportedNotes(existingOrder.notes, normalized.notes, nextReferences);
+  const nextDeliveryType = normalizeDeliveryType(normalized.deliveryType || existingOrder.deliveryType || "none");
+  const nextSource = normalized.sourceChannel || existingOrder.source || "manual";
+  const nextPriority = nextDeliveryType === "none" ? existingOrder.priority || normalized.priority || "normal" : "urgent";
+  const nextCompletedAt =
+    nextStatus === "completed"
+      ? existingOrder.completedAt || `${nextPreferredDate || new Date().toISOString().slice(0, 10)}T${nextPreferredTime || "09:00"}:00`
+      : null;
+  const nextCanceledAt =
+    nextStatus === "canceled"
+      ? existingOrder.canceledAt || `${nextPreferredDate || new Date().toISOString().slice(0, 10)}T${nextPreferredTime || "09:00"}:00`
+      : null;
+  const nextServiceCategory = inferServiceCategory(normalized.serviceSummary || existingOrder.workType);
+  const nextServiceItemsJson = JSON.stringify(normalized.acDetails || []);
+  const nextValues = {
+    customerName: normalized.customerName || existingOrder.customerName,
+    phone: normalizeSaudiPhoneNumber(normalized.phone || existingOrder.phone),
+    secondaryPhone: normalizeSaudiPhoneNumber(normalized.secondaryPhone || existingOrder.secondaryPhone),
+    whatsappPhone: normalizeSaudiPhoneNumber(normalized.whatsappPhone || existingOrder.whatsappPhone || existingOrder.phone),
+    district: normalized.district || existingOrder.district,
+    city: normalized.city || existingOrder.city,
+    addressText: normalized.addressText || existingOrder.addressText,
+    landmark: normalized.landmark || existingOrder.landmark,
+    mapLink: normalized.mapLink || existingOrder.mapLink || existingOrder.address,
+    acType: normalized.primaryAcType || existingOrder.acType || "split",
+    serviceCategory: nextServiceCategory,
+    workType: normalized.serviceSummary || existingOrder.workType,
+    acCount: Math.max(1, Number(normalized.totalQuantity) || Number(existingOrder.acCount) || 1),
+    status: nextStatus,
+    priority: nextPriority,
+    deliveryType: nextDeliveryType,
+    preferredDate: nextPreferredDate,
+    preferredTime: nextPreferredTime,
+    scheduledDate: nextScheduledDate,
+    scheduledTime: nextScheduledTime,
+    source: nextSource,
+    notes: nextNotes,
+    canceledAt: nextCanceledAt,
+    completedAt: nextCompletedAt,
+    serviceItemsJson: nextServiceItemsJson,
+  };
+  const hasDataChanges =
+    String(existingOrder.customerName || "") !== String(nextValues.customerName || "") ||
+    String(existingOrder.phone || "") !== String(nextValues.phone || "") ||
+    String(existingOrder.secondaryPhone || "") !== String(nextValues.secondaryPhone || "") ||
+    String(existingOrder.whatsappPhone || "") !== String(nextValues.whatsappPhone || "") ||
+    String(existingOrder.district || "") !== String(nextValues.district || "") ||
+    String(existingOrder.city || "") !== String(nextValues.city || "") ||
+    String(existingOrder.addressText || "") !== String(nextValues.addressText || "") ||
+    String(existingOrder.landmark || "") !== String(nextValues.landmark || "") ||
+    String(existingOrder.mapLink || existingOrder.address || "") !== String(nextValues.mapLink || "") ||
+    String(existingOrder.acType || "") !== String(nextValues.acType || "") ||
+    String(existingOrder.serviceCategory || "") !== String(nextValues.serviceCategory || "") ||
+    String(existingOrder.workType || "") !== String(nextValues.workType || "") ||
+    Number(existingOrder.acCount || 0) !== Number(nextValues.acCount || 0) ||
+    String(existingOrder.status || "") !== String(nextValues.status || "") ||
+    String(existingOrder.priority || "") !== String(nextValues.priority || "") ||
+    String(existingOrder.deliveryType || "") !== String(nextValues.deliveryType || "") ||
+    String(existingOrder.preferredDate || "") !== String(nextValues.preferredDate || "") ||
+    String(existingOrder.preferredTime || "") !== String(nextValues.preferredTime || "") ||
+    String(existingOrder.scheduledDate || "") !== String(nextValues.scheduledDate || "") ||
+    String(existingOrder.scheduledTime || "") !== String(nextValues.scheduledTime || "") ||
+    String(existingOrder.source || "") !== String(nextValues.source || "") ||
+    String(existingOrder.notes || "") !== String(nextValues.notes || "") ||
+    String(existingOrder.canceledAt || "") !== String(nextValues.canceledAt || "") ||
+    String(existingOrder.completedAt || "") !== String(nextValues.completedAt || "") ||
+    JSON.stringify(existingOrder.acDetails || []) !== nextValues.serviceItemsJson;
+  const nextAuditLog = hasDataChanges
+    ? normalizeAuditLogEntries([
+        ...normalizeAuditLogEntries(existingOrder.auditLog),
+        {
+          type: nextStatus === "completed" ? "archived" : "sync",
+          actor: actorRole,
+          message:
+            previousStatus === nextStatus
+              ? `تم تحديث الطلب ${existingOrder.requestNumber} ببيانات واردة من ${normalized.sourceChannel || actorRole}.`
+              : `تم تحديث الطلب ${existingOrder.requestNumber} ببيانات واردة من ${normalized.sourceChannel || actorRole} وتغيرت الحالة من ${mapOrderStatusLabel(previousStatus)} إلى ${mapOrderStatusLabel(nextStatus)}.`,
+          createdAt: new Date().toISOString(),
+        },
+      ])
+    : normalizeAuditLogEntries(existingOrder.auditLog);
+
+  if (hasDataChanges) {
+    await env.DB.prepare(
+      `UPDATE service_orders
+       SET customer_name = ?, phone = ?, secondary_phone = ?, whatsapp_phone = ?, district = ?, city = ?, address = ?,
+           address_text = ?, landmark = ?, map_link = ?, ac_type = ?, service_category = ?, work_type = ?, ac_count = ?,
+           status = ?, priority = ?, delivery_type = ?, preferred_date = ?, preferred_time = ?, scheduled_date = ?,
+           scheduled_time = ?, source = ?, notes = ?, canceled_at = ?, completed_at = ?, service_items_json = ?,
+           audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+      .bind(
+        nextValues.customerName,
+        nextValues.phone,
+        nextValues.secondaryPhone,
+        nextValues.whatsappPhone,
+        nextValues.district,
+        nextValues.city,
+        nextValues.mapLink,
+        nextValues.addressText,
+        nextValues.landmark,
+        nextValues.mapLink,
+        nextValues.acType,
+        nextValues.serviceCategory,
+        nextValues.workType,
+        nextValues.acCount,
+        nextValues.status,
+        nextValues.priority,
+        nextValues.deliveryType,
+        nextValues.preferredDate,
+        nextValues.preferredTime,
+        nextValues.scheduledDate,
+        nextValues.scheduledTime,
+        nextValues.source,
+        nextValues.notes,
+        nextValues.canceledAt,
+        nextValues.completedAt,
+        nextValues.serviceItemsJson,
+        JSON.stringify(nextAuditLog),
+        orderId
+      )
+      .run();
+  }
+
+  let archived = null;
+  if (nextStatus === "completed") {
+    archived = await archiveServiceOrderById(env, orderId, {
+      reason: "completed_import",
+    });
+  }
+
+  if (options.notify !== false) {
+    if (hasDataChanges && !archived && !["completed", "canceled"].includes(nextStatus)) {
+      await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId);
+    }
+
+    if (actorRole === "customer_service" && (previousStatus !== nextStatus || archived)) {
+      await notifyOperationsManagersAboutStatusChange(
+        env,
+        archived ? "تمت أرشفة طلب مكتمل" : "تم تحديث حالة طلب موجود",
+        archived
+          ? `تمت مطابقة الطلب رقم ${normalized.requestNumber || existingOrder.requestNumber} مع طلب موجود، وتحديثه ثم أرشفته تلقائياً لأنه أصبح مكتملًا.`
+          : `تمت مزامنة الطلب رقم ${normalized.requestNumber || existingOrder.requestNumber} وتحديث حالته إلى ${mapOrderStatusLabel(nextStatus)}.`,
+        archived?.original_order_id || orderId
+      );
+    }
+
+    if (actorRole === "operations_manager" && (previousStatus !== nextStatus || archived)) {
+      await notifyUsersByRoles(
+        env,
+        ["admin", "customer_service"],
+        archived ? "تمت أرشفة طلب مكتمل" : "تم تحديث حالة طلب موجود",
+        archived
+          ? `تمت مزامنة الطلب رقم ${normalized.requestNumber || existingOrder.requestNumber} وأُزيل من قائمة العمل لأنه أصبح مكتملًا.`
+          : `تمت مزامنة الطلب رقم ${normalized.requestNumber || existingOrder.requestNumber} وتحديث حالته إلى ${mapOrderStatusLabel(nextStatus)}.`,
+        archived?.original_order_id || orderId
+      );
+    }
+  }
+
+  const order = archived ? null : await readServiceOrderById(env, orderId);
+  return {
+    action: archived ? "archived_existing" : hasDataChanges ? "updated_existing" : "unchanged_existing",
+    order,
+    archived,
+    previousStatus,
+    nextStatus,
+  };
+}
+
+async function syncArchivedServiceOrderFromIncomingData(env, archiveId, normalized, actor = {}, options = {}) {
+  const archivedRow = await readArchivedServiceOrderRowById(env, archiveId);
+  if (!archivedRow) {
+    return null;
+  }
+
+  const incomingStatus = normalizeImportedOrderStatus(normalized.importStatus);
+  const archiveReferences = {
+    idRef: normalized.idRef || archivedRow.request_number || normalized.soId,
+    soId: normalized.soId || archivedRow.request_number || normalized.requestNumber,
+    woId: normalized.woId || extractImportReferenceValue({ notes: archivedRow.notes }, "WO ID"),
+  };
+
+  if (incomingStatus === "completed") {
+    const nextNotes = mergeImportedNotes(archivedRow.notes, normalized.notes, archiveReferences);
+    const nextAuditLog = normalizeAuditLogEntries([
+      ...parseJsonArray(archivedRow.audit_log_json),
+      {
+        type: "archive_sync",
+        actor: String(actor.role || actor.actor || "system").trim() || "system",
+        message: `تمت مزامنة أرشيف الطلب ${archivedRow.request_number} ببيانات Excel الجديدة بدون إنشاء نسخة مكررة.`,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    await env.DB.prepare(
+      `UPDATE service_order_archives
+       SET customer_name = ?, phone = ?, secondary_phone = ?, whatsapp_phone = ?, district = ?, city = ?, address = ?,
+           address_text = ?, landmark = ?, map_link = ?, ac_type = ?, service_category = ?, work_type = ?, ac_count = ?,
+           status = ?, priority = ?, delivery_type = ?, preferred_date = ?, preferred_time = ?, scheduled_date = ?, scheduled_time = ?,
+           source = ?, notes = ?, completed_at = ?, audit_log_json = ?, service_items_json = ?, original_updated_at = CURRENT_TIMESTAMP,
+           archived_at = CURRENT_TIMESTAMP, archive_reason = ?
+       WHERE id = ?`
+    )
+      .bind(
+        normalized.customerName || archivedRow.customer_name,
+        normalizeSaudiPhoneNumber(normalized.phone || archivedRow.phone),
+        normalizeSaudiPhoneNumber(normalized.secondaryPhone || archivedRow.secondary_phone),
+        normalizeSaudiPhoneNumber(normalized.whatsappPhone || archivedRow.whatsapp_phone || archivedRow.phone),
+        normalized.district || archivedRow.district,
+        normalized.city || archivedRow.city,
+        normalized.mapLink || archivedRow.address,
+        normalized.addressText || archivedRow.address_text,
+        normalized.landmark || archivedRow.landmark,
+        normalized.mapLink || archivedRow.map_link || archivedRow.address,
+        normalized.primaryAcType || archivedRow.ac_type || "split",
+        inferServiceCategory(normalized.serviceSummary || archivedRow.work_type),
+        normalized.serviceSummary || archivedRow.work_type,
+        Math.max(1, Number(normalized.totalQuantity) || Number(archivedRow.ac_count) || 1),
+        "completed",
+        normalizeDeliveryType(normalized.deliveryType || archivedRow.delivery_type),
+        normalizeDeliveryType(normalized.deliveryType || archivedRow.delivery_type) === "none" ? archivedRow.priority : "urgent",
+        normalizeDeliveryType(normalized.deliveryType || archivedRow.delivery_type),
+        normalized.preferredDate || archivedRow.preferred_date,
+        normalized.preferredTime || archivedRow.preferred_time,
+        normalized.preferredDate || archivedRow.scheduled_date,
+        normalized.preferredTime || archivedRow.scheduled_time,
+        normalized.sourceChannel || archivedRow.source || "manual",
+        nextNotes,
+        archivedRow.completed_at || `${normalized.preferredDate || new Date().toISOString().slice(0, 10)}T${normalized.preferredTime || "09:00"}:00`,
+        JSON.stringify(nextAuditLog),
+        JSON.stringify(normalized.acDetails || parseJsonArray(archivedRow.service_items_json)),
+        "completed_import",
+        Number(archiveId)
+      )
+      .run();
+
+    return {
+      action: "updated_archived",
+      archived: true,
+      nextStatus: "completed",
+    };
+  }
+
+  const restored = await restoreArchivedServiceOrder(env, archiveId);
+  if (!restored?.orderId) {
+    return null;
+  }
+
+  await env.DB.prepare(
+    "UPDATE service_orders SET status = 'pending', completed_at = NULL, canceled_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+  )
+    .bind(Number(restored.orderId))
+    .run();
+
+  const syncResult = await syncExistingServiceOrderFromIncomingData(env, restored.orderId, normalized, actor, options);
+  return {
+    ...syncResult,
+    action:
+      syncResult?.action === "archived_existing"
+        ? "restored_and_archived"
+        : syncResult?.action === "unchanged_existing"
+          ? "restored_unchanged"
+          : "restored_existing",
+    restoredFromArchive: true,
+  };
+}
+
+>>>>>>> Stashed changes
 async function createTechnician(request, env) {
-  const admin = await requireAdmin(request, env);
-  if (!admin) {
-    return json({ message: "Admin access required" }, 403, request, env);
+  const manager = await requireRoles(request, env, ["admin", "operations_manager"]);
+  if (!manager) {
+    return json({ message: "Admin or operations manager access required" }, 403, request, env);
   }
 
   const body = await readJson(request);
@@ -1725,11 +2979,12 @@ async function createTechnician(request, env) {
   const email = String(body.email || "").trim().toLowerCase();
   const phone = normalizeSaudiPhoneNumber(body.phone);
   const password = String(body.password || "").trim();
-  const region = String(body.region || "").trim();
+  const coverageKeys = normalizeTechnicianCoverageKeys(body.coverageKeys || body.regions || body.region || body.cityCoverage || "");
+  const region = coverageKeys[0] || "";
   const notes = String(body.notes || "").trim();
   const status = normalizeTechnicianStatus(body.status);
 
-  if (!firstName || !lastName || !email || !phone || !password || !region) {
+  if (!firstName || !lastName || !email || !phone || !password || !coverageKeys.length) {
     return json({ message: "All technician fields are required" }, 400, request, env);
   }
 
@@ -1752,13 +3007,13 @@ async function createTechnician(request, env) {
 
   const userId = createdUser.meta.last_row_id;
   await env.DB.prepare(
-    "INSERT INTO technicians (user_id, name, phone, zone, status, notes) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO technicians (user_id, name, phone, zone, coverage_json, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?)"
   )
-    .bind(Number(userId), userName, phone, region, status, notes)
+    .bind(Number(userId), userName, phone, region, JSON.stringify(coverageKeys), status, notes)
     .run();
 
   const technician = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
+    "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
   )
     .bind(Number(userId))
     .first();
@@ -1775,6 +3030,7 @@ async function createTechnician(request, env) {
         role: "technician",
         technicianId: technician ? String(technician.id) : String(userId),
         region,
+        coverageKeys,
         notes,
       },
       technician: mapTechnician(technician || {
@@ -1793,9 +3049,9 @@ async function createTechnician(request, env) {
 }
 
 async function updateTechnician(request, technicianId, env) {
-  const admin = await requireAdmin(request, env);
-  if (!admin) {
-    return json({ message: "Admin access required" }, 403, request, env);
+  const manager = await requireRoles(request, env, ["admin", "operations_manager"]);
+  if (!manager) {
+    return json({ message: "Admin or operations manager access required" }, 403, request, env);
   }
 
   const id = Number(technicianId);
@@ -1810,6 +3066,7 @@ async function updateTechnician(request, technicianId, env) {
       t.name,
       t.phone,
       t.zone,
+      t.coverage_json,
       t.status,
       COALESCE(t.notes, '') AS notes,
       u.email
@@ -1829,7 +3086,10 @@ async function updateTechnician(request, technicianId, env) {
   const lastName = String(body.lastName || "").trim();
   const email = String(body.email || existing.email || "").trim().toLowerCase();
   const phone = normalizeSaudiPhoneNumber(body.phone ?? existing.phone);
-  const region = String(body.region ?? existing.zone ?? "").trim();
+  const coverageKeys = normalizeTechnicianCoverageKeys(
+    body.coverageKeys ?? body.regions ?? body.region ?? body.cityCoverage ?? existing.coverage_json ?? existing.zone ?? ""
+  );
+  const region = coverageKeys[0] || "";
   const notes = String(body.notes ?? existing.notes ?? "").trim();
   const status = normalizeTechnicianStatus(body.status ?? existing.status);
   const password = String(body.password || "").trim();
@@ -1837,8 +3097,8 @@ async function updateTechnician(request, technicianId, env) {
     `${firstName || existing.name.split(" ").slice(0, -1).join(" ")} ${lastName || existing.name.split(" ").slice(-1).join(" ")}`.trim() ||
     existing.name;
 
-  if (!name || !email || !phone || !region) {
-    return json({ message: "Name, email, phone, and region are required" }, 400, request, env);
+  if (!name || !email || !phone || !coverageKeys.length) {
+    return json({ message: "Name, email, phone, and coverage are required" }, 400, request, env);
   }
 
   const duplicate = await env.DB.prepare(
@@ -1865,9 +3125,9 @@ async function updateTechnician(request, technicianId, env) {
   }
 
   await env.DB.prepare(
-    "UPDATE technicians SET name = ?, phone = ?, zone = ?, status = ?, notes = ? WHERE id = ?"
+    "UPDATE technicians SET name = ?, phone = ?, zone = ?, coverage_json = ?, status = ?, notes = ? WHERE id = ?"
   )
-    .bind(name, phone, region, status, notes, id)
+    .bind(name, phone, region, JSON.stringify(coverageKeys), status, notes, id)
     .run();
 
   const technician = await env.DB.prepare(
@@ -1877,6 +3137,7 @@ async function updateTechnician(request, technicianId, env) {
       t.name,
       t.phone,
       t.zone,
+      t.coverage_json,
       t.status,
       COALESCE(t.notes, '') AS notes,
       u.email
@@ -1891,9 +3152,9 @@ async function updateTechnician(request, technicianId, env) {
 }
 
 async function deleteTechnician(request, technicianId, env) {
-  const admin = await requireAdmin(request, env);
-  if (!admin) {
-    return json({ message: "Admin access required" }, 403, request, env);
+  const manager = await requireRoles(request, env, ["admin", "operations_manager"]);
+  if (!manager) {
+    return json({ message: "Admin or operations manager access required" }, 403, request, env);
   }
 
   const id = Number(technicianId);
@@ -1933,11 +3194,12 @@ async function deleteTechnician(request, technicianId, env) {
 }
 
 async function updateServiceOrder(request, id, env) {
-  const actor = await requireRoles(request, env, ["customer_service", "operations_manager", "technician"]);
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager", "technician"]);
   if (!actor) {
     return json({ message: "Internal access required" }, 403, request, env);
   }
-  const isOperationsManager = actor.role === "operations_manager";
+  const isAdmin = actor.role === "admin";
+  const isOperationsManager = actor.role === "operations_manager" || isAdmin;
   const isCustomerService = actor.role === "customer_service";
   const isTechnician = actor.role === "technician";
 
@@ -1964,6 +3226,11 @@ async function updateServiceOrder(request, id, env) {
   if (!existing) {
     return json({ message: "Order not found" }, 404, request, env);
   }
+
+  const previousTechnician =
+    existing.technician_id === null
+      ? null
+      : await env.DB.prepare("SELECT id, user_id, name FROM technicians WHERE id = ?").bind(Number(existing.technician_id)).first();
 
   const body = await readJson(request);
   const touchedKeys = Object.keys(body || {}).filter((key) => body[key] !== undefined);
@@ -2390,28 +3657,36 @@ async function updateServiceOrder(request, id, env) {
       env,
       technician.user_id,
       "تم إسناد الطلب لك",
-      `لديك الآن مهمة جديدة برقم #${orderId}.`,
+      await buildTechnicianTaskNotificationBody(
+        env,
+        technician.id,
+        `تم إسناد الطلب رقم ${requestNumber || orderId} لك.`
+      ),
       "assignment",
       orderId
     );
   }
 
-  if (isCustomerService && customerAction === "reschedule_requested") {
-    await notifyUsersByRoles(
+  if (previousTechnician && Number(previousTechnician.id || 0) !== Number(technician?.id || 0)) {
+    await createNotification(
       env,
-      ["operations_manager"],
-      "طلب إعادة جدولة",
-      `طلبت خدمة العملاء إعادة جدولة الطلب رقم ${requestNumber}${rescheduleReason ? ` بسبب: ${rescheduleReason}` : ""}.`,
+      previousTechnician.user_id,
+      "تم نقل الطلب من قائمتك",
+      await buildTechnicianTaskNotificationBody(
+        env,
+        previousTechnician.id,
+        `تم سحب الطلب رقم ${requestNumber || orderId} من قائمة مهامك.`
+      ),
+      "assignment",
       orderId
     );
   }
 
-  if (isCustomerService && status === "canceled") {
-    await notifyUsersByRoles(
+  if (isCustomerService && status !== String(existing.status || "").trim()) {
+    await notifyOperationsManagersAboutStatusChange(
       env,
-      ["operations_manager"],
-      "تم إلغاء طلب",
-      `تم إلغاء الطلب رقم ${requestNumber}${cancellationReason ? ` بسبب: ${cancellationReason}` : ""}.`,
+      "تم تحديث حالة الطلب",
+      `تم تحديث حالة الطلب رقم ${requestNumber} إلى ${mapOrderStatusLabel(status)}${status === "canceled" && cancellationReason ? ` بسبب: ${cancellationReason}` : ""}.`,
       orderId
     );
   }
@@ -2419,30 +3694,35 @@ async function updateServiceOrder(request, id, env) {
   if (isOperationsManager && (body.scheduledDate !== undefined || body.scheduledTime !== undefined)) {
     await notifyUsersByRoles(
       env,
-      ["customer_service"],
-      "تم تنسيق موعد الطلب",
-      `تم تحديد موعد الطلب رقم ${requestNumber} بتاريخ ${scheduledDate || "-"} الساعة ${scheduledTime || "-"}.`,
-      orderId
+        ["admin", "customer_service"],
+        "تم تنسيق موعد الطلب",
+        `تم تحديد موعد الطلب رقم ${requestNumber} بتاريخ ${scheduledDate || "-"} الساعة ${scheduledTime || "-"}.`,
+        orderId
     );
+
+    if (technician && Number(previousTechnician?.id || 0) === Number(technician.id)) {
+      await createNotification(
+        env,
+        technician.user_id,
+        "تم تحديث موعد المهمة",
+        await buildTechnicianTaskNotificationBody(
+          env,
+          technician.id,
+          `تم تحديث موعد الطلب رقم ${requestNumber || orderId} إلى ${scheduledDate || "-"} الساعة ${scheduledTime || "-"}.`
+        ),
+        "status_update",
+        orderId
+      );
+    }
   }
 
   if (isOperationsManager && body.status !== undefined && status !== String(existing.status || "").trim()) {
     await notifyUsersByRoles(
       env,
-      ["customer_service"],
-      "تم تحديث حالة الطلب",
-      `تم تحديث حالة الطلب رقم ${requestNumber} إلى ${mapOrderStatusLabel(status)}.`,
-      orderId
-    );
-  }
-
-  if (isCustomerService && deliveryType !== "none") {
-    await notifyUsersByRoles(
-      env,
-      ["operations_manager"],
-      "طلب توصيل بأولوية قصوى",
-      `الطلب رقم ${requestNumber} مسجل كـ ${deliveryType === "express_24h" ? "توصيل سريع خلال 24 ساعة" : "طلب توصيل"} ويحتاج إلى متابعة عاجلة.`,
-      orderId
+        ["admin", "customer_service"],
+        "تم تحديث حالة الطلب",
+        `تم تحديث حالة الطلب رقم ${requestNumber} إلى ${mapOrderStatusLabel(status)}.`,
+        orderId
     );
   }
 
@@ -2451,7 +3731,7 @@ async function updateServiceOrder(request, id, env) {
 }
 
 async function updateTechnicianAvailability(request, technicianId, env) {
-  const user = await requireRoles(request, env, ["admin", "technician"]);
+  const user = await requireRoles(request, env, ["admin", "operations_manager", "technician"]);
   if (!user) {
     return json({ message: "Unauthorized" }, 401, request, env);
   }
@@ -2462,7 +3742,7 @@ async function updateTechnicianAvailability(request, technicianId, env) {
   }
 
   const technician = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
+    "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
   )
     .bind(id)
     .first();
@@ -2483,7 +3763,7 @@ async function updateTechnicianAvailability(request, technicianId, env) {
     .run();
 
   const nextTechnician = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
+    "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
   )
     .bind(id)
     .first();
@@ -2605,23 +3885,26 @@ async function cancelServiceOrder(request, id, env) {
     .bind(nextNotes, orderId)
     .run();
 
-  await notifyAdmins(
-    env,
-    "تم إلغاء الطلب",
-    `تم إلغاء الطلب #${orderId}${reason ? ` بسبب: ${reason}` : ""}.`,
-    orderId
-  );
+  if (user.role !== "operations_manager") {
+    await notifyOperationsManagersAboutStatusChange(
+      env,
+      "تم إلغاء الطلب",
+      `تم إلغاء الطلب #${orderId}${reason ? ` بسبب: ${reason}` : ""}.`,
+      orderId
+    );
+  }
 
   const updated = await readServiceOrderById(env, orderId);
   return json({ order: updated }, 200, request, env);
 }
 
 async function updateServiceOrderStatus(request, id, env) {
-  const user = await requireRoles(request, env, ["operations_manager", "technician"]);
+  const user = await requireRoles(request, env, ["admin", "operations_manager", "technician"]);
   if (!user) {
-    return json({ message: "Operations manager or technician access required" }, 401, request, env);
+    return json({ message: "Admin, operations manager, or technician access required" }, 401, request, env);
   }
   const isTechnician = user.role === "technician";
+  const isOperationsLead = user.role === "operations_manager" || user.role === "admin";
 
   const orderId = Number(id);
   if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -2664,7 +3947,7 @@ async function updateServiceOrderStatus(request, id, env) {
     ...baseAuditLog,
     {
       type: "status",
-      actor: isTechnician ? "technician" : "operations_manager",
+      actor: isTechnician ? "technician" : isOperationsLead ? user.role : "operations_manager",
       message: isTechnician
         ? requestedStatus === "rescheduled"
           ? "قام الفني بطلب إعادة جدولة المهمة"
@@ -2697,7 +3980,7 @@ async function updateServiceOrderStatus(request, id, env) {
   if (status === "in_transit") {
     await notifyUsersByRoles(
       env,
-      ["customer_service"],
+      ["admin", "customer_service"],
       "الطلب في الطريق",
       `الطلب رقم ${order.request_number || order.customer_name} في الطريق للعميل الآن.`,
       orderId
@@ -2707,7 +3990,7 @@ async function updateServiceOrderStatus(request, id, env) {
   if (status === "completed") {
     await notifyUsersByRoles(
       env,
-      ["operations_manager", "customer_service"],
+      ["admin", "customer_service"],
       "تم إنهاء الطلب من الفني",
       `قام الفني بإنهاء الطلب رقم ${order.request_number || order.customer_name}.`,
       orderId
@@ -2717,19 +4000,20 @@ async function updateServiceOrderStatus(request, id, env) {
   if (requestedStatus === "rescheduled") {
     await notifyUsersByRoles(
       env,
-      ["operations_manager", "customer_service"],
+      ["admin", "customer_service"],
       "طلب إعادة جدولة من الفني",
       `طلب الفني إعادة جدولة الطلب رقم ${order.request_number || order.customer_name}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`,
       orderId
     );
   }
 
-  if (status === "suspended" && requestedStatus !== "rescheduled") {
-    await notifyUsersByRoles(
+  if (status !== String(order.status || "").trim()) {
+    await notifyOperationsManagersAboutStatusChange(
       env,
-      ["operations_manager"],
-      "تم تعليق مهمة ميدانية",
-      `قام الفني بتعليق الطلب رقم ${order.request_number || order.customer_name}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`,
+      requestedStatus === "rescheduled" ? "طلب إعادة جدولة من الفني" : "تم تحديث حالة الطلب",
+      requestedStatus === "rescheduled"
+        ? `طلب الفني إعادة جدولة الطلب رقم ${order.request_number || order.customer_name}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`
+        : `تم تحديث حالة الطلب رقم ${order.request_number || order.customer_name} إلى ${mapOrderStatusLabel(status)}${suspensionReason ? ` بسبب: ${suspensionReason}` : ""}.`,
       orderId
     );
   }
@@ -2739,9 +4023,9 @@ async function updateServiceOrderStatus(request, id, env) {
 }
 
 async function quickUpdateCompactOrderStatus(request, id, env) {
-  const user = await requireRoles(request, env, ["operations_manager"]);
+  const user = await requireRoles(request, env, ["admin", "operations_manager"]);
   if (!user) {
-    return json({ message: "Operations manager access required" }, 401, request, env);
+    return json({ message: "Admin or operations manager access required" }, 401, request, env);
   }
 
   const orderId = Number(id);
@@ -2778,7 +4062,7 @@ async function quickUpdateCompactOrderStatus(request, id, env) {
     ...normalizeAuditLogEntries(parseJsonArray(order.audit_log_json)),
     {
       type: "status",
-      actor: "operations_manager",
+      actor: user.role === "admin" ? "admin" : "operations_manager",
       message:
         requestedStatus === "rescheduled"
           ? "تمت إعادة جدولة الطلب من الجدول المختصر."
@@ -2799,7 +4083,7 @@ async function quickUpdateCompactOrderStatus(request, id, env) {
   if (requestedStatus === "rescheduled") {
     await notifyUsersByRoles(
       env,
-      ["customer_service"],
+      ["admin", "customer_service"],
       "تمت إعادة جدولة الطلب",
       `تمت إعادة جدولة الطلب رقم ${order.request_number || order.customer_name}.`,
       orderId
@@ -2809,7 +4093,7 @@ async function quickUpdateCompactOrderStatus(request, id, env) {
   if (requestedStatus === "completed") {
     await notifyUsersByRoles(
       env,
-      ["customer_service"],
+      ["admin", "customer_service"],
       "تم إنهاء الطلب",
       `تم الانتهاء من الطلب رقم ${order.request_number || order.customer_name} بنجاح.`,
       orderId
@@ -2907,13 +4191,6 @@ async function requestServiceOrderClosure(request, id, env) {
     )
     .run();
 
-  await notifyAdmins(
-    env,
-    "جاهز لإغلاق الزامل",
-    `الفني ${order.technician_name || "الميداني"} جاهز لإغلاق الطلب #${orderId} للعميل ${order.customer_name}.`,
-    orderId
-  );
-
   const updated = await readServiceOrderById(env, orderId);
   return json({ order: updated }, 200, request, env);
 }
@@ -2980,13 +4257,6 @@ async function submitServiceOrderClosureOtp(request, id, env) {
   )
     .bind(otpCode, submittedAt, JSON.stringify(nextAuditLog), orderId)
     .run();
-
-  await notifyAdmins(
-    env,
-    "تم استلام OTP",
-    `وصل رمز OTP للطلب #${orderId} من الفني ${order.technician_name || "الميداني"}.`,
-    orderId
-  );
 
   const updated = await readServiceOrderById(env, orderId);
   return json({ order: updated }, 200, request, env);
@@ -3104,13 +4374,6 @@ async function updateServiceOrderExtras(request, id, env) {
     .bind(copperMeters, baseIncluded, extrasTotal, orderId)
     .run();
 
-  await notifyAdmins(
-    env,
-    "تحديث تكلفة إضافية",
-    `تم تحديث إضافات الطلب #${orderId} إلى ${extrasTotal} ر.س.`,
-    orderId
-  );
-
   const order = await readServiceOrderById(env, orderId);
   return json({ order }, 200, request, env);
 }
@@ -3140,13 +4403,6 @@ async function uploadServiceOrderPhoto(request, id, env) {
     .bind(orderId, name, url, Number(user.sub))
     .run();
 
-  await notifyAdmins(
-    env,
-    "تم رفع صورة توثيق",
-    `تم رفع صورة جديدة للطلب #${orderId}.`,
-    orderId
-  );
-
   const order = await readServiceOrderById(env, orderId);
   return json({ order }, 201, request, env);
 }
@@ -3164,17 +4420,17 @@ async function listNotifications(request, env) {
       ? env.DB.prepare(
           `SELECT id, title, body, kind, related_order_id, is_read, created_at
            FROM notifications
-           WHERE user_id = ? AND id > ?
+           WHERE user_id = ? AND (target_role = '' OR target_role = ?) AND id > ?
            ORDER BY id DESC
            LIMIT 40`
-        ).bind(Number(user.sub), sinceId)
+        ).bind(Number(user.sub), user.role, sinceId)
       : env.DB.prepare(
           `SELECT id, title, body, kind, related_order_id, is_read, created_at
            FROM notifications
-           WHERE user_id = ?
+           WHERE user_id = ? AND (target_role = '' OR target_role = ?)
            ORDER BY id DESC
            LIMIT 40`
-        ).bind(Number(user.sub));
+        ).bind(Number(user.sub), user.role);
 
   const { results } = await statement.all();
   const items = (results || []).map((row) => ({
@@ -3205,9 +4461,9 @@ async function markNotificationRead(request, id, env) {
   }
 
   await env.DB.prepare(
-    "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?"
+    "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ? AND (target_role = '' OR target_role = ?)"
   )
-    .bind(Number(id), Number(user.sub))
+    .bind(Number(id), Number(user.sub), user.role)
     .run();
 
   return json({ ok: true }, 200, request, env);
@@ -3219,8 +4475,8 @@ async function markAllNotificationsRead(request, env) {
     return json({ message: "Unauthorized" }, 401, request, env);
   }
 
-  await env.DB.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?")
-    .bind(Number(user.sub))
+  await env.DB.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND (target_role = '' OR target_role = ?)")
+    .bind(Number(user.sub), user.role)
     .run();
 
   return json({ ok: true }, 200, request, env);
@@ -3234,6 +4490,7 @@ async function readTechnicians(env) {
       t.name,
       t.phone,
       t.zone,
+      t.coverage_json,
       t.status,
       COALESCE(t.notes, '') AS notes,
       u.email
@@ -3246,7 +4503,9 @@ async function readTechnicians(env) {
 }
 
 function mapTechnician(row) {
-  const regionConfig = getOperationsRegionByKey(row.zone);
+  const coverageKeys = normalizeTechnicianCoverageKeys(row.coverage_json || row.zone || "");
+  const primaryCoverageKey = coverageKeys[0] || normalizeTechnicianCoverageKey(row.zone);
+  const coverageConfig = getTechnicianCoverageByKey(primaryCoverageKey);
 
   return {
     id: String(row.id),
@@ -3254,11 +4513,36 @@ function mapTechnician(row) {
     name: row.name,
     email: row.email || "",
     phone: row.phone,
-    region: regionConfig ? regionConfig.ar : row.zone,
-    zone: regionConfig ? regionConfig.key : row.zone,
+    region: coverageConfig ? coverageConfig.ar : row.zone,
+    zone: coverageConfig ? coverageConfig.key : row.zone,
+    coverageKeys,
+    coverageLabelsAr: coverageKeys.map((item) => getTechnicianCoverageByKey(item)?.ar || item),
+    coverageLabelsEn: coverageKeys.map((item) => getTechnicianCoverageByKey(item)?.en || item),
+    coverageType: coverageConfig?.type || "custom",
+    coverageLabelAr: coverageConfig?.ar || row.zone,
+    coverageLabelEn: coverageConfig?.en || row.zone,
     status: row.status,
     notes: row.notes || "",
   };
+}
+
+function normalizeTechnicianCoverageKeys(value) {
+  const input = Array.isArray(value)
+    ? value
+    : typeof value === "string" && value.trim().startsWith("[")
+      ? parseJsonArray(value)
+      : String(value || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+  return Array.from(
+    new Set(
+      (Array.isArray(input) ? input : [])
+        .map((item) => normalizeTechnicianCoverageKey(item))
+        .filter(Boolean)
+    )
+  );
 }
 
 function normalizeTechnicianStatus(status) {
@@ -3266,11 +4550,62 @@ function normalizeTechnicianStatus(status) {
 }
 
 function normalizeServerRole(role) {
-  if (role === "admin") {
+  return String(role || "").trim();
+}
+
+function normalizeRoleList(roles = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(roles) ? roles : [roles])
+        .map((role) => normalizeServerRole(role))
+        .filter(Boolean)
+    )
+  );
+}
+
+function resolveRequestedWorkspaceRole(requestedRole, availableRoles = []) {
+  const normalizedRoles = normalizeRoleList(availableRoles);
+  const normalizedRequestedRole = normalizeServerRole(requestedRole);
+
+  if (normalizedRequestedRole && normalizedRoles.includes(normalizedRequestedRole)) {
+    return normalizedRequestedRole;
+  }
+
+  if (normalizedRoles.includes("admin")) {
+    return "admin";
+  }
+
+  if (normalizedRoles.includes("operations_manager")) {
     return "operations_manager";
   }
 
-  return String(role || "").trim();
+  return normalizedRoles[0] || "";
+}
+
+function isMissingUserWorkspaceRolesTableError(error) {
+  return String(error?.message || error || "").toLowerCase().includes("user_workspace_roles");
+}
+
+async function readUserWorkspaceRoles(env, userId, baseRole = "") {
+  const fallbackRoles = normalizeRoleList([baseRole]);
+
+  if (!Number(userId)) {
+    return fallbackRoles;
+  }
+
+  try {
+    const { results } = await env.DB.prepare("SELECT role FROM user_workspace_roles WHERE user_id = ? ORDER BY role ASC")
+      .bind(Number(userId))
+      .all();
+
+    return normalizeRoleList([baseRole, ...(results || []).map((row) => row.role)]);
+  } catch (error) {
+    if (isMissingUserWorkspaceRolesTableError(error)) {
+      return fallbackRoles;
+    }
+
+    throw error;
+  }
 }
 
 function normalizeSaudiPhoneNumber(value) {
@@ -3399,7 +4734,43 @@ async function readServiceOrderReferenceRegistry(env, excludeOrderId = null) {
     });
   }
 
+<<<<<<< Updated upstream
+=======
+  if (includeArchived) {
+    let archivedRows = { results: [] };
+    try {
+      const archivedStatement = env.DB.prepare(
+        "SELECT id, original_order_id, customer_name, request_number, notes FROM service_order_archives ORDER BY id DESC"
+      );
+      archivedRows = await archivedStatement.all();
+    } catch (error) {
+      if (!isMissingArchiveTableError(error)) {
+        throw error;
+      }
+    }
+
+    for (const row of archivedRows.results || []) {
+      registerOrderReferenceIds(registry, row, {
+        orderId: Number(row.original_order_id || 0),
+        archiveId: Number(row.id),
+        originalOrderId: Number(row.original_order_id || 0),
+        customerName: String(row.customer_name || "").trim(),
+        scope: "archived",
+      });
+    }
+  }
+
+>>>>>>> Stashed changes
   return registry;
+}
+
+function isMissingArchiveTableError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("service_order_archives") && (
+    message.includes("no such table") ||
+    message.includes("does not exist") ||
+    message.includes("unknown table")
+  );
 }
 
 function registerOrderReferenceIds(registry, source = {}, entry = {}) {
@@ -3558,7 +4929,6 @@ async function readServiceOrders(env) {
       t.id AS technician_id, t.name AS technician_name, t.user_id AS technician_user_id
      FROM service_orders o
      LEFT JOIN technicians t ON t.id = o.technician_id
-     WHERE o.status != 'completed'
      ORDER BY o.id DESC`
   ).all();
 
@@ -3644,6 +5014,7 @@ function mapServiceOrderRow(row, areaClusters = [], photos = []) {
     request_number: row.request_number,
     notes: row.notes,
   });
+  const importedTechnician = readImportedTechnicianAssignment({ notes: row.notes });
 
   return {
     id: `ORD-${row.id}`,
@@ -3652,6 +5023,7 @@ function mapServiceOrderRow(row, areaClusters = [], photos = []) {
     soId: references.soId,
     woId: references.woId,
     customerName: row.customer_name,
+    email: extractImportReferenceValue(row, "Email"),
     phone: row.phone,
     secondaryPhone: row.secondary_phone || "",
     whatsappPhone: row.whatsapp_phone || row.phone,
@@ -3677,6 +5049,8 @@ function mapServiceOrderRow(row, areaClusters = [], photos = []) {
     deliveryType: normalizeDeliveryType(row.delivery_type),
     preferredDate: row.preferred_date || row.scheduled_date,
     preferredTime: row.preferred_time || row.scheduled_time || "",
+    pickupDate: extractImportReferenceValue(row, "Pickup date"),
+    installationDate: extractImportReferenceValue(row, "Installation date"),
     scheduledDate: row.scheduled_date,
     scheduledTime: row.scheduled_time || "",
     coordinationNote: row.coordination_note || "",
@@ -3705,6 +5079,16 @@ function mapServiceOrderRow(row, areaClusters = [], photos = []) {
     auditLog: parseJsonArray(row.audit_log_json),
     technicianId: row.technician_id ? String(row.technician_id) : "",
     technicianName: row.technician_name || "غير معين",
+    withinSLA: extractImportReferenceValue(row, "Completed within SLA"),
+    exceedSLA: extractImportReferenceValue(row, "Completed Exceed SLA"),
+    courier: extractImportReferenceValue(row, "Courier"),
+    courierNum: extractImportReferenceValue(row, "Courier number"),
+    chatLog: extractImportReferenceValue(row, "Chat Log") || extractImportReferenceValue(row, "Chat message"),
+    techId: importedTechnician.techId || "",
+    areaCode: importedTechnician.areaCode || "",
+    techCode: importedTechnician.techCode || "",
+    areaName: importedTechnician.areaName || extractImportReferenceValue(row, "Area Name"),
+    techShortName: importedTechnician.techShortName || extractImportReferenceValue(row, "Tech Short Name"),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     acDetails: (() => {
@@ -3751,8 +5135,7 @@ async function readOperationsSummary(env) {
       SUM(CASE WHEN status = 'in_transit' THEN 1 ELSE 0 END) AS in_transit_orders,
       SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) AS canceled_orders,
       SUM(CASE WHEN status IN ('canceled', 'completed') THEN 0 ELSE COALESCE(ac_count, 0) END) AS total_devices
-     FROM service_orders
-     WHERE status != 'completed'`
+     FROM service_orders`
   ).first();
 
   return {
@@ -3789,6 +5172,200 @@ function buildOperationsSummary(orders, technicians) {
       totalDevices: 0,
     }
   );
+}
+
+function formatManualOrderDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const dayFirstMatch = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
+  if (dayFirstMatch) {
+    const [, day, month, year] = dayFirstMatch;
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  const yearFirstMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
+  if (yearFirstMatch) {
+    const [, year, month, day] = yearFirstMatch;
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  return normalized;
+}
+
+function buildManualOrderMapsLink(addressText) {
+  const query = String(addressText || "").trim();
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "";
+}
+
+function extractManualOrderDistrict(addressText, city) {
+  const normalizedCity = String(city || "").trim().toLowerCase();
+  const parts = String(addressText || "")
+    .replace(/^.*?\s-\s*/, "")
+    .split(",")
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+
+  if (!parts.length) {
+    return String(city || "").trim();
+  }
+
+  const cityIndex = parts.findIndex((part) => String(part || "").trim().toLowerCase() === normalizedCity);
+  if (cityIndex > 0) {
+    return parts[cityIndex - 1];
+  }
+
+  return parts[1] || parts[0] || String(city || "").trim();
+}
+
+function inferManualOrderAcType(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) {
+    return "split";
+  }
+  if (text.includes("window") || text.includes("شباك")) {
+    return "window";
+  }
+  if (text.includes("cassette") || text.includes("كاسيت")) {
+    return "cassette";
+  }
+  if (text.includes("duct") || text.includes("دكت")) {
+    return "duct";
+  }
+  if (text.includes("concealed") || text.includes("مخفي")) {
+    return "concealed";
+  }
+  return "split";
+}
+
+function buildManualOrderAcDetails(devList = [], fallbackCount = 1) {
+  const counts = new Map();
+  for (const deviceName of Array.isArray(devList) ? devList : []) {
+    const type = inferManualOrderAcType(deviceName);
+    counts.set(type, (counts.get(type) || 0) + 1);
+  }
+
+  if (!counts.size) {
+    counts.set("split", Math.max(1, Number(fallbackCount) || 1));
+  }
+
+  return Array.from(counts.entries()).map(([type, quantity], index) => ({
+    id: `manual-${type}-${index}`,
+    type,
+    quantity,
+  }));
+}
+
+function buildManualInstallationOrderNotes(body, parsedOrder) {
+  const lines = [
+    ["SO ID", parsedOrder.soId],
+    ["WO ID", parsedOrder.woId],
+    ["Customer", parsedOrder.customer],
+    ["Email", body.email],
+    ["Phone", parsedOrder.phone],
+    ["Delivery date", formatManualOrderDate(body.deliveryDate || parsedOrder.deliveryDate)],
+    ["Pickup date", formatManualOrderDate(body.pickupDate || parsedOrder.pickDate)],
+    ["Installation date", formatManualOrderDate(body.installationDate || body.instDate)],
+    ["Excel status", parsedOrder.status],
+    ["Bundled items", body.bundledItems],
+    ["Device count", parsedOrder.devCount],
+    ["Shipping city", parsedOrder.city],
+    ["Shipping address", parsedOrder.address],
+    ["Devices", String(body.devices || "").trim().split(/\r?\n/).map((line) => String(line || "").trim()).filter(Boolean).join(" | ")],
+    ["Completed within SLA", parsedOrder.withinSLA],
+    ["Completed Exceed SLA", parsedOrder.exceedSLA],
+    ["Courier", parsedOrder.courier],
+    ["Courier number", parsedOrder.courierNum],
+    ["Chat Log", String(body.chatLog || body.chat_message || "").trim()],
+    ["Tech ID", parsedOrder.techId],
+    ["Area Code", parsedOrder.areaCode],
+    ["Tech Code", parsedOrder.techCode],
+    ["Area Name", parsedOrder.areaName],
+    ["Tech Short Name", parsedOrder.techShortName],
+  ];
+
+  return normalizeServiceOrderNotes(
+    lines
+      .map(([label, value]) => [label, String(value || "").trim()])
+      .filter(([, value]) => Boolean(value))
+      .map(([label, value]) => `${label}: ${value}`)
+      .join("\n"),
+    {
+      idRef: parsedOrder.soId || parsedOrder.woId,
+      soId: parsedOrder.soId,
+      woId: parsedOrder.woId,
+    }
+  );
+}
+
+function normalizeManualInstallationServiceOrderInput(body) {
+  const parsedOrder = normalizeInstallationWorkOrderRow({
+    "SO ID": body.soId || body.requestNumber || body["SO ID"] || "",
+    "WO ID": body.woId || body["WO ID"] || "",
+    Customer: body.customer || body.customerName || body.Customer || "",
+    Email: body.email || body.Email || "",
+    Phone: body.phone || body.Phone || "",
+    "Installation date": body.installationDate || body.instDate || body["Installation date"] || "",
+    "Delivery date": body.deliveryDate || body["Delivery date"] || "",
+    "Pickup date": body.pickupDate || body["Pickup date"] || "",
+    Devices: body.devices || body.Devices || "",
+    "Bundled Items": body.bundledItems || body["Bundled Items"] || "",
+    Status: body.status || body.Status || "Scheduled",
+    "Shipping City": body.shippingCity || body.city || body["Shipping City"] || "",
+    "Shipping Address": body.shippingAddress || body.addressText || body["Shipping Address"] || "",
+    "Completed within SLA": body.withinSLA || body["Completed within SLA"] || "",
+    "Completed Exceed SLA": body.exceedSLA || body["Completed Exceed SLA"] || "",
+    Courier: body.courier || body.Courier || "",
+    "Courier number": body.courierNum || body["Courier number"] || "",
+    "Chat Log": body.chatLog || body["Chat Log"] || body["chat message"] || "",
+  });
+
+  const preferredDate = formatManualOrderDate(parsedOrder.deliveryDate || parsedOrder.instDate || parsedOrder.pickDate);
+  const acDetails = buildManualOrderAcDetails(parsedOrder.devList, parsedOrder.devCount);
+  const district = extractManualOrderDistrict(parsedOrder.address, parsedOrder.city);
+
+  if (!parsedOrder.soId || !parsedOrder.customer || !parsedOrder.phone || !preferredDate || !parsedOrder.city || !parsedOrder.address || !acDetails.length) {
+    return {
+      error: "SO ID, customer, phone, installation or delivery or pickup date, devices, shipping city, and shipping address are required",
+    };
+  }
+
+  return {
+    requestNumber: parsedOrder.soId,
+    idRef: parsedOrder.soId || parsedOrder.woId,
+    customerName: parsedOrder.customer,
+    phone: parsedOrder.phone,
+    secondaryPhone: "",
+    whatsappPhone: parsedOrder.phone,
+    city: parsedOrder.city,
+    district: district || parsedOrder.city,
+    addressText: parsedOrder.address,
+    landmark: "",
+    mapLink: buildManualOrderMapsLink(parsedOrder.address),
+    sourceChannel: "Manual Excel-style intake",
+    serviceSummary: String(body.devices || "")
+      .split(/\r?\n/)
+      .map((line) => String(line || "").trim())
+      .filter(Boolean)
+      .join(" | "),
+    importStatus: parsedOrder.status,
+    priority: "normal",
+    deliveryType: "none",
+    preferredDate,
+    preferredTime: "09:00",
+    notes: buildManualInstallationOrderNotes(body, parsedOrder),
+    soId: parsedOrder.soId,
+    woId: parsedOrder.woId,
+    acDetails,
+    primaryAcType: acDetails[0]?.type || "split",
+    totalQuantity: Math.max(1, Number(parsedOrder.devCount) || acDetails.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)),
+  };
 }
 
 function normalizeServiceOrderInput(body) {
@@ -3980,12 +5557,52 @@ function mapOrderStatusLabel(status) {
   );
 }
 
-async function createNotification(env, userId, title, body, kind = "info", relatedOrderId = null) {
+function readImportedTechnicianAssignment(normalized = {}) {
+  const noteSource = { notes: String(normalized?.notes || "").trim() };
+  const directTechId = String(normalized?.techId || extractImportReferenceValue(noteSource, "Tech ID") || "").trim();
+  const directAreaCode = String(normalized?.areaCode || extractImportReferenceValue(noteSource, "Area Code") || "").trim();
+  const directTechCode = String(normalized?.techCode || extractImportReferenceValue(noteSource, "Tech Code") || "").trim();
+
+  if (directTechId || directAreaCode || directTechCode) {
+    return parseTechnicianAssignment(`* ${directTechId || [directAreaCode, directTechCode].filter(Boolean).join("-")} - by:`);
+  }
+
+  const chatLog = extractImportReferenceValue(noteSource, "Chat Log") || extractImportReferenceValue(noteSource, "Chat message");
+  return parseTechnicianAssignment(chatLog);
+}
+
+async function notifyUsersAboutTechnicianAssignmentReview(env, normalized, relatedOrderId = null) {
+  const assignment = readImportedTechnicianAssignment(normalized);
+  const issues = getTechnicianAssignmentIssues(assignment);
+  if (!issues.needsReview) {
+    return;
+  }
+
+  const reference = normalized?.requestNumber || normalized?.soId || normalized?.woId || String(relatedOrderId || "").trim() || "-";
+  const customer = String(normalized?.customerName || "").trim() || "العميل";
+  const issueSummary = [
+    issues.missingAreaCode ? `رمز المنطقة ${issues.areaCode || "-"} غير موجود` : "",
+    issues.missingTechCode ? `رمز الفني ${issues.techCode || "-"} غير موجود` : "",
+  ]
+    .filter(Boolean)
+    .join("، ");
+
+  await notifyUsersByRoles(
+    env,
+    ["admin", "operations_manager"],
+    "مراجعة تعيين الفني مطلوبة",
+    `الطلب رقم ${reference} للعميل ${customer} يحتوي على كود تعيين يحتاج مراجعة (${issues.techId || "-"}). ${issueSummary}. يرجى تعيين الفني يدويًا لهذا الطلب.`,
+    relatedOrderId,
+    "assignment_review"
+  );
+}
+
+async function createNotification(env, userId, title, body, kind = "info", relatedOrderId = null, targetRole = "") {
   await env.DB.prepare(
-    `INSERT INTO notifications (user_id, title, body, kind, related_order_id, is_read)
-     VALUES (?, ?, ?, ?, ?, 0)`
+    `INSERT INTO notifications (user_id, title, body, kind, related_order_id, is_read, target_role)
+     VALUES (?, ?, ?, ?, ?, 0, ?)`
   )
-    .bind(Number(userId), title, body, kind, relatedOrderId ? Number(relatedOrderId) : null)
+    .bind(Number(userId), title, body, kind, relatedOrderId ? Number(relatedOrderId) : null, String(targetRole || "").trim())
     .run();
 
   try {
@@ -4004,19 +5621,143 @@ async function notifyAdmins(env, title, body, relatedOrderId = null) {
   return notifyUsersByRoles(env, ["operations_manager"], title, body, relatedOrderId);
 }
 
-async function notifyUsersByRoles(env, roles = [], title, body, relatedOrderId = null) {
-  const roleList = (roles || []).map((role) => `'${String(role).replace(/'/g, "''")}'`).join(", ");
-  if (!roleList) {
+async function notifyUsersByRoles(env, roles = [], title, body, relatedOrderId = null, kind = "status_update") {
+  const normalizedRoles = normalizeRoleList(roles);
+  if (!normalizedRoles.length) {
     return;
   }
 
-  const { results } = await env.DB.prepare(
-    `SELECT id FROM users WHERE role IN (${roleList}) AND status = 'active'`
-  ).all();
+  const recipients = await readActiveUsersByRoles(env, normalizedRoles);
 
-  for (const user of results || []) {
-    await createNotification(env, user.id, title, body, "status_update", relatedOrderId);
+  for (const recipient of recipients) {
+    await createNotification(env, recipient.id, title, body, kind, relatedOrderId, recipient.targetRole);
   }
+}
+
+async function readActiveUsersByRoles(env, roles = []) {
+  const normalizedRoles = normalizeRoleList(roles);
+  if (!normalizedRoles.length) {
+    return [];
+  }
+
+  const placeholders = normalizedRoles.map(() => "?").join(", ");
+
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT DISTINCT u.id, uwr.role AS target_role
+       FROM users u
+       INNER JOIN user_workspace_roles uwr ON uwr.user_id = u.id
+       WHERE u.status = 'active' AND uwr.role IN (${placeholders})`
+    )
+      .bind(...normalizedRoles)
+      .all();
+
+    const mappedRecipients = (results || []).map((row) => ({
+      id: Number(row.id),
+      targetRole: normalizeServerRole(row.target_role),
+    }));
+
+    if (mappedRecipients.length) {
+      return mappedRecipients;
+    }
+  } catch (error) {
+    if (!isMissingUserWorkspaceRolesTableError(error)) {
+      throw error;
+    }
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT id, role FROM users WHERE status = 'active' AND role IN (${placeholders})`
+  )
+    .bind(...normalizedRoles)
+    .all();
+
+  return (results || []).map((row) => ({
+    id: Number(row.id),
+    targetRole: normalizeServerRole(row.role),
+  }));
+}
+
+async function readOperationsRemainingTodaySummary(env, targetDate = getRiyadhTodayString()) {
+  const row = await env.DB.prepare(
+    `SELECT
+      COUNT(*) AS remaining_orders,
+      COALESCE(SUM(COALESCE(ac_count, 0)), 0) AS remaining_devices
+     FROM service_orders
+     WHERE status NOT IN ('completed', 'canceled')
+       AND COALESCE(NULLIF(scheduled_date, ''), NULLIF(preferred_date, ''), substr(created_at, 1, 10)) = ?`
+  )
+    .bind(String(targetDate || "").trim() || getRiyadhTodayString())
+    .first();
+
+  return {
+    date: String(targetDate || "").trim() || getRiyadhTodayString(),
+    remainingOrders: Number(row?.remaining_orders || 0),
+    remainingDevices: Number(row?.remaining_devices || 0),
+  };
+}
+
+async function readTechnicianTaskSummary(env, technicianId, targetDate = getRiyadhTodayString()) {
+  const today = String(targetDate || "").trim() || getRiyadhTodayString();
+  const tomorrow = shiftRiyadhDateString(today, 1);
+  const row = await env.DB.prepare(
+    `SELECT
+      COUNT(CASE WHEN task_date = ? AND status NOT IN ('completed', 'canceled') THEN 1 END) AS today_orders,
+      COALESCE(SUM(CASE WHEN task_date = ? AND status NOT IN ('completed', 'canceled') THEN COALESCE(ac_count, 0) ELSE 0 END), 0) AS today_devices,
+      COUNT(CASE WHEN task_date = ? AND status NOT IN ('completed', 'canceled') THEN 1 END) AS tomorrow_orders,
+      COALESCE(SUM(CASE WHEN task_date = ? AND status NOT IN ('completed', 'canceled') THEN COALESCE(ac_count, 0) ELSE 0 END), 0) AS tomorrow_devices
+     FROM (
+       SELECT
+         status,
+         COALESCE(ac_count, 0) AS ac_count,
+         COALESCE(NULLIF(scheduled_date, ''), NULLIF(preferred_date, ''), substr(created_at, 1, 10)) AS task_date
+       FROM service_orders
+       WHERE technician_id = ?
+     ) scoped_orders`
+  )
+    .bind(today, today, tomorrow, tomorrow, Number(technicianId))
+    .first();
+
+  return {
+    today,
+    tomorrow,
+    todayOrders: Number(row?.today_orders || 0),
+    todayDevices: Number(row?.today_devices || 0),
+    tomorrowOrders: Number(row?.tomorrow_orders || 0),
+    tomorrowDevices: Number(row?.tomorrow_devices || 0),
+  };
+}
+
+function formatTechnicianTaskSummary(summary) {
+  if (!summary) {
+    return "";
+  }
+
+  const todayLine = `مهام اليوم: ${summary.todayOrders} طلب${summary.todayDevices ? ` / ${summary.todayDevices} جهاز` : ""}.`;
+  const tomorrowLine = `مهام الغد: ${summary.tomorrowOrders} طلب${summary.tomorrowDevices ? ` / ${summary.tomorrowDevices} جهاز` : ""}.`;
+  return [todayLine, tomorrowLine].join("\n");
+}
+
+async function buildTechnicianTaskNotificationBody(env, technicianId, leadLine, targetDate = getRiyadhTodayString()) {
+  const summary = await readTechnicianTaskSummary(env, technicianId, targetDate);
+  return [String(leadLine || "").trim(), formatTechnicianTaskSummary(summary)].filter(Boolean).join("\n");
+}
+
+async function appendOperationsRemainingSummary(env, body) {
+  const summary = await readOperationsRemainingTodaySummary(env);
+  const suffix = `المتبقي في مهام اليوم: ${summary.remainingOrders} طلب${summary.remainingDevices ? ` / ${summary.remainingDevices} جهاز` : ""}.`;
+  return [String(body || "").trim(), suffix].filter(Boolean).join("\n");
+}
+
+async function notifyOperationsManagersAboutNewOrder(env, normalized, relatedOrderId) {
+  const notification = buildOperationsNewOrderNotification(normalized);
+  const body = await appendOperationsRemainingSummary(env, notification.body);
+  return notifyUsersByRoles(env, ["operations_manager"], notification.title, body, relatedOrderId, "new_order");
+}
+
+async function notifyOperationsManagersAboutStatusChange(env, title, body, relatedOrderId = null) {
+  const nextBody = await appendOperationsRemainingSummary(env, body);
+  return notifyUsersByRoles(env, ["operations_manager"], title, nextBody, relatedOrderId, "status_update");
 }
 
 async function readServiceTimeStandards(env) {
@@ -4148,14 +5889,32 @@ function normalizeFooterSettingsInput(body) {
 }
 
 function normalizeHomeSettingsInput(body) {
+  const defaults = getDefaultHomeSettings();
   const heroKicker = String(body.heroKicker || "").trim();
   const heroTitle = String(body.heroTitle || "").trim();
   const heroSubtitle = String(body.heroSubtitle || "").trim();
+  const heroNote = String(body.heroNote || "").trim();
   const primaryButtonText = String(body.primaryButtonText || "").trim();
   const primaryButtonUrl = String(body.primaryButtonUrl || "").trim();
   const secondaryButtonText = String(body.secondaryButtonText || "").trim();
   const secondaryButtonUrl = String(body.secondaryButtonUrl || "").trim();
   const stats = normalizeHomeStats(body.stats);
+  const heroHighlights = normalizeHomeStringList(body.heroHighlights, "Hero highlights");
+  const services = normalizeHomeStringList(body.services, "Services");
+  const features = normalizeHomeStringList(body.features, "Features");
+  const testimonials = normalizeHomeStringList(body.testimonials, "Testimonials");
+  const galleryImages = normalizeHomeGalleryImages(body.galleryImages);
+  const aboutTitle = String(body.aboutTitle || "").trim();
+  const aboutText = String(body.aboutText || "").trim();
+  const servicesTitle = String(body.servicesTitle || "").trim();
+  const featuresTitle = String(body.featuresTitle || "").trim();
+  const galleryTitle = String(body.galleryTitle || "").trim();
+  const testimonialsTitle = String(body.testimonialsTitle || "").trim();
+  const contactTitle = String(body.contactTitle || "").trim();
+  const phone = String(body.phone || "").trim();
+  const whatsappNumber = String(body.whatsappNumber || "").trim();
+  const coverageText = String(body.coverageText || "").trim();
+  const hoursText = String(body.hoursText || "").trim();
 
   if (!heroKicker || !heroTitle || !heroSubtitle) {
     return { error: "Hero content is required" };
@@ -4169,15 +5928,52 @@ function normalizeHomeSettingsInput(body) {
     return { error: stats.error };
   }
 
+  if (heroHighlights.error || services.error || features.error || testimonials.error || galleryImages.error) {
+    return {
+      error:
+        heroHighlights.error ||
+        services.error ||
+        features.error ||
+        testimonials.error ||
+        galleryImages.error,
+    };
+  }
+
+  if (!aboutTitle || !aboutText || !servicesTitle || !featuresTitle || !galleryTitle || !testimonialsTitle || !contactTitle) {
+    return { error: "Homepage section titles and copy are required" };
+  }
+
+  if (!phone || !coverageText || !hoursText) {
+    return { error: "Contact details are required" };
+  }
+
   return {
+    contentVersion: 2,
     heroKicker,
     heroTitle,
     heroSubtitle,
+    heroNote: heroNote || defaults.heroNote,
     primaryButtonText,
     primaryButtonUrl,
     secondaryButtonText,
     secondaryButtonUrl,
     stats: stats.items,
+    heroHighlights: heroHighlights.items,
+    aboutTitle,
+    aboutText,
+    servicesTitle,
+    services: services.items,
+    featuresTitle,
+    features: features.items,
+    galleryTitle,
+    galleryImages: galleryImages.items,
+    testimonialsTitle,
+    testimonials: testimonials.items,
+    contactTitle,
+    phone,
+    whatsappNumber: whatsappNumber || phone,
+    coverageText,
+    hoursText,
   };
 }
 
@@ -4196,6 +5992,45 @@ function normalizeHomeStats(value) {
   for (const entry of items) {
     if (!entry.value || !entry.label) {
       return { error: "Each stat requires value and label" };
+    }
+  }
+
+  return { items };
+}
+
+function normalizeHomeStringList(value, fieldName) {
+  if (!Array.isArray(value)) {
+    return { error: `${fieldName} must be a list` };
+  }
+
+  const items = value.map((entry) => String(entry || "").trim()).filter(Boolean);
+  if (!items.length) {
+    return { error: `${fieldName} must include at least one item` };
+  }
+
+  return { items };
+}
+
+function normalizeHomeGalleryImages(value) {
+  if (!Array.isArray(value)) {
+    return { error: "Gallery images must be a list" };
+  }
+
+  const items = value
+    .map((entry) => ({
+      title: String(entry?.title || "").trim(),
+      caption: String(entry?.caption || "").trim(),
+      imageUrl: String(entry?.imageUrl || "").trim(),
+    }))
+    .filter((entry) => entry.title || entry.caption || entry.imageUrl);
+
+  if (!items.length) {
+    return { error: "Gallery images must include at least one item" };
+  }
+
+  for (const entry of items) {
+    if (!entry.title || !entry.caption) {
+      return { error: "Each gallery image requires title and caption" };
     }
   }
 
@@ -4279,7 +6114,8 @@ async function readFooterSettings(env) {
     return getDefaultFooterSettings();
   }
 
-  return mapFooterSettings(row);
+  const settings = mapFooterSettings(row);
+  return isLegacyFooterSettings(settings) ? getDefaultFooterSettings() : settings;
 }
 
 function mapFooterSettings(row) {
@@ -4295,24 +6131,23 @@ function mapFooterSettings(row) {
 function getDefaultFooterSettings() {
   return {
     aboutText:
-      "مساحة داخلية مبسطة لإدارة الطلبات بين خدمة العملاء ومدير العمليات فقط.",
+      "تركيب برو لخدمات تركيب وصيانة المكيفات بخبرة عالية، سرعة في الوصول، وضمان على جودة العمل.",
     usefulLinks: [
-      { label: "الرئيسية", url: "/" },
-      { label: "اللوحة الداخلية", url: "/dashboard" },
-      { label: "تسجيل الدخول", url: "/login" },
+      { label: "Home", url: "/" },
+      { label: "Login", url: "/login" },
     ],
     customerServiceLinks: [
-      { label: "الدعم", url: "tel:+966558232644" },
-      { label: "واتساب", url: "https://wa.me/966558232644" },
-      { label: "اتصل بنا", url: "tel:+966558232644" },
+      { label: "Support", url: "tel:0551153304" },
+      { label: "WhatsApp", url: "https://wa.me/966551153304" },
+      { label: "Call us", url: "tel:0551153304" },
     ],
-    socialLinks: [
-      { platform: "instagram", url: "https://instagram.com/tarkeebpro" },
-      { platform: "x", url: "https://x.com/tarkeebpro" },
-      { platform: "linkedin", url: "https://linkedin.com/company/tarkeebpro" },
-    ],
-    copyrightText: "جميع الحقوق محفوظة لكميل",
+    socialLinks: [{ platform: "whatsapp", url: "https://wa.me/966551153304" }],
+    copyrightText: "© 2026 TrkeebPro",
   };
+}
+
+function isLegacyFooterSettings(settings) {
+  return /internal|داخلية|الداخلية/i.test(String(settings?.aboutText || ""));
 }
 
 async function readHomeSettings(env) {
@@ -4334,34 +6169,154 @@ async function readHomeSettings(env) {
     return getDefaultHomeSettings();
   }
 
+  const defaults = getDefaultHomeSettings();
+  const payload = parseHomeSettingsPayload(row.stats_json);
+  const isModern =
+    Number(payload.contentVersion || 0) >= 2 ||
+    payload.aboutTitle ||
+    payload.aboutText ||
+    Array.isArray(payload.services) ||
+    Array.isArray(payload.heroHighlights);
+
+  if (!isModern) {
+    return defaults;
+  }
+
   return {
-    heroKicker: row.hero_kicker,
-    heroTitle: row.hero_title,
-    heroSubtitle: row.hero_subtitle,
-    primaryButtonText: row.primary_button_text,
-    primaryButtonUrl: row.primary_button_url,
-    secondaryButtonText: row.secondary_button_text,
-    secondaryButtonUrl: row.secondary_button_url,
-    stats: parseJsonArray(row.stats_json),
+    ...defaults,
+    heroKicker: String(row.hero_kicker || defaults.heroKicker),
+    heroTitle: String(row.hero_title || defaults.heroTitle),
+    heroSubtitle: String(row.hero_subtitle || defaults.heroSubtitle),
+    primaryButtonText: String(row.primary_button_text || defaults.primaryButtonText),
+    primaryButtonUrl: String(row.primary_button_url || defaults.primaryButtonUrl),
+    secondaryButtonText: String(row.secondary_button_text || defaults.secondaryButtonText),
+    secondaryButtonUrl: String(row.secondary_button_url || defaults.secondaryButtonUrl),
+    heroNote: String(payload.heroNote || defaults.heroNote),
+    heroHighlights: normalizeStoredHomeStringList(payload.heroHighlights, defaults.heroHighlights),
+    stats: normalizeStoredHomeStats(payload.stats, defaults.stats),
+    aboutTitle: String(payload.aboutTitle || defaults.aboutTitle),
+    aboutText: String(payload.aboutText || defaults.aboutText),
+    servicesTitle: String(payload.servicesTitle || defaults.servicesTitle),
+    services: normalizeStoredHomeStringList(payload.services, defaults.services),
+    featuresTitle: String(payload.featuresTitle || defaults.featuresTitle),
+    features: normalizeStoredHomeStringList(payload.features, defaults.features),
+    galleryTitle: String(payload.galleryTitle || defaults.galleryTitle),
+    galleryImages: normalizeStoredHomeGalleryImages(payload.galleryImages, defaults.galleryImages),
+    testimonialsTitle: String(payload.testimonialsTitle || defaults.testimonialsTitle),
+    testimonials: normalizeStoredHomeStringList(payload.testimonials, defaults.testimonials),
+    contactTitle: String(payload.contactTitle || defaults.contactTitle),
+    phone: String(payload.phone || defaults.phone),
+    whatsappNumber: String(payload.whatsappNumber || payload.phone || defaults.whatsappNumber),
+    coverageText: String(payload.coverageText || defaults.coverageText),
+    hoursText: String(payload.hoursText || defaults.hoursText),
+    contentVersion: 2,
   };
 }
 
 function getDefaultHomeSettings() {
   return {
-    heroKicker: "Built for the team",
-    heroTitle: "Made with care to simplify the journey of customer service and the operations manager.",
-    heroSubtitle: "A private request workspace that keeps intake fast, statuses clear, and heavy daily order volumes easier to manage.",
-    primaryButtonText: "Open Dashboard",
-    primaryButtonUrl: "/dashboard",
-    secondaryButtonText: "Login",
-    secondaryButtonUrl: "/login",
+    contentVersion: 2,
+    heroKicker: "تركيب برو",
+    heroTitle: "تركيب وصيانة المكيفات باحترافية عالية",
+    heroSubtitle: "خدمة سريعة | أسعار منافسة | ضمان على العمل",
+    heroNote:
+      "متخصصون في تركيب وصيانة جميع أنواع المكيفات بخبرة عالية وفريق فني محترف، مع اهتمام بالتفاصيل وسرعة في التنفيذ.",
+    primaryButtonText: "احجز الآن",
+    primaryButtonUrl: "#contact",
+    secondaryButtonText: "تواصل عبر واتساب",
+    secondaryButtonUrl: "https://wa.me/966551153304",
+    heroHighlights: ["خدمة سريعة", "أسعار منافسة", "ضمان على العمل"],
     stats: [
-      { value: "2", label: "Dedicated internal roles" },
-      { value: "4", label: "Clear request stages" },
-      { value: "1", label: "Shared operations board" },
-      { value: "Instant", label: "Customer service alerts" },
+      { value: "6", label: "خدمات رئيسية" },
+      { value: "24/7", label: "استجابة سريعة" },
+      { value: "100%", label: "اهتمام بالنظافة والجودة" },
     ],
+    aboutTitle: "من نحن",
+    aboutText:
+      "نحن في \"تركيب برو\" متخصصون في تركيب وصيانة جميع أنواع المكيفات، بخبرة عالية وفريق فني محترف. نضمن لك جودة العمل وسرعة التنفيذ بأفضل الأسعار.",
+    servicesTitle: "خدماتنا",
+    services: [
+      "تركيب مكيفات سبليت",
+      "تركيب مكيفات شباك",
+      "فك ونقل المكيفات",
+      "صيانة وتنظيف المكيفات",
+      "تعبئة فريون",
+      "كشف الأعطال",
+    ],
+    featuresTitle: "لماذا تختارنا؟",
+    features: ["فنيين محترفين", "سرعة في الوصول", "أسعار مناسبة", "ضمان على الخدمة", "خدمة عملاء ممتازة"],
+    galleryTitle: "أعمالنا",
+    galleryImages: [
+      {
+        title: "تركيب احترافي",
+        caption: "تنفيذ مرتب واهتمام كامل بالتفاصيل وجودة التشطيب.",
+        imageUrl: "/home-gallery-1.jpg",
+      },
+      {
+        title: "خدمة ميدانية سريعة",
+        caption: "وصول سريع وتجهيز كامل لخدمة جميع أنواع المكيفات.",
+        imageUrl: "/home-gallery-2.webp",
+      },
+      {
+        title: "صيانة وتنظيف",
+        caption: "حلول صيانة وتنظيف تعيد كفاءة التبريد وتحافظ على عمر الجهاز.",
+        imageUrl: "/home-gallery-3.jpg",
+      },
+    ],
+    testimonialsTitle: "آراء العملاء",
+    testimonials: ["خدمة ممتازة وسريعة، أنصح فيهم", "أسعارهم مناسبة وشغلهم نظيف"],
+    contactTitle: "تواصل معنا",
+    phone: "0551153304",
+    whatsappNumber: "0551153304",
+    coverageText: "نخدم جميع مناطق المملكة",
+    hoursText: "يتم تحديد ساعات العمل لاحقًا",
   };
+}
+
+function parseHomeSettingsPayload(value) {
+  try {
+    const parsed = value ? JSON.parse(value) : null;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeStoredHomeStringList(value, fallback = []) {
+  const items = (Array.isArray(value) ? value : []).map((entry) => String(entry || "").trim()).filter(Boolean);
+  return items.length ? items : fallback;
+}
+
+function normalizeStoredHomeStats(value, fallback = []) {
+  const items = (Array.isArray(value) ? value : [])
+    .map((entry) => ({
+      value: String(entry?.value || "").trim(),
+      label: String(entry?.label || "").trim(),
+    }))
+    .filter((entry) => entry.value && entry.label);
+  return items.length ? items : fallback;
+}
+
+function normalizeStoredHomeGalleryImages(value, fallback = []) {
+  const items = (Array.isArray(value) ? value : [])
+    .map((entry) => ({
+      title: String(entry?.title || "").trim(),
+      caption: String(entry?.caption || "").trim(),
+      imageUrl: String(entry?.imageUrl || "").trim(),
+    }))
+    .filter((entry) => entry.title && entry.caption);
+
+  if (!items.length) {
+    return fallback;
+  }
+
+  return fallback.map((entry, index) => ({
+    ...entry,
+    ...(items[index] || {}),
+  }));
 }
 
 function parseJsonArray(value) {
@@ -4386,9 +6341,24 @@ function json(data, status = 200, request, env = {}) {
     status,
     headers: {
       "Content-Type": "application/json",
+      ...buildSecurityHeaders(),
       ...buildCorsHeaders(request, env),
     },
   });
+}
+
+function buildSecurityHeaders() {
+  return {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Cache-Control": "private, no-store, no-cache, must-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
 }
 
 function buildCorsHeaders(request, env) {
@@ -4401,8 +6371,8 @@ function buildCorsHeaders(request, env) {
 
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Workspace-Role",
     Vary: "Origin",
   };
 }
@@ -4414,114 +6384,6 @@ function getAllowedOrigins(env) {
     .filter(Boolean);
 
   return [...new Set([...configuredOrigins, ...DEFAULT_ALLOWED_ORIGINS])];
-}
-
-function isInternalProxyRequest(request) {
-  return request.headers.get(INTERNAL_PROXY_HEADER) === "1";
-}
-
-async function validateCloudflareAccess(request, env) {
-  const requestUrl = new URL(request.url);
-  if (["localhost", "127.0.0.1"].includes(requestUrl.hostname)) {
-    return null;
-  }
-
-  const token =
-    request.headers.get("CF-Access-Jwt-Assertion") ||
-    request.headers.get("Cf-Access-Jwt-Assertion") ||
-    request.headers.get("cf-access-jwt-assertion");
-
-  if (!token) {
-    return json({ message: "Cloudflare Access token required" }, 401, request, env);
-  }
-
-  const parts = token.split(".");
-  if (parts.length !== 3) {
-    return json({ message: "Invalid Cloudflare Access token" }, 401, request, env);
-  }
-
-  let header;
-  let payload;
-
-  try {
-    header = JSON.parse(base64UrlDecode(parts[0]));
-    payload = JSON.parse(base64UrlDecode(parts[1]));
-  } catch {
-    return json({ message: "Invalid Cloudflare Access token" }, 401, request, env);
-  }
-
-  const audience = env.ACCESS_AUD || DEFAULT_ACCESS_AUD;
-  if (!hasAudience(payload.aud, audience)) {
-    return json({ message: "Invalid Cloudflare Access audience" }, 403, request, env);
-  }
-
-  const jwksUrl = env.ACCESS_JWKS_URL || DEFAULT_ACCESS_JWKS_URL;
-  const issuer = new URL(jwksUrl).origin;
-  if (payload.iss && payload.iss !== issuer) {
-    return json({ message: "Invalid Cloudflare Access issuer" }, 403, request, env);
-  }
-
-  if (payload.exp && Number(payload.exp) < Math.floor(Date.now() / 1000)) {
-    return json({ message: "Cloudflare Access token expired" }, 401, request, env);
-  }
-
-  const jwkSet = await getAccessJwks(jwksUrl);
-  const jwk = jwkSet.find((entry) => entry.kid === header.kid);
-  if (!jwk) {
-    return json({ message: "Cloudflare Access signing key not found" }, 401, request, env);
-  }
-
-  const publicKey = await crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      hash: "SHA-256",
-    },
-    false,
-    ["verify"]
-  );
-
-  const verified = await crypto.subtle.verify(
-    "RSASSA-PKCS1-v1_5",
-    publicKey,
-    base64UrlToBytes(parts[2]),
-    new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
-  );
-
-  if (!verified) {
-    return json({ message: "Cloudflare Access token verification failed" }, 401, request, env);
-  }
-
-  return null;
-}
-
-function hasAudience(audience, expectedAudience) {
-  if (Array.isArray(audience)) {
-    return audience.includes(expectedAudience);
-  }
-
-  return String(audience || "") === expectedAudience;
-}
-
-async function getAccessJwks(jwksUrl) {
-  const cacheKey = String(jwksUrl);
-  const cached = jwksCache.get(cacheKey);
-  const now = Date.now();
-
-  if (cached && cached.expiresAt > now) {
-    return cached.keys;
-  }
-
-  const response = await fetch(jwksUrl);
-  if (!response.ok) {
-    throw new Error(`Unable to load Cloudflare Access JWKs from ${jwksUrl}`);
-  }
-
-  const data = await response.json();
-  const keys = Array.isArray(data?.keys) ? data.keys : [];
-  jwksCache.set(cacheKey, { keys, expiresAt: now + 60 * 60 * 1000 });
-  return keys;
 }
 
 async function hashPassword(password, salt) {
@@ -4582,13 +6444,6 @@ function base64UrlDecode(value) {
   return new TextDecoder().decode(bytes);
 }
 
-function base64UrlToBytes(value) {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "===".slice((base64.length + 3) % 4);
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
-}
-
 function base64UrlFromBytes(bytes) {
   let binary = "";
   bytes.forEach((b) => {
@@ -4605,7 +6460,12 @@ function getJwtSecret(env, request) {
 
   try {
     const hostname = new URL(request?.url || "").hostname;
-    if (["localhost", "127.0.0.1"].includes(hostname)) {
+    const requestHost = String(request?.headers?.get("Host") || "")
+      .split(":")[0]
+      .trim()
+      .toLowerCase();
+
+    if (["localhost", "127.0.0.1"].includes(hostname) || ["localhost", "127.0.0.1"].includes(requestHost)) {
       return "dev-secret";
     }
   } catch {}
@@ -4634,12 +6494,23 @@ async function readActiveUser(request, env) {
     return null;
   }
 
-  return payload;
+  const availableRoles = normalizeRoleList([
+    payload.roles || payload.workspaceRoles || payload.role,
+    ...getPrivilegedWorkspaceRolesForEmail(payload.email),
+  ]);
+  const requestedRole = resolveRequestedWorkspaceRole(request.headers.get("X-Workspace-Role"), availableRoles);
+
+  return {
+    ...payload,
+    role: requestedRole,
+    roles: availableRoles,
+    workspaceRoles: availableRoles,
+  };
 }
 
 async function requireAdmin(request, env) {
   const payload = await readActiveUser(request, env);
-  if (!payload || normalizeServerRole(payload.role) !== "operations_manager") {
+  if (!payload || normalizeServerRole(payload.role) !== "admin") {
     return null;
   }
 
@@ -4649,7 +6520,12 @@ async function requireAdmin(request, env) {
 async function requireRoles(request, env, roles = []) {
   const payload = await readActiveUser(request, env);
   const normalizedRole = normalizeServerRole(payload?.role);
-  if (!payload || !roles.includes(normalizedRole)) {
+  const normalizedAllowedRoles = normalizeRoleList(roles);
+  const adminCanAccess =
+    normalizedRole === "admin" &&
+    normalizedAllowedRoles.some((role) => ["admin", "customer_service", "operations_manager"].includes(role));
+
+  if (!payload || (!normalizedAllowedRoles.includes(normalizedRole) && !adminCanAccess)) {
     return null;
   }
 

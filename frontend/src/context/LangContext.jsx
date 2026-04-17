@@ -28,7 +28,7 @@ const writeStorage = (key, value) => {
 
 const translations = {
   en: {
-    brand: 'Tarkeeb Pro Internal',
+    brand: 'TrkeebPro',
     home: 'Home',
     orders: 'Board',
     dashboard: 'Dashboard',
@@ -45,7 +45,7 @@ const translations = {
     featured: 'Internal workflow',
   },
   ar: {
-    brand: 'تركيب برو الداخلي',
+    brand: 'تركيب برو | TrkeebPro',
     home: 'الرئيسية',
     orders: 'اللوحة',
     dashboard: 'لوحة الطلبات',
@@ -53,7 +53,7 @@ const translations = {
     weeklyTasks: 'المهام الأسبوعية',
     monthlyTasks: 'المهام الشهرية',
     login: 'تسجيل الدخول',
-    register: 'تسجيل',
+    register: 'إنشاء حساب',
     logout: 'تسجيل الخروج',
     heroTitle: 'نظام داخلي لربط خدمة العملاء بمدير العمليات.',
     heroSubtitle: 'أنشئ الطلب بسرعة، حرّكه عبر أربع حالات واضحة، وابقِ الطرفين على نفس الصورة.',

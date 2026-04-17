@@ -3,11 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { impactHaptic, notificationHaptic } from '../utils/mobileNative';
-
-const roleRouteMap = {
-  operations_manager: '/operations-manager',
-  customer_service: '/customer-service',
-};
+import { getWorkspaceBasePath } from '../utils/workspaceRoles';
 
 export default function Login() {
   const { lang } = useLang();
@@ -19,10 +15,10 @@ export default function Login() {
 
   const copyMap = {
     en: {
-      eyebrow: 'Internal access',
+      eyebrow: 'Internal login',
       title: 'Sign in to the internal request room',
       subtitle:
-        'This version is restricted to customer service and the operations manager only.',
+        'This version is reserved for the admin account, operations manager, and assigned technicians through the internal login screen.',
       email: 'Email address',
       password: 'Password',
       submit: 'Sign in',
@@ -30,10 +26,10 @@ export default function Login() {
       helper: 'Secure internal login',
     },
     ar: {
-      eyebrow: 'دخول داخلي',
+      eyebrow: 'تسجيل داخلي',
       title: 'سجّل الدخول إلى غرفة الطلبات الداخلية',
       subtitle:
-        'هذه النسخة مخصصة فقط لخدمة العملاء ومدير العمليات. تم حذف حسابات المناطق نهائياً من هذا النظام.',
+        'هذه النسخة مخصصة فقط لحساب الإدارة وحساب مدير العمليات وحسابات الفنيين المعيّنة لهم الطلبات، ويتم الدخول إليها من شاشة التسجيل الداخلية.',
       email: 'البريد الإلكتروني',
       password: 'كلمة المرور',
       submit: 'دخول',
@@ -51,7 +47,7 @@ export default function Login() {
     const nextUser = await login(email, password);
     if (nextUser) {
       await notificationHaptic('success');
-      navigate(location.state?.from || roleRouteMap[nextUser.role] || '/login', { replace: true });
+      navigate(location.state?.from || getWorkspaceBasePath(nextUser.role), { replace: true });
     } else {
       await notificationHaptic('error');
     }
@@ -66,11 +62,11 @@ export default function Login() {
           <p>{copy.subtitle}</p>
         </div>
 
-        <form className="auth-card" onSubmit={onSubmit}>
+        <form className="auth-card" action="/login" method="get" onSubmit={onSubmit}>
           <h2>{copy.helper}</h2>
 
           <label>{copy.email}</label>
-          <input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <input className="input" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" value={email} onChange={(event) => setEmail(event.target.value)} required />
 
           <label>{copy.password}</label>
           <input

@@ -1,17 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { notificationsService } from '../services/api';
 import { sendAppNotification } from '../utils/mobileNative';
+import { getWorkspaceBasePath, getWorkspaceRoleLabel, getWorkspaceRolesForSwitcher } from '../utils/workspaceRoles';
 
 function NotificationMenu() {
   const { token } = useAuth();
   const { lang } = useLang();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const panelRef = useRef(null);
   const seenIdsRef = useRef(new Set());
   const initializedRef = useRef(false);
 
@@ -57,6 +60,38 @@ function NotificationMenu() {
     return () => window.clearInterval(intervalId);
   }, [token]);
 
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname, location.hash]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (panelRef.current && !panelRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('touchstart', handlePointerDown, { passive: true });
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('touchstart', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
+
   const toggleOpen = async () => {
     const nextOpen = !open;
     setOpen(nextOpen);
@@ -73,7 +108,7 @@ function NotificationMenu() {
   }
 
   return (
-    <div className="notification-wrap">
+    <div className="notification-wrap" ref={panelRef}>
       <button className="notification-button" onClick={toggleOpen} type="button">
         {lang === 'ar' ? 'الإشعارات' : 'Notifications'}
         {unreadCount ? <span className="notification-count">{unreadCount}</span> : null}
@@ -98,24 +133,18 @@ function NotificationMenu() {
 }
 
 export default function Navbar() {
-  const { token, user, logout } = useAuth();
+  const { token, user, logout, setActiveRole } = useAuth();
   const { lang, toggleLang, t } = useLang();
-  const dashboardBasePath =
-    user?.role === 'operations_manager'
-      ? '/operations-manager'
-      : user?.role === 'customer_service'
-        ? '/customer-service'
-        : '/login';
-  const roleLabel =
-    user?.role === 'operations_manager'
-      ? lang === 'ar'
-        ? 'مدير العمليات'
-        : 'Operations manager'
-      : user?.role === 'customer_service'
-        ? lang === 'ar'
-          ? 'خدمة العملاء'
-          : 'Customer service'
-        : '';
+  const navigate = useNavigate();
+  const workspaceRoles = Array.isArray(user?.workspaceRoles) ? user.workspaceRoles : [];
+  const dashboardBasePath = getWorkspaceBasePath(user?.role);
+  const roleLabel = getWorkspaceRoleLabel(user?.role, lang);
+  const workspaceButtons = getWorkspaceRolesForSwitcher(workspaceRoles);
+
+  const switchWorkspace = (nextRole) => {
+    setActiveRole(nextRole);
+    navigate(getWorkspaceBasePath(nextRole));
+  };
 
   return (
     <header className="nav-wrap" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -125,18 +154,19 @@ export default function Navbar() {
           <span>{t('brand')}</span>
         </Link>
 
-        <div className="nav-links">
-          <NavLink to="/">{t('home')}</NavLink>
-          {token ? <NavLink to={dashboardBasePath}>{t('dashboard')}</NavLink> : null}
-          {token ? <NavLink to={`${dashboardBasePath}/daily`}>{lang === 'ar' ? 'المهام اليومية' : 'Daily tasks'}</NavLink> : null}
-          {token ? <NavLink to={`${dashboardBasePath}/weekly`}>{t('weeklyTasks')}</NavLink> : null}
-          {token ? <NavLink to={`${dashboardBasePath}/monthly`}>{t('monthlyTasks')}</NavLink> : null}
-          {token ? <NavLink to={`${dashboardBasePath}/operations-date`}>{t('operationsDay')}</NavLink> : null}
+        <div className="nav-links nav-links-minimal">
+          {token ? (
+            <Link className="workspace-link-pill" to={dashboardBasePath}>
+              {lang === 'ar' ? 'لوحة العمل' : 'Workspace'}
+            </Link>
+          ) : (
+            <Link to="/">{t('home')}</Link>
+          )}
         </div>
 
         <div className="nav-actions">
-          <button className="btn-language" onClick={toggleLang} type="button">
-            {lang === 'ar' ? 'English' : 'العربية'}
+          <button aria-label={lang === 'ar' ? 'التحويل إلى الإنجليزية' : 'التحويل إلى العربية'} className="btn-language btn-language-compact" onClick={toggleLang} type="button">
+            {lang === 'ar' ? '🌐 EN' : '🌐 AR'}
           </button>
           <NotificationMenu />
           {!token ? (
@@ -145,6 +175,18 @@ export default function Navbar() {
             </Link>
           ) : (
             <>
+              {workspaceButtons.length > 1
+                ? workspaceButtons.map((role) => (
+                    <button
+                      key={role}
+                      className={user?.role === role ? 'btn-primary' : 'btn-light'}
+                      onClick={() => switchWorkspace(role)}
+                      type="button"
+                    >
+                      {getWorkspaceRoleLabel(role, lang)}
+                    </button>
+                  ))
+                : null}
               <span className="user-chip">{roleLabel || user?.name}</span>
               <button className="btn-danger" onClick={logout} type="button">
                 {t('logout')}

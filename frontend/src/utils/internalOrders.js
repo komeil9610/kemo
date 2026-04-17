@@ -29,6 +29,14 @@ const customerActionLabels = {
   cancel_requested: { ar: 'طلب إلغاء', en: 'Cancellation requested' },
 };
 
+const deliveryTaskStatuses = new Set([
+  'ready to pickup',
+  'pick up requested',
+  'shipped',
+  'delivered',
+  'return request',
+]);
+
 export const statusLabels = {
   pending: { ar: 'طلب جديد', en: 'New request' },
   scheduled: { ar: 'تمت الجدولة', en: 'Scheduled' },
@@ -83,8 +91,7 @@ export const nextDateString = (dateValue) => {
   return baseDate.toISOString().slice(0, 10);
 };
 
-export const getOrderTaskDate = (order) =>
-  order?.scheduledDate || order?.preferredDate || String(order?.createdAt || '').slice(0, 10) || '';
+const normalizeDateOnly = (value) => String(value || '').trim().slice(0, 10);
 
 const extractExcelStatusFromNotes = (notes) => {
   const text = String(notes || '');
@@ -104,6 +111,9 @@ const extractOrderImportReference = (order = {}, label) => {
   return String(match?.[1] || '').trim();
 };
 
+export const getOrderStructuredField = (order = {}, label = '') =>
+  String(order?.[label] || order?.[`${label}Id`] || extractOrderImportReference(order, label) || '').trim();
+
 export const getOrderExternalStatus = (order = {}) =>
   String(order?.externalStatus || order?.excelStatus || order?.importMeta?.excelStatus || extractExcelStatusFromNotes(order?.notes)).trim();
 
@@ -113,6 +123,68 @@ export const getOrderSoId = (order = {}) =>
 
 export const getOrderWoId = (order = {}) =>
   String(order?.woId || extractOrderImportReference(order, 'woId') || extractOrderImportReference(order, 'WO ID') || '').trim();
+
+export const getOrderEmail = (order = {}) => String(order?.email || extractOrderImportReference(order, 'Email') || '').trim();
+export const getOrderDeliveryDate = (order = {}) =>
+  normalizeDateOnly(order?.deliveryDate || extractOrderImportReference(order, 'Delivery date') || '');
+export const getOrderPickupDate = (order = {}) =>
+  normalizeDateOnly(order?.pickupDate || extractOrderImportReference(order, 'Pickup date') || '');
+export const getOrderInstallationDate = (order = {}) =>
+  normalizeDateOnly(order?.installationDate || extractOrderImportReference(order, 'Installation date') || '');
+export const getOrderWithinSLA = (order = {}) =>
+  String(order?.withinSLA || extractOrderImportReference(order, 'Completed within SLA') || '').trim();
+export const getOrderExceedSLA = (order = {}) =>
+  String(order?.exceedSLA || extractOrderImportReference(order, 'Completed Exceed SLA') || '').trim();
+export const getOrderCourier = (order = {}) => String(order?.courier || extractOrderImportReference(order, 'Courier') || '').trim();
+export const getOrderCourierNum = (order = {}) =>
+  String(order?.courierNum || extractOrderImportReference(order, 'Courier number') || '').trim();
+export const getOrderChatLog = (order = {}) =>
+  String(order?.chatLog || extractOrderImportReference(order, 'Chat Log') || extractOrderImportReference(order, 'Chat message') || '').trim();
+export const getOrderTechId = (order = {}) => String(order?.techId || extractOrderImportReference(order, 'Tech ID') || '').trim();
+export const getOrderAreaCode = (order = {}) =>
+  String(order?.areaCode || extractOrderImportReference(order, 'Area Code') || '').trim();
+export const getOrderTechCode = (order = {}) =>
+  String(order?.techCode || extractOrderImportReference(order, 'Tech Code') || '').trim();
+export const getOrderAreaName = (order = {}) =>
+  String(order?.areaName || extractOrderImportReference(order, 'Area Name') || '').trim();
+export const getOrderTechShortName = (order = {}) =>
+  String(order?.techShortName || extractOrderImportReference(order, 'Tech Short Name') || '').trim();
+
+export const isDeliveryOnlyTaskOrder = (order = {}) => {
+  const installationDate = getOrderInstallationDate(order);
+  const deliveryDate = getOrderDeliveryDate(order);
+  const pickupDate = getOrderPickupDate(order);
+  const externalStatus = getOrderExternalStatus(order).toLowerCase();
+  return !installationDate && Boolean(deliveryDate || pickupDate || deliveryTaskStatuses.has(externalStatus));
+};
+
+export const isDeliveryTaskOrder = (order = {}) =>
+  deliveryTaskStatuses.has(getOrderExternalStatus(order).toLowerCase()) || isDeliveryOnlyTaskOrder(order);
+
+export const getOrderTaskDate = (order = {}) => {
+  const scheduledDate = normalizeDateOnly(order?.scheduledDate);
+  if (scheduledDate) {
+    return scheduledDate;
+  }
+
+  const preferredDate = normalizeDateOnly(order?.preferredDate);
+  const deliveryDate = getOrderDeliveryDate(order);
+  const installationDate = getOrderInstallationDate(order);
+  const pickupDate = getOrderPickupDate(order);
+  const createdDate = normalizeDateOnly(order?.createdAt);
+  return deliveryDate || installationDate || preferredDate || pickupDate || createdDate || '';
+};
+
+export const orderMatchesDailyTaskDate = (order = {}, targetDate = '') => {
+  const normalizedTargetDate = normalizeDateOnly(targetDate);
+  if (!normalizedTargetDate) {
+    return false;
+  }
+
+  const deliveryDate = getOrderDeliveryDate(order);
+  const installationDate = getOrderInstallationDate(order);
+  return deliveryDate === normalizedTargetDate || installationDate === normalizedTargetDate;
+};
 
 export const getOrderPrimaryReference = (order = {}) => getOrderSoId(order) || String(order?.requestNumber || order?.id || '').trim();
 
@@ -150,6 +222,15 @@ export const orderMatchesSearchQuery = (order = {}, query = '') => {
     normalizeSaudiPhoneNumber(order?.whatsappPhone),
     order?.status,
     order?.externalStatus,
+    getOrderEmail(order),
+    getOrderCourier(order),
+    getOrderCourierNum(order),
+    getOrderTechId(order),
+    getOrderAreaCode(order),
+    getOrderTechCode(order),
+    getOrderAreaName(order),
+    getOrderTechShortName(order),
+    getOrderChatLog(order),
     order?.city,
     order?.district,
     order?.region,
@@ -263,10 +344,17 @@ export const getOrderSearchMetaLines = (order = {}, lang = 'ar') => {
   const soId = getOrderSoId(order);
   const woId = getOrderWoId(order);
   const deviceCount = getOrderDeviceCount(order);
+  const email = getOrderEmail(order);
+  const techId = getOrderTechId(order);
+  const courier = getOrderCourier(order);
   const lines = [];
 
   if (phone) {
     lines.push(`${lang === 'ar' ? 'الجوال' : 'Phone'}: ${phone}`);
+  }
+
+  if (email) {
+    lines.push(`${lang === 'ar' ? 'البريد' : 'Email'}: ${email}`);
   }
 
   const refs = [];
@@ -278,6 +366,13 @@ export const getOrderSearchMetaLines = (order = {}, lang = 'ar') => {
   }
   refs.push(`${lang === 'ar' ? 'الأجهزة' : 'Devices'}: ${deviceCount}`);
   lines.push(refs.join(' • '));
+
+  const logistics = [techId ? `${lang === 'ar' ? 'الفني' : 'Tech'}: ${techId}` : '', courier ? `${lang === 'ar' ? 'الشحن' : 'Courier'}: ${courier}` : '']
+    .filter(Boolean)
+    .join(' • ');
+  if (logistics) {
+    lines.push(logistics);
+  }
 
   return lines.filter(Boolean);
 };
@@ -317,7 +412,7 @@ export const getOrdersForView = (orders, viewKey) => {
   }
 
   if (viewKey === 'completed') {
-    return [];
+    return orders.filter((order) => order.status === 'completed');
   }
 
   if (viewKey === 'in_transit') {
@@ -346,9 +441,9 @@ const buildReportTitle = (scopeLabel, lang) => {
   }
 
   const aliases = {
-    'csr-report': { ar: 'تقرير خدمة العملاء', en: 'Customer service report' },
+    'csr-report': { ar: 'تقرير الإدارة', en: 'Admin report' },
     'ops-report': { ar: 'تقرير مدير العمليات', en: 'Operations manager report' },
-    'csr-daily': { ar: 'تقرير خدمة العملاء اليومي', en: 'Customer service daily report' },
+    'csr-daily': { ar: 'تقرير الإدارة اليومي', en: 'Admin daily report' },
     'ops-daily': { ar: 'تقرير مدير العمليات اليومي', en: 'Operations manager daily report' },
     'daily-tasks': { ar: 'تقرير المهام اليومية', en: 'Daily tasks report' },
     'weekly-tasks': { ar: 'تقرير المهام الأسبوعية', en: 'Weekly tasks report' },
@@ -382,9 +477,7 @@ const compareOrdersForReport = (left, right, lang = 'ar') => {
     return districtDiff;
   }
 
-  const scheduledDiff = `${left?.scheduledDate || left?.preferredDate || ''}`.localeCompare(
-    `${right?.scheduledDate || right?.preferredDate || ''}`
-  );
+  const scheduledDiff = `${getOrderTaskDate(left)}`.localeCompare(`${getOrderTaskDate(right)}`);
   if (scheduledDiff !== 0) {
     return scheduledDiff;
   }

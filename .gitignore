@@ -1,5 +1,7 @@
 node_modules/
 .env
+.dev.vars
+.dev.vars.*
 *.log
 dist/
 build/
@@ -7,3 +9,10 @@ build/
 *.patch
 
 desktop/release/
+<<<<<<< Updated upstream
+=======
+__pycache__/
+*.pyc
+.venv/
+venv/
+>>>>>>> Stashed changes

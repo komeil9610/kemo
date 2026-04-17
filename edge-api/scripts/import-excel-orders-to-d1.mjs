@@ -1,16 +1,13 @@
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { createRequire } from 'module';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { parseExcelOrdersFromArrayBuffer } from '../src/excelImport.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../..');
-const require = createRequire(import.meta.url);
-
-const { loadExcelOrdersPreview } = require(path.join(repoRoot, 'backend/src/utils/excelOrders.js'));
 
 const databaseName = process.env.D1_DATABASE_NAME || 'tarkeeb_pro_db';
 const isRemote = process.env.D1_IMPORT_REMOTE !== 'false';
@@ -113,7 +110,7 @@ const buildInsertStatement = (order) => {
     0,
     ${sqlEscape(JSON.stringify(acDetails))},
     ${sqlEscape(buildAuditLog(order))},
-    (SELECT id FROM users WHERE email = 'customer-service@tarkeebpro.sa' LIMIT 1)
+    (SELECT id FROM users WHERE email = 'bobmorgann2@gmail.com' LIMIT 1)
   WHERE NOT EXISTS (
     SELECT 1 FROM service_orders WHERE request_number = ${sqlEscape(order.requestNumber)}
   );`;
@@ -143,7 +140,13 @@ const runWrangler = async (sql, batchNumber, totalBatches) => {
   await fs.unlink(tempFile).catch(() => {});
 };
 
-const preview = await loadExcelOrdersPreview('data.xlsx');
+const sourceFile = path.join(repoRoot, 'data', 'data.xlsx');
+const sourceBuffer = await fs.readFile(sourceFile);
+const sourceArrayBuffer = sourceBuffer.buffer.slice(
+  sourceBuffer.byteOffset,
+  sourceBuffer.byteOffset + sourceBuffer.byteLength
+);
+const preview = parseExcelOrdersFromArrayBuffer(sourceArrayBuffer, sourceFile);
 const orders = Array.isArray(preview.orders) ? preview.orders : [];
 
 if (!orders.length) {

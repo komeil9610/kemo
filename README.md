@@ -1,64 +1,45 @@
-# تركيب برو الداخلي
-## Tarkeeb Pro Internal Workflow
+# RentIT Internal Operations
 
-هذا المشروع لم يعد منصة عامة لإدارة منتجات أو فنيين متعددين، بل أصبح نظاماً داخلياً مخصصاً لتسهيل رحلة:
+هذا المستودع يدير المسار الداخلي فقط بين:
 
 - خدمة العملاء
 - مدير العمليات
 
-فكرة النظام بسيطة وواضحة:
-خدمة العملاء تنشئ الطلب، ثم ينتقل الطلب حصراً إلى مدير العمليات ليقوم بجدولته وتحريك حالته حتى الإغلاق. الهدف من ذلك هو جعل إدارة الطلبات الهائلة أكثر سلاسة، وأقل تشتتاً، وأسهل في المتابعة اليومية.
+المنصة الحالية تعمل عبر:
 
----
+- `frontend/` واجهة React
+- `frontend/cloudflare/worker.js` بوابة الواجهة والنطاقات
+- `edge-api/` واجهة API محلية أثناء التطوير، مع كود متوافق أيضًا مع Cloudflare Worker
+- `D1` كقاعدة البيانات الوحيدة
+- `desktop/` تطبيق Electron لـ Linux Mint و Windows 11
+- `data/data.xlsx` ملف Excel المرجعي للاستيراد والمعاينة
 
-## ما الذي يقدمه النظام؟
+الدومينات المعتمدة:
 
-- نموذج سريع لإدخال طلبات الزامل
-- تفاصيل مكيفات متعددة داخل نفس الطلب
-- لوحة `Kanban` بصرية لفرز الطلبات
-- أربع حالات تشغيل واضحة:
-  - `pending`
-  - `scheduled`
-  - `in_transit`
-  - `completed`
-- إشعارات مباشرة تعود إلى خدمة العملاء عند:
-  - انتقال الطلب إلى `in_transit`
-  - انتقال الطلب إلى `completed`
+- `https://kumeelalnahab.com`
+- `https://www.kumeelalnahab.com`
+- `https://api.kumeelalnahab.com`
 
----
+## المسار التشغيلي
 
-## الأدوار
+1. خدمة العملاء تنشئ الطلب أو تستورده من Excel.
+2. مدير العمليات يستقبل الطلبات الجديدة ويحدّث حالاتها.
+3. الإشعارات التشغيلية تذهب فقط عند:
+   - إضافة طلب جديد
+   - تحديث حالة طلب
+4. كل البيانات تحفظ في `Cloudflare D1`.
 
-### خدمة العملاء
+## الحساب المعتمد
 
-- إنشاء الطلب
-- متابعة حالة الطلب
-- استقبال الإشعارات
-- لا تستطيع تعديل حالة الطلب بعد الإرسال
+- البريد: `bobmorgann2@gmail.com`
+- كلمة المرور: `Komeil9610@@@`
 
-### مدير العمليات
+الحساب نفسه يملك مساحتين داخليتين:
 
-- مشاهدة جميع الطلبات
-- تحديث حالة الطلب
-- إدارة تدفق الطلبات الكبير من لوحة واحدة
+- `customer_service`
+- `operations_manager`
 
----
-
-## بنية المشروع
-
-```text
-rentit/
-├── edge-api/      # Cloudflare Worker API + D1
-├── frontend/      # React frontend for the internal workflow
-├── backend/       # Legacy backend files kept in repo
-├── mobile/        # Legacy mobile files kept in repo
-├── docs/          # Existing documentation set
-└── apk/           # Legacy Android packaging files
-```
-
----
-
-## التشغيل المحلي
+## التشغيل المحلي السريع
 
 ### الواجهة
 
@@ -68,46 +49,62 @@ npm install
 npm start
 ```
 
-### بناء الواجهة
+### فحص وتحضير نسخة سطح المكتب
 
 ```bash
-cd frontend
-npm run build
+cd desktop
+npm install
+npm run build:desktop
 ```
 
-### فحص الخادم
-
-```bash
-node --check edge-api/src/index.js
-```
-
----
-
-## حسابات التشغيل
-
-لا توجد بيانات دخول تجريبية ثابتة داخل المستودع. أنشئ حسابات التشغيل الفعلية عبر أداة SQL ثم نفّذ الناتج على `Cloudflare D1`.
+### تشغيل الـ API محليًا
 
 ```bash
 cd edge-api
-npm run admin:sql -- "مسؤول تركيب برو" "admin@tarkeebpro.sa" "your-strong-password" admin
-npm run admin:sql -- "خدمة العملاء" "customer-service@tarkeebpro.sa" "your-strong-password" customer_service
-npm run admin:sql -- "مدير العمليات" "operations@tarkeebpro.sa" "your-strong-password" operations_manager
+npm install
+npm run dev
 ```
 
----
+الخادم المحلي يعمل على:
 
-## قاعدة البيانات والنشر
+- `http://127.0.0.1:8787/api`
 
-إذا كنت تستخدم `Cloudflare D1` فعليك تطبيق المايجريشن الخاصة بالأدوار الداخلية الجديدة:
+والواجهة التطويرية مربوطة به عبر [frontend/.env.development](/home/bobby/Desktop/rentit/frontend/.env.development:1).
+
+وإذا أردت إبقاء الموقع عامًا على `kumeelalnahab.com` مع تمرير رفع Excel فقط إلى جهازك، استخدم `EXCEL_UPLOAD_ORIGIN` في [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml:1) لربط مسارات رفع الإكسل بخادمك العام.
+
+## قاعدة البيانات
+
+القاعدة الوحيدة المعتمدة هي `D1`. عند تجهيز بيئة جديدة:
 
 ```bash
-edge-api/migrations/0013_internal_ticket_roles.sql
+cd edge-api
+npm run db:migrate:remote
 ```
 
-هذه المايجريشن تضيف أو تحدّث حسابي خدمة العملاء ومدير العمليات ليتوافقا مع النظام الجديد.
+ولكي يتم تفعيل الحساب المشترك والأدوار الداخلية المحدثة، تأكد من تطبيق:
 
----
+```bash
+edge-api/migrations/0024_shared_internal_workspace_roles.sql
+```
 
-## ملاحظة مهمة
+## النشر
 
-ما زالت بعض المجلدات القديمة موجودة داخل المستودع لأغراض الرجوع أو التوافق، لكن الواجهة الفعلية الحالية والرحلة الأساسية للموقع أصبحت متمحورة حول إدارة الطلبات الداخلية بين خدمة العملاء ومدير العمليات فقط.
+```bash
+cd frontend
+npm run cf:deploy
+
+cd ../edge-api
+npm run deploy
+```
+
+مهم:
+
+- النشر على Cloudflare ما زال متاحًا إذا احتجته لاحقًا.
+- في التطوير المحلي لم يعد الـ frontend يحتاج backend منشورًا على Cloudflare.
+
+## ملاحظات مهمة
+
+- لا يوجد Android أو APK أو React Native ضمن المسار الحالي.
+- لا يوجد MongoDB أو Supabase أو Streamlit ضمن التشغيل المعتمد.
+- الحماية الإنتاجية الحالية تعتمد على تسجيل الدخول الداخلي + CSP + تعطيل source maps الإنتاجية.

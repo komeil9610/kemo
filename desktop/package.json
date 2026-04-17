@@ -5,7 +5,7 @@
   "description": "RentIT desktop app for Windows and Linux Mint",
   "main": "main.js",
   "scripts": {
-    "build:web": "cross-env REACT_APP_API_URL=https://rentit-edge-api.bobkumeel.workers.dev/api npm --prefix ../frontend run build",
+    "build:web": "cross-env GENERATE_SOURCEMAP=false REACT_APP_API_URL=https://kumeelalnahab.com/api npm --prefix ../frontend run build",
     "prepare:assets": "node scripts/prepare-web-assets.mjs",
     "build:desktop": "npm run build:web && npm run prepare:assets",
     "start": "npm run build:desktop && electron .",

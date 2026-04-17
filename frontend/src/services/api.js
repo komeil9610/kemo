@@ -1,8 +1,14 @@
 import axios from 'axios';
+import {
+  HOMEPAGE_STORAGE_KEY,
+  createDefaultHomeSettings,
+  normalizeHomeSettings,
+} from '../utils/homepageSettings';
 
 const STORAGE_KEY = 'tarkeeb-pro-internal-db-v2';
 const LEGACY_STORAGE_KEY = 'tarkeeb-pro-internal-db';
 const NOTIFICATIONS_STORAGE_KEY = 'tarkeeb-pro-internal-notifications';
+const FOOTER_STORAGE_KEY = 'tarkeeb-pro-footer-settings-v2';
 
 const readStorage = (key) => {
   if (typeof window === 'undefined') {
@@ -85,6 +91,20 @@ const extractImportReferenceValue = (order, label) => {
   const match = text.match(new RegExp(`(?:^|\\n)${escapedLabel}\\s*:\\s*(.+?)(?:\\n|$)`, 'i'));
   return String(match?.[1] || '').trim();
 };
+const normalizeDateOnly = (value) => String(value || '').trim().slice(0, 10);
+const getLocalOrderTaskDate = (order = {}) => {
+  const scheduledDate = normalizeDateOnly(order?.scheduledDate || order?.scheduled_date);
+  if (scheduledDate) {
+    return scheduledDate;
+  }
+
+  const preferredDate = normalizeDateOnly(order?.preferredDate || order?.preferred_date);
+  const deliveryDate = normalizeDateOnly(order?.deliveryDate || extractImportReferenceValue(order, 'Delivery date'));
+  const installationDate = normalizeDateOnly(order?.installationDate || extractImportReferenceValue(order, 'Installation date'));
+  const pickupDate = normalizeDateOnly(order?.pickupDate || extractImportReferenceValue(order, 'Pickup date'));
+  const createdDate = normalizeDateOnly(order?.createdAt || order?.created_at);
+  return deliveryDate || installationDate || preferredDate || pickupDate || createdDate || '';
+};
 export const technicianStatusOptions = [
   { value: 'available', label: 'متاح', enLabel: 'Available' },
   { value: 'busy', label: 'مشغول', enLabel: 'Busy' },
@@ -163,7 +183,27 @@ export const getTimeStandardLabel = (standard, lang = 'ar') => {
   return `${label} - ${Number(standard.durationMinutes) || 0} min`;
 };
 
-const normalizeRole = (role) => (role === 'admin' ? 'operations_manager' : role || '');
+const normalizeRole = (role) => role || '';
+const normalizeWorkspaceRoles = (roles = [], fallbackRole = '') => {
+  const merged = [...(Array.isArray(roles) ? roles : [roles]), fallbackRole]
+    .map((role) => normalizeRole(role))
+    .filter(Boolean);
+  return [...new Set(merged)];
+};
+const resolveWorkspaceRole = (requestedRole, roles = [], fallbackRole = '') => {
+  const workspaceRoles = normalizeWorkspaceRoles(roles, fallbackRole);
+  const normalizedRequestedRole = normalizeRole(requestedRole);
+  if (normalizedRequestedRole && workspaceRoles.includes(normalizedRequestedRole)) {
+    return normalizedRequestedRole;
+  }
+  if (workspaceRoles.includes('admin')) {
+    return 'admin';
+  }
+  if (workspaceRoles.includes('operations_manager')) {
+    return 'operations_manager';
+  }
+  return workspaceRoles[0] || '';
+};
 
 const todayString = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
@@ -231,56 +271,455 @@ const normalizeDeliveryType = (value) => {
 };
 
 const isFastDeliveryCity = (city) => FAST_DELIVERY_CITIES.includes(String(city || '').trim());
+const TECH_ASSIGNMENT_REGEX = /\*\s*([A-Z]{1,4}-[A-Z])\s*-\s*by:/gm;
+const REVERSED_TECH_ASSIGNMENT_OVERRIDES = new Map([['W-J', 'J-W']]);
+const KNOWN_TECH_AREA_CODES = new Set([
+  'A',
+  'B',
+  'BR',
+  'BUR',
+  'D',
+  'DH',
+  'G',
+  'H',
+  'HB',
+  'J',
+  'JD',
+  'JED',
+  'KHF',
+  'KH',
+  'M',
+  'MD',
+  'Q',
+  'QAS',
+  'R',
+  'RAS',
+  'RE',
+  'RS',
+  'S',
+  'W',
+  'Y',
+  'YAN',
+  'YNB',
+]);
+const KNOWN_TECH_SHORT_CODES = new Set(['A', 'D', 'E', 'G', 'H', 'J', 'M', 'Q', 'R', 'S', 'W', 'Y']);
+const AREA_NAME_BY_CODE = new Map([
+  ['BUR', 'Buraidah'],
+  ['D', 'Dammam'],
+  ['DH', 'Dhahran'],
+  ['H', 'Al Ahsa'],
+  ['J', 'Jubail'],
+  ['JED', 'Jeddah'],
+  ['KH', 'Khobar'],
+  ['MD', 'Madinah'],
+  ['Q', 'Qatif'],
+  ['QAS', 'Qassim'],
+  ['R', 'Riyadh'],
+  ['RAS', 'Ras Tanura'],
+  ['RS', 'Ras Tanura'],
+  ['YAN', 'Yanbu'],
+  ['YNB', 'Yanbu'],
+]);
+const TECH_SHORT_NAME_BY_CODE = new Map([
+  ['A', 'Ali'],
+  ['G', 'Ghulam'],
+  ['M', 'Mohsin'],
+  ['R', 'Rashid'],
+  ['W', 'Waseem'],
+]);
+
+const normalizeImportedInstallationStatus = (value) => {
+  const status = String(value || '').trim().toLowerCase();
+  if (!status) {
+    return 'pending';
+  }
+  if (status.includes('canceled') || status.includes('cancelled') || status.includes('cancel')) {
+    return 'canceled';
+  }
+  if (status.includes('completed') || status.includes('partially completed') || status.includes('done')) {
+    return 'completed';
+  }
+  if (
+    status.includes('scheduled') ||
+    status.includes('assigned') ||
+    status.includes('shipped') ||
+    status.includes('delivered') ||
+    status.includes('ready to pickup') ||
+    status.includes('pick up requested') ||
+    status.includes('return request') ||
+    status.includes('rescheduled') ||
+    status.includes('waiting customer confirmation')
+  ) {
+    return 'scheduled';
+  }
+  return 'pending';
+};
+
+const parseExcelLikeDateString = (value) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const dayFirstMatch = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
+  if (dayFirstMatch) {
+    const [, day, month, year] = dayFirstMatch;
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  const yearFirstMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
+  if (yearFirstMatch) {
+    const [, year, month, day] = yearFirstMatch;
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  return normalized;
+};
+
+const cleanDeviceLine = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/^\*\s*/, '')
+    .replace(/\s*\(\s*With Installation\s*\)\s*$/i, '')
+    .trim();
+
+const parseDeviceLines = (value) => {
+  const rawLines = String(value || '')
+    .split(/\r?\n/)
+    .map((line) => cleanDeviceLine(line))
+    .filter(Boolean);
+  const expandedLines = [];
+
+  rawLines.forEach((line) => {
+    const quantityMatch = line.match(/^(\d+)\s*[Xx]\s*(.+)$/);
+    const quantity = quantityMatch ? Math.max(1, Number(quantityMatch[1]) || 1) : 1;
+    const deviceName = cleanDeviceLine(quantityMatch ? quantityMatch[2] : line);
+    for (let index = 0; index < quantity; index += 1) {
+      expandedLines.push(deviceName);
+    }
+  });
+
+  return {
+    rawLines,
+    expandedLines,
+  };
+};
+
+const inferAcTypeFromDeviceName = (value) => {
+  const text = String(value || '').trim().toLowerCase();
+  if (text.includes('window') || text.includes('شباك')) {
+    return 'window';
+  }
+  if (text.includes('cassette') || text.includes('كاسيت')) {
+    return 'cassette';
+  }
+  if (text.includes('duct') || text.includes('دكت')) {
+    return 'duct';
+  }
+  if (text.includes('concealed') || text.includes('مخفي')) {
+    return 'concealed';
+  }
+  return 'split';
+};
+
+const buildAcDetailsFromDeviceLines = (devicesText, bundledItems = 0) => {
+  const { expandedLines } = parseDeviceLines(devicesText);
+  const counts = new Map();
+
+  expandedLines.forEach((deviceName) => {
+    const type = inferAcTypeFromDeviceName(deviceName);
+    counts.set(type, (counts.get(type) || 0) + 1);
+  });
+
+  if (!counts.size) {
+    counts.set('split', Math.max(1, Number(bundledItems) || 1));
+  }
+
+  return Array.from(counts.entries()).map(([type, quantity], index) => ({
+    id: `ac-${index}-${type}`,
+    type,
+    quantity,
+  }));
+};
+
+const extractDistrictFromShippingAddress = (shippingAddress, shippingCity) => {
+  const city = String(shippingCity || '').trim().toLowerCase();
+  const parts = String(shippingAddress || '')
+    .replace(/^.*?\s-\s*/, '')
+    .split(',')
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+
+  if (!parts.length) {
+    return String(shippingCity || '').trim();
+  }
+
+  const cityIndex = parts.findIndex((part) => String(part || '').trim().toLowerCase() === city);
+  if (cityIndex > 0) {
+    return parts[cityIndex - 1];
+  }
+
+  return parts[1] || parts[0] || String(shippingCity || '').trim();
+};
+
+const parseTechnicianAssignment = (value) => {
+  const matches = Array.from(String(value || '').matchAll(TECH_ASSIGNMENT_REGEX));
+  const rawTechId = String(matches.at(-1)?.[1] || '').trim().toUpperCase();
+  const techId = REVERSED_TECH_ASSIGNMENT_OVERRIDES.get(rawTechId) || rawTechId || null;
+  if (!techId) {
+    return {
+      techId: null,
+      areaCode: null,
+      techCode: null,
+      areaName: null,
+      techShortName: null,
+    };
+  }
+
+  const [areaCode = '', techCode = ''] = techId.split('-');
+  return {
+    techId,
+    areaCode: areaCode || null,
+    techCode: techCode || null,
+    areaName: AREA_NAME_BY_CODE.get(areaCode) || null,
+    techShortName: TECH_SHORT_NAME_BY_CODE.get(techCode) || null,
+  };
+};
+
+const readMappedTechnicianAssignment = (order = {}) => {
+  const directTechId = String(order.techId || extractImportReferenceValue(order, 'Tech ID') || '').trim();
+  if (directTechId) {
+    return parseTechnicianAssignment(`* ${directTechId} - by:`);
+  }
+
+  const directAreaCode = String(order.areaCode || extractImportReferenceValue(order, 'Area Code') || '').trim();
+  const directTechCode = String(order.techCode || extractImportReferenceValue(order, 'Tech Code') || '').trim();
+  const combinedCode = [directAreaCode, directTechCode].filter(Boolean).join('-');
+  if (combinedCode) {
+    return parseTechnicianAssignment(`* ${combinedCode} - by:`);
+  }
+
+  return parseTechnicianAssignment(
+    order.chatLog || extractImportReferenceValue(order, 'Chat Log') || extractImportReferenceValue(order, 'Chat message') || ''
+  );
+};
+
+const getTechnicianAssignmentIssues = (assignment = {}) => {
+  const techId = String(assignment.techId || '').trim().toUpperCase();
+  const areaCode = String(assignment.areaCode || techId.split('-')[0] || '').trim().toUpperCase();
+  const techCode = String(assignment.techCode || techId.split('-').slice(1).join('-') || '').trim().toUpperCase();
+  const missingAreaCode = Boolean(techId) && (!areaCode || !KNOWN_TECH_AREA_CODES.has(areaCode));
+  const missingTechCode = Boolean(techId) && (!techCode || !KNOWN_TECH_SHORT_CODES.has(techCode));
+
+  return {
+    techId: techId || null,
+    areaCode: areaCode || null,
+    techCode: techCode || null,
+    missingAreaCode,
+    missingTechCode,
+    needsReview: missingAreaCode || missingTechCode,
+  };
+};
+
+const buildGoogleMapsLink = (value) => {
+  const query = String(value || '').trim();
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '';
+};
+
+const buildStructuredNotes = (lines = []) =>
+  lines
+    .filter(([, value]) => String(value || '').trim())
+    .map(([label, value]) => `${label}: ${String(value || '').trim()}`)
+    .join('\n');
+
+const normalizeManualExcelStyleOrderPayload = (payload = {}) => {
+  const soId = String(payload.soId || payload.requestNumber || '').trim();
+  const woId = String(payload.woId || '').trim();
+  const customerName = String(payload.customer || payload.customerName || '').trim();
+  const email = String(payload.email || '').trim();
+  const phone = String(payload.phone || '').trim();
+  const deliveryDate = parseExcelLikeDateString(payload.deliveryDate);
+  const installationDate = parseExcelLikeDateString(payload.installationDate || payload.instDate || payload.preferredDate);
+  const pickupDate = parseExcelLikeDateString(payload.pickupDate);
+  const preferredDate = deliveryDate || installationDate || pickupDate;
+  const externalStatus = String(payload.status || 'Scheduled').trim();
+  const shippingCity = String(payload.shippingCity || payload.city || '').trim();
+  const shippingAddress = String(payload.shippingAddress || payload.addressText || payload.address || '').trim();
+  const devicesText = String(payload.devices || '').trim();
+  const bundledItems = Math.max(0, Number(payload.bundledItems) || 0);
+  const withinSLA = payload.withinSLA === 'Yes' || payload.withinSLA === true ? 'Yes' : '';
+  const exceedSLA = payload.exceedSLA === 'Yes' || payload.exceedSLA === true ? 'Yes' : '';
+  const courier = String(payload.courier || '').trim();
+  const courierNum = String(payload.courierNum || '').trim();
+  const chatLog = String(payload.chatLog || payload.chat_message || '').trim();
+  const deviceInfo = parseDeviceLines(devicesText);
+  const devCount = Math.max(bundledItems, deviceInfo.expandedLines.length);
+  const acDetails = buildAcDetailsFromDeviceLines(devicesText, bundledItems);
+  const technicianAssignment = parseTechnicianAssignment(chatLog);
+  const technicianAssignmentReview = getTechnicianAssignmentIssues(technicianAssignment);
+
+  if (!soId || !customerName || !phone || !preferredDate || !devicesText || !shippingCity || !shippingAddress) {
+    return {
+      error: 'SO ID, Customer, Phone, Delivery/Installation/Pickup date, Devices, Shipping City, and Shipping Address are required.',
+    };
+  }
+
+  const notes = buildStructuredNotes([
+    ['SO ID', soId],
+    ['WO ID', woId],
+    ['Customer', customerName],
+    ['Email', email],
+    ['Phone', phone],
+    ['Delivery date', deliveryDate],
+    ['Pickup date', pickupDate],
+    ['Installation date', installationDate],
+    ['Excel status', externalStatus],
+    ['Bundled items', bundledItems ? String(bundledItems) : ''],
+    ['Device count', devCount ? String(devCount) : ''],
+    ['Shipping city', shippingCity],
+    ['Shipping address', shippingAddress],
+    ['Devices', deviceInfo.rawLines.join(' | ')],
+    ['Completed within SLA', withinSLA],
+    ['Completed Exceed SLA', exceedSLA],
+    ['Courier', courier],
+    ['Courier number', courierNum],
+    ['Chat Log', chatLog],
+    ['Tech ID', technicianAssignment.techId],
+    ['Area Code', technicianAssignment.areaCode],
+    ['Tech Code', technicianAssignment.techCode],
+    ['Area Name', technicianAssignment.areaName],
+    ['Tech Short Name', technicianAssignment.techShortName],
+  ]);
+
+  return {
+    requestNumber: soId,
+    soId,
+    woId,
+    customerName,
+    email,
+    phone: normalizeSaudiPhoneNumber(phone),
+    secondaryPhone: '',
+    whatsappPhone: normalizeSaudiPhoneNumber(phone),
+    city: shippingCity,
+    district: extractDistrictFromShippingAddress(shippingAddress, shippingCity),
+    addressText: shippingAddress,
+    landmark: '',
+    mapLink: buildGoogleMapsLink(shippingAddress),
+    sourceChannel: 'Manual Excel-style intake',
+    serviceSummary: deviceInfo.rawLines.join(' | ') || `${devCount} device(s)`,
+    acDetails,
+    acCount: Math.max(1, devCount),
+    priority: 'normal',
+    deliveryType: 'none',
+    deliveryDate,
+    installationDate,
+    pickupDate,
+    preferredDate,
+    preferredTime: '09:00',
+    scheduledDate: '',
+    scheduledTime: '',
+    coordinationNote: '',
+    notes,
+    status: normalizeImportedInstallationStatus(externalStatus),
+    externalStatus,
+    withinSLA,
+    exceedSLA,
+    courier,
+    courierNum,
+    chatLog,
+    techId: technicianAssignment.techId,
+    areaCode: technicianAssignment.areaCode,
+    techCode: technicianAssignment.techCode,
+    areaName: technicianAssignment.areaName,
+    techShortName: technicianAssignment.techShortName,
+    technicianAssignmentReview,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+};
 
 const defaultState = {
   users: [
     {
-      id: 'user-ops-manager',
+      id: 'user-bob-customer-service',
+      name: 'كميل',
+      email: 'bobmorgann2@gmail.com',
+      password: 'Komeil9610@@@',
+      role: 'admin',
+      workspaceRoles: ['admin'],
+      status: 'active',
+    },
+    {
+      id: 'user-tarkeebpro-operations',
       name: 'مدير العمليات',
-      email: 'operations@tarkeebpro.sa',
-      password: 'OpsManager@2026',
+      email: 'tarkeebpro@gmail.com',
+      password: 'manger123@',
       role: 'operations_manager',
+      workspaceRoles: ['operations_manager'],
       status: 'active',
     },
   ],
   orders: [],
 };
 
-const defaultHomeSettings = {
-  heroKicker: 'Built for the team',
-  heroTitle: 'Made with care to simplify the journey of customer service and the operations manager.',
-  heroSubtitle:
-    'A private request workspace that keeps intake fast, statuses clear, and heavy daily order volumes easier to manage.',
-  primaryButtonText: 'Sign in',
-  primaryButtonUrl: '/login',
-  secondaryButtonText: 'Sign in',
-  secondaryButtonUrl: '/login',
-  stats: [
-    { value: '3', label: 'Dedicated workspaces' },
-    { value: '2', label: 'Core office roles' },
-    { value: '1', label: 'Unified operations flow' },
-    { value: 'Instant', label: 'Customer service alerts' },
-  ],
-};
+const defaultHomeSettings = createDefaultHomeSettings();
 
 const defaultFooter = {
   aboutText:
-    'A focused internal workspace for customer service and the operations manager.',
+    'تركيب برو لخدمات تركيب وصيانة المكيفات بخبرة عالية، سرعة في الوصول، وضمان على جودة العمل.',
   usefulLinks: [
     { label: 'Home', url: '/' },
     { label: 'Login', url: '/login' },
   ],
   customerServiceLinks: [
-    { label: 'Support', url: 'tel:+966558232644' },
+    { label: 'Support', url: 'tel:0558232644' },
     { label: 'WhatsApp', url: 'https://wa.me/966558232644' },
-    { label: 'Call us', url: 'tel:+966558232644' },
+    { label: 'Call us', url: 'mailto:bookings@kumeelalnahab.com' },
   ],
   socialLinks: [
     { platform: 'whatsapp', url: 'https://wa.me/966558232644' },
-    { platform: 'x', url: 'https://x.com/tarkeebpro' },
-    { platform: 'linkedin', url: 'https://linkedin.com/company/tarkeebpro' },
   ],
-  copyrightText: 'Tarkeeb Pro Internal',
+  copyrightText: '© 2026 TrkeebPro',
+};
+
+const readStoredHomeSettings = () => {
+  const raw = readStorage(HOMEPAGE_STORAGE_KEY);
+  if (!raw) {
+    return clone(defaultHomeSettings);
+  }
+
+  try {
+    return normalizeHomeSettings(JSON.parse(raw));
+  } catch {
+    return clone(defaultHomeSettings);
+  }
+};
+
+const writeStoredHomeSettings = (settings) => {
+  const nextSettings = normalizeHomeSettings(settings);
+  writeStorage(HOMEPAGE_STORAGE_KEY, JSON.stringify(nextSettings));
+  window.dispatchEvent(new CustomEvent('home-settings-updated'));
+  return clone(nextSettings);
+};
+
+const readStoredFooterSettings = () => {
+  const raw = readStorage(FOOTER_STORAGE_KEY);
+  if (!raw) {
+    return clone(defaultFooter);
+  }
+
+  try {
+    return { ...defaultFooter, ...(JSON.parse(raw) || {}) };
+  } catch {
+    return clone(defaultFooter);
+  }
+};
+
+const writeStoredFooterSettings = (settings) => {
+  const nextSettings = { ...defaultFooter, ...(settings || {}) };
+  writeStorage(FOOTER_STORAGE_KEY, JSON.stringify(nextSettings));
+  window.dispatchEvent(new CustomEvent('footer-settings-updated'));
+  return clone(nextSettings);
 };
 
 const normalizePersistedState = (state) => {
@@ -290,7 +729,12 @@ const normalizePersistedState = (state) => {
     const persisted = persistedUsers.find(
       (user) => String(user?.id || '') === defaultUser.id || String(user?.role || '') === defaultUser.role
     );
-    return { ...persisted, ...defaultUser };
+    const mergedUser = { ...persisted, ...defaultUser };
+    return {
+      ...mergedUser,
+      workspaceRoles: normalizeWorkspaceRoles(mergedUser.workspaceRoles, mergedUser.role),
+      role: resolveWorkspaceRole(mergedUser.role, mergedUser.workspaceRoles, defaultUser.role),
+    };
   });
 
   return {
@@ -336,18 +780,40 @@ const getActiveAuthUser = () => {
   if (!user) {
     return null;
   }
-  return { ...user, role: normalizeRole(user.role) };
+  const workspaceRoles = normalizeWorkspaceRoles(user.workspaceRoles, user.role);
+  return {
+    ...user,
+    role: resolveWorkspaceRole(user.role, workspaceRoles, user.role),
+    workspaceRoles,
+  };
 };
+
+const readActiveWorkspaceRole = () => normalizeRole(getActiveAuthUser()?.role);
+
+const countRemainingTodayOrders = (orders = [], selectedDate = todayString()) =>
+  orders.filter((order) => {
+    const taskDate = getLocalOrderTaskDate(order);
+    return taskDate === selectedDate && !['completed', 'canceled'].includes(String(order.status || '').trim());
+  }).length;
+
+const appendOperationsRemainingSummary = (body, orders = [], selectedDate = todayString()) =>
+  `${String(body || '').trim()}\nالمتبقي في مهام اليوم: ${countRemainingTodayOrders(orders, selectedDate)} طلب.`;
 
 const nextNotificationId = (items = []) =>
   items.reduce((maxId, item) => Math.max(maxId, Number(item?.id) || 0), 0) + 1;
 
 const appendNotificationsForRoles = (state, roles = [], payload = {}) => {
-  const targetUserIds = (state.users || [])
-    .filter((user) => roles.includes(normalizeRole(user.role)))
-    .map((user) => String(user.id));
+  const recipients = (state.users || []).flatMap((user) => {
+    const workspaceRoles = normalizeWorkspaceRoles(user.workspaceRoles, user.role);
+    return normalizeWorkspaceRoles(roles)
+      .filter((role) => workspaceRoles.includes(role))
+      .map((role) => ({
+        userId: String(user.id),
+        targetRole: role,
+      }));
+  });
 
-  if (!targetUserIds.length) {
+  if (!recipients.length) {
     return;
   }
 
@@ -355,9 +821,10 @@ const appendNotificationsForRoles = (state, roles = [], payload = {}) => {
   let currentId = nextNotificationId(items);
   const createdAt = nowIso();
   const nextItems = [
-    ...targetUserIds.map((userId) => ({
+    ...recipients.map(({ userId, targetRole }) => ({
       id: currentId++,
       userId,
+      targetRole,
       title: String(payload.title || 'Notification'),
       body: String(payload.body || ''),
       kind: String(payload.kind || 'status_update'),
@@ -386,6 +853,19 @@ const sortOrders = (orders = []) =>
     if (leftRank !== rightRank) {
       return leftRank - rightRank;
     }
+
+    const taskDateDiff = `${getLocalOrderTaskDate(left) || ''}`.localeCompare(`${getLocalOrderTaskDate(right) || ''}`);
+    if (taskDateDiff !== 0) {
+      return taskDateDiff;
+    }
+
+    const timeDiff = `${left.scheduledTime || left.preferredTime || ''}`.localeCompare(
+      `${right.scheduledTime || right.preferredTime || ''}`
+    );
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
     return `${right.updatedAt || right.createdAt || ''}`.localeCompare(`${left.updatedAt || left.createdAt || ''}`);
   });
 
@@ -445,99 +925,122 @@ const getOrderDeviceCountForSummary = (order = {}) =>
       normalizeAcDetails(order?.acDetails || order?.serviceItems).reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
   ) || 0;
 
-const mapRemoteOrder = (order = {}) => ({
-  id: order.id || `ORD-${order.numericId || Date.now()}`,
-  numericId: Number(order.numericId) || Number(String(order.id || '').replace(/\D/g, '')) || Date.now(),
-  requestNumber: order.requestNumber || order.request_number || order.source || order.id,
-  soId:
-    order.soId ||
-    extractImportReferenceValue(order, 'soId') ||
-    extractImportReferenceValue(order, 'SO ID') ||
-    order.requestNumber ||
-    order.request_number ||
-    '',
-  woId: order.woId || extractImportReferenceValue(order, 'woId') || extractImportReferenceValue(order, 'WO ID') || '',
-  customerName: order.customerName || order.customer_name || '',
-  phone: normalizeSaudiPhoneNumber(order.phone),
-  secondaryPhone: normalizeSaudiPhoneNumber(order.secondaryPhone || order.secondary_phone || ''),
-  whatsappPhone: normalizeSaudiPhoneNumber(order.whatsappPhone || order.whatsapp_phone || order.phone),
-  city: order.city || '',
-  district: order.district || '',
-  addressText: order.addressText || order.address_text || order.address || '',
-  landmark: order.landmark || '',
-  mapLink: order.mapLink || order.map_link || order.address || '',
-  sourceChannel: order.sourceChannel || order.source || 'الزامل',
-  serviceSummary: order.serviceSummary || order.workType || order.work_type || '',
-  acCount:
-    Math.max(
-      0,
-      Number(order.acCount || order.ac_count) ||
-        normalizeAcDetails(order.acDetails || order.serviceItems).reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
-    ) || 0,
-  priority: order.priority || 'normal',
-  deliveryType: normalizeDeliveryType(order.deliveryType || order.delivery_type),
-  preferredDate: order.preferredDate || order.preferred_date || order.scheduledDate || order.scheduled_date || '',
-  preferredTime: order.preferredTime || order.preferred_time || order.scheduledTime || order.scheduled_time || '',
-  scheduledDate: order.scheduledDate || order.scheduled_date || '',
-  scheduledTime: order.scheduledTime || order.scheduled_time || '',
-  coordinationNote: order.coordinationNote || order.coordination_note || '',
-  notes: order.notes || '',
-  acDetails: normalizeAcDetails(order.acDetails || order.serviceItems),
-  acType: order.acType || order.ac_type || '',
-  serviceCategory: order.serviceCategory || order.service_category || '',
-  standardDurationMinutes: Number(order.standardDurationMinutes || order.standard_duration_minutes) || 120,
-  workStartedAt: order.workStartedAt || order.work_started_at || null,
-  completionNote: order.completionNote || order.completion_note || '',
-  delayReason: order.delayReason || order.delay_reason || '',
-  delayNote: order.delayNote || order.delay_note || '',
-  status: order.status || 'pending',
-  externalStatus: order.externalStatus || order.external_status || order.excelStatus || extractExcelStatusFromNotes(order.notes),
-  customerAction: order.customerAction || order.customer_action || 'none',
-  rescheduleReason: order.rescheduleReason || order.reschedule_reason || '',
-  cancellationReason: order.cancellationReason || order.cancellation_reason || '',
-  canceledAt: order.canceledAt || order.canceled_at || null,
-  completedAt: order.completedAt || order.completed_at || null,
-  approvalStatus: order.approvalStatus || order.approval_status || 'pending',
-  proofStatus: order.proofStatus || order.proof_status || 'pending_review',
-  approvedAt: order.approvedAt || order.approved_at || null,
-  approvedBy: order.approvedBy || order.approved_by || '',
-  clientSignature: order.clientSignature || order.client_signature || '',
-  zamilClosureStatus: order.zamilClosureStatus || order.zamil_closure_status || 'idle',
-  zamilCloseRequestedAt: order.zamilCloseRequestedAt || order.zamil_close_requested_at || null,
-  zamilOtpCode: order.zamilOtpCode || order.zamil_otp_code || '',
-  zamilOtpSubmittedAt: order.zamilOtpSubmittedAt || order.zamil_otp_submitted_at || null,
-  zamilClosedAt: order.zamilClosedAt || order.zamil_closed_at || null,
-  suspensionReason: order.suspensionReason || order.suspension_reason || '',
-  suspensionNote: order.suspensionNote || order.suspension_note || '',
-  suspendedAt: order.suspendedAt || order.suspended_at || null,
-  exceptionStatus: order.exceptionStatus || order.exception_status || 'none',
-  technicianId: order.technicianId || order.technician_id || '',
-  technicianUserId: order.technicianUserId || order.technician_user_id || '',
-  technicianName: order.technicianName || order.technician_name || '',
-  photos: Array.isArray(order.photos) ? order.photos : [],
-  extras: order.extras || null,
-  createdByUserId: order.createdByUserId || order.created_by_user_id || '',
-  createdByName: order.createdByName || order.created_by_name || '',
-  createdAt: order.createdAt || order.created_at || nowIso(),
-  updatedAt: order.updatedAt || order.updated_at || nowIso(),
-  auditLog: Array.isArray(order.auditLog) ? order.auditLog : [],
-});
+const mapRemoteOrder = (order = {}) => {
+  const technicianAssignment = readMappedTechnicianAssignment(order);
+
+  return {
+    id: order.id || `ORD-${order.numericId || Date.now()}`,
+    numericId: Number(order.numericId) || Number(String(order.id || '').replace(/\D/g, '')) || Date.now(),
+    requestNumber: order.requestNumber || order.request_number || order.source || order.id,
+    soId:
+      order.soId ||
+      extractImportReferenceValue(order, 'soId') ||
+      extractImportReferenceValue(order, 'SO ID') ||
+      order.requestNumber ||
+      order.request_number ||
+      '',
+    woId: order.woId || extractImportReferenceValue(order, 'woId') || extractImportReferenceValue(order, 'WO ID') || '',
+    customerName: order.customerName || order.customer_name || '',
+    email: order.email || extractImportReferenceValue(order, 'Email') || '',
+    phone: normalizeSaudiPhoneNumber(order.phone),
+    secondaryPhone: normalizeSaudiPhoneNumber(order.secondaryPhone || order.secondary_phone || ''),
+    whatsappPhone: normalizeSaudiPhoneNumber(order.whatsappPhone || order.whatsapp_phone || order.phone),
+    city: order.city || '',
+    district: order.district || '',
+    addressText: order.addressText || order.address_text || order.address || '',
+    landmark: order.landmark || '',
+    mapLink: order.mapLink || order.map_link || order.address || '',
+    sourceChannel: order.sourceChannel || order.source || 'الزامل',
+    serviceSummary: order.serviceSummary || order.workType || order.work_type || '',
+    acCount:
+      Math.max(
+        0,
+        Number(order.acCount || order.ac_count) ||
+          normalizeAcDetails(order.acDetails || order.serviceItems).reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
+      ) || 0,
+    priority: order.priority || 'normal',
+    deliveryType: normalizeDeliveryType(order.deliveryType || order.delivery_type),
+    preferredDate: order.preferredDate || order.preferred_date || order.scheduledDate || order.scheduled_date || '',
+    preferredTime: order.preferredTime || order.preferred_time || order.scheduledTime || order.scheduled_time || '',
+    pickupDate: order.pickupDate || extractImportReferenceValue(order, 'Pickup date') || '',
+    installationDate: order.installationDate || extractImportReferenceValue(order, 'Installation date') || '',
+    scheduledDate: order.scheduledDate || order.scheduled_date || '',
+    scheduledTime: order.scheduledTime || order.scheduled_time || '',
+    coordinationNote: order.coordinationNote || order.coordination_note || '',
+    notes: order.notes || '',
+    acDetails: normalizeAcDetails(order.acDetails || order.serviceItems),
+    acType: order.acType || order.ac_type || '',
+    serviceCategory: order.serviceCategory || order.service_category || '',
+    standardDurationMinutes: Number(order.standardDurationMinutes || order.standard_duration_minutes) || 120,
+    workStartedAt: order.workStartedAt || order.work_started_at || null,
+    completionNote: order.completionNote || order.completion_note || '',
+    delayReason: order.delayReason || order.delay_reason || '',
+    delayNote: order.delayNote || order.delay_note || '',
+    status: order.status || 'pending',
+    externalStatus: order.externalStatus || order.external_status || order.excelStatus || extractExcelStatusFromNotes(order.notes),
+    customerAction: order.customerAction || order.customer_action || 'none',
+    rescheduleReason: order.rescheduleReason || order.reschedule_reason || '',
+    cancellationReason: order.cancellationReason || order.cancellation_reason || '',
+    canceledAt: order.canceledAt || order.canceled_at || null,
+    completedAt: order.completedAt || order.completed_at || null,
+    approvalStatus: order.approvalStatus || order.approval_status || 'pending',
+    proofStatus: order.proofStatus || order.proof_status || 'pending_review',
+    approvedAt: order.approvedAt || order.approved_at || null,
+    approvedBy: order.approvedBy || order.approved_by || '',
+    clientSignature: order.clientSignature || order.client_signature || '',
+    zamilClosureStatus: order.zamilClosureStatus || order.zamil_closure_status || 'idle',
+    zamilCloseRequestedAt: order.zamilCloseRequestedAt || order.zamil_close_requested_at || null,
+    zamilOtpCode: order.zamilOtpCode || order.zamil_otp_code || '',
+    zamilOtpSubmittedAt: order.zamilOtpSubmittedAt || order.zamil_otp_submitted_at || null,
+    zamilClosedAt: order.zamilClosedAt || order.zamil_closed_at || null,
+    suspensionReason: order.suspensionReason || order.suspension_reason || '',
+    suspensionNote: order.suspensionNote || order.suspension_note || '',
+    suspendedAt: order.suspendedAt || order.suspended_at || null,
+    exceptionStatus: order.exceptionStatus || order.exception_status || 'none',
+    technicianId: order.technicianId || order.technician_id || '',
+    technicianUserId: order.technicianUserId || order.technician_user_id || '',
+    technicianName: order.technicianName || order.technician_name || '',
+    withinSLA: order.withinSLA || extractImportReferenceValue(order, 'Completed within SLA') || '',
+    exceedSLA: order.exceedSLA || extractImportReferenceValue(order, 'Completed Exceed SLA') || '',
+    courier: order.courier || extractImportReferenceValue(order, 'Courier') || '',
+    courierNum: order.courierNum || extractImportReferenceValue(order, 'Courier number') || '',
+    chatLog: order.chatLog || extractImportReferenceValue(order, 'Chat Log') || extractImportReferenceValue(order, 'Chat message') || '',
+    techId: technicianAssignment.techId || '',
+    areaCode: technicianAssignment.areaCode || '',
+    techCode: technicianAssignment.techCode || '',
+    areaName: technicianAssignment.areaName || order.areaName || extractImportReferenceValue(order, 'Area Name') || '',
+    techShortName: technicianAssignment.techShortName || order.techShortName || extractImportReferenceValue(order, 'Tech Short Name') || '',
+    photos: Array.isArray(order.photos) ? order.photos : [],
+    extras: order.extras || null,
+    createdByUserId: order.createdByUserId || order.created_by_user_id || '',
+    createdByName: order.createdByName || order.created_by_name || '',
+    createdAt: order.createdAt || order.created_at || nowIso(),
+    updatedAt: order.updatedAt || order.updated_at || nowIso(),
+    auditLog: Array.isArray(order.auditLog) ? order.auditLog : [],
+  };
+};
 
 const buildSummary = (orders = []) => ({
-  totalOrders: orders.filter((order) => !['canceled', 'completed'].includes(order.status)).length,
+  totalOrders: orders.filter((order) => order.status !== 'canceled').length,
   pendingOrders: orders.filter((order) => order.status === 'pending').length,
   activeOrders: orders.filter((order) => ['scheduled', 'in_transit'].includes(order.status)).length,
-  completedOrders: 0,
+  completedOrders: orders.filter((order) => order.status === 'completed').length,
   inTransitOrders: orders.filter((order) => order.status === 'in_transit').length,
   canceledOrders: orders.filter((order) => order.status === 'canceled').length,
   totalDevices: orders.reduce((sum, order) => sum + getOrderDeviceCountForSummary(order), 0),
 });
 
+const orderMatchesLocalDailyTaskDate = (order = {}, selectedDate = todayString()) => {
+  const normalizedDate = selectedDate || todayString();
+  const deliveryDate = normalizeDateOnly(order?.deliveryDate || extractImportReferenceValue(order, 'Delivery date'));
+  const installationDate = normalizeDateOnly(order?.installationDate || extractImportReferenceValue(order, 'Installation date'));
+  return deliveryDate === normalizedDate || installationDate === normalizedDate;
+};
+
 const getDailyTasksPayload = (orders = [], selectedDate = todayString()) => {
   const normalizedDate = selectedDate || todayString();
   const todayOrders = orders.filter((order) => {
-    const taskDate = order.scheduledDate || order.preferredDate || String(order.createdAt || '').slice(0, 10);
-    return taskDate === normalizedDate && order.status !== 'canceled';
+    return orderMatchesLocalDailyTaskDate(order, normalizedDate) && order.status !== 'canceled';
   });
 
   return {
@@ -630,6 +1133,10 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const workspaceRole = readActiveWorkspaceRole();
+  if (workspaceRole) {
+    config.headers['X-Workspace-Role'] = workspaceRole;
+  }
   return config;
 });
 apiClient.interceptors.response.use(
@@ -647,6 +1154,10 @@ if (backendApiClient) {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    const workspaceRole = readActiveWorkspaceRole();
+    if (workspaceRole) {
+      config.headers['X-Workspace-Role'] = workspaceRole;
+    }
     return config;
   });
   backendApiClient.interceptors.response.use(
@@ -659,6 +1170,52 @@ if (backendApiClient) {
     }
   );
 }
+
+const buildMultipartHeaders = () => {
+  const headers = {};
+  const token = readStorage('authToken');
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const workspaceRole = readActiveWorkspaceRole();
+  if (workspaceRole) {
+    headers['X-Workspace-Role'] = workspaceRole;
+  }
+  return headers;
+};
+
+const postMultipartForm = async (url, formData) => {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: buildMultipartHeaders(),
+    body: formData,
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json') ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    const error = new Error(
+      typeof payload === 'string' ? payload : payload?.message || `Request failed with status code ${response.status}`
+    );
+    error.response = {
+      status: response.status,
+      data: typeof payload === 'string' ? { message: payload } : payload,
+    };
+    throw error;
+  }
+
+  return {
+    data: payload,
+  };
+};
+
+const wait = (delayMs = 0) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, Number(delayMs) || 0));
+  });
+
+const isTransientImportError = (error) => [502, 503, 504].includes(Number(error?.response?.status || 0));
 
 const withFallback = async (remoteAction, localAction) => {
   try {
@@ -684,7 +1241,7 @@ const buildAuditEntry = (actor, message) => ({
 });
 
 const localAuthService = {
-  async login(email, password) {
+  async login(email, password, workspaceRole = '') {
     const state = readState();
     const user = state.users.find(
       (entry) =>
@@ -694,7 +1251,12 @@ const localAuthService = {
     if (!user) {
       throw new Error('Invalid login details');
     }
-    const safeUser = { ...user, role: normalizeRole(user.role) };
+    const workspaceRoles = normalizeWorkspaceRoles(user.workspaceRoles, user.role);
+    const safeUser = {
+      ...user,
+      role: resolveWorkspaceRole(workspaceRole, workspaceRoles, user.role),
+      workspaceRoles,
+    };
     delete safeUser.password;
     return delay({
       data: {
@@ -708,121 +1270,97 @@ const localAuthService = {
 const localOperationsService = {
   async getDashboard() {
     const state = getState();
-    const orders = sortOrders((state.orders || []).filter((order) => order.status !== 'completed'));
+    const orders = sortOrders(state.orders || []);
     return delay({
       data: {
         orders,
         summary: buildSummary(orders),
+        technicians: [],
+        timeStandards: [],
+        areaClusters: [],
       },
     });
   },
 
   async createOrder(payload) {
     const activeUser = getActiveAuthUser();
-    if (!activeUser || activeUser.role !== 'customer_service') {
-      throw new Error('Only customer service can create requests');
+    if (!activeUser || !['admin', 'customer_service'].includes(activeUser.role)) {
+      throw new Error('Only admin or customer service can create requests');
     }
 
-    const requestNumber = String(payload?.requestNumber || '').trim();
-    const customerName = String(payload?.customerName || '').trim();
-    const phone = normalizeSaudiPhoneNumber(payload?.phone);
-    const secondaryPhone = normalizeSaudiPhoneNumber(payload?.secondaryPhone);
-    const whatsappPhone = normalizeSaudiPhoneNumber(payload?.whatsappPhone || payload?.phone);
-    const city = String(payload?.city || '').trim();
-    const district = String(payload?.district || '').trim();
-    const addressText = String(payload?.addressText || '').trim();
-    const landmark = String(payload?.landmark || '').trim();
-    const mapLink = String(payload?.mapLink || '').trim();
-    const sourceChannel = String(payload?.sourceChannel || 'الزامل').trim();
-    const serviceSummary = String(payload?.serviceSummary || '').trim();
-    const deliveryType = normalizeDeliveryType(payload?.deliveryType);
-    const priority = deliveryType === 'none' ? String(payload?.priority || 'normal').trim() : 'urgent';
-    const preferredDate = String(payload?.preferredDate || '').trim();
-    const preferredTime = String(payload?.preferredTime || '').trim();
-    const notes = String(payload?.notes || '').trim();
-    const acDetails = normalizeAcDetails(payload?.acDetails);
-
-    if (!requestNumber || !customerName || !phone || !city || !district || !addressText || !mapLink || !serviceSummary || !preferredDate || !preferredTime || !acDetails.length) {
-      throw new Error('Please complete all required order details');
-    }
-
-    if (deliveryType === 'express_24h' && !isFastDeliveryCity(city)) {
-      throw new Error('Fast delivery is only available in the listed major cities');
+    const normalized = normalizeManualExcelStyleOrderPayload(payload);
+    if (normalized.error) {
+      throw new Error(normalized.error);
     }
 
     const state = readState();
-    const duplicate = findDuplicateLocalOrder(state.orders || [], {
-      requestNumber,
-      soId: payload?.soId || requestNumber,
-      woId: payload?.woId || payload?.importMeta?.woId || '',
-      notes,
-    });
+    const duplicate = findDuplicateLocalOrder(state.orders || [], normalized);
     if (duplicate) {
-      throw new Error(buildLocalDuplicateMessage(duplicate, payload));
+      throw new Error(buildLocalDuplicateMessage(duplicate, normalized));
     }
 
-    const numericId = Date.now();
-    const order = {
-      id: `ORD-${numericId}`,
-      numericId,
-      requestNumber,
-      soId: String(payload?.soId || requestNumber).trim() || requestNumber,
-      woId: String(payload?.woId || payload?.importMeta?.woId || '').trim(),
-      customerName,
-      phone,
-      secondaryPhone,
-      whatsappPhone,
-      city,
-      district,
-      addressText,
-      landmark,
-      mapLink,
-      sourceChannel,
-      serviceSummary,
-      acCount: acDetails.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0),
-      priority,
-      deliveryType,
-      preferredDate,
-      preferredTime,
-      scheduledDate: preferredDate,
-      scheduledTime: '',
-      coordinationNote: '',
-      notes,
-      acDetails,
-      status: 'pending',
+    const createdOrder = {
+      id: `ORD-${Date.now()}`,
+      numericId: Date.now(),
+      ...normalized,
+      auditLog: [
+        buildAuditEntry(
+          activeUser.role === 'admin' ? 'admin' : 'customer_service',
+          `تم إنشاء الطلب ${normalized.requestNumber} يدويًا بنفس مخطط ملف Excel.`
+        ),
+      ],
+      createdByUserId: activeUser.id,
+      createdByName: activeUser.name,
+      technicianId: '',
+      technicianUserId: '',
+      technicianName: normalized.techId || '',
+      photos: [],
+      extras: null,
       customerAction: 'none',
       rescheduleReason: '',
       cancellationReason: '',
-      canceledAt: null,
-      completedAt: null,
-      createdByUserId: activeUser.id,
-      createdByName: activeUser.name,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      auditLog: [
-        buildAuditEntry(
-          'customer_service',
-          `تم إنشاء الطلب ${requestNumber} للعميل ${customerName}${deliveryType !== 'none' ? ` مع ${deliveryType === 'express_24h' ? 'توصيل سريع' : 'طلب توصيل'}` : ''}`
-        ),
-      ],
+      approvalStatus: 'pending',
+      proofStatus: 'pending_review',
+      clientSignature: '',
+      zamilClosureStatus: 'idle',
+      zamilCloseRequestedAt: null,
+      zamilOtpCode: '',
+      zamilOtpSubmittedAt: null,
+      zamilClosedAt: null,
+      suspensionReason: '',
+      suspensionNote: '',
+      suspendedAt: null,
+      exceptionStatus: 'none',
     };
 
-    writeState({
-      ...state,
-      orders: [order, ...(state.orders || [])],
-    });
-
+    const nextOrders = sortOrders([createdOrder, ...(state.orders || [])]);
+    writeState({ ...state, orders: nextOrders });
     appendNotificationsForRoles(state, ['operations_manager'], {
-      title: deliveryType === 'none' ? 'طلب جديد بانتظار العمليات' : 'طلب توصيل بأولوية قصوى',
-      body:
-        deliveryType === 'none'
-          ? `طلب ${requestNumber} للعميل ${customerName} جاهز للتنسيق والجدولة.`
-          : `طلب ${requestNumber} للعميل ${customerName} يتضمن ${deliveryType === 'express_24h' ? 'توصيلاً سريعاً خلال 24 ساعة' : 'توصيلاً'} ويحتاج متابعة عاجلة.`,
-      kind: 'new_order',
-      relatedOrderId: order.id,
+      title: 'طلب جديد',
+      body: appendOperationsRemainingSummary(`تم إنشاء الطلب رقم ${normalized.requestNumber} يدويًا وفق جدول Excel.`, nextOrders),
+      relatedOrderId: createdOrder.id,
     });
+    if (normalized.technicianAssignmentReview?.needsReview) {
+      const issueSummary = [
+        normalized.technicianAssignmentReview.missingAreaCode
+          ? `رمز المنطقة ${normalized.technicianAssignmentReview.areaCode || '-'} غير موجود`
+          : '',
+        normalized.technicianAssignmentReview.missingTechCode
+          ? `رمز الفني ${normalized.technicianAssignmentReview.techCode || '-'} غير موجود`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('، ');
 
-    return delay({ data: { order } });
+      appendNotificationsForRoles(state, ['admin', 'operations_manager'], {
+        title: 'مراجعة تعيين الفني مطلوبة',
+        body: `الطلب رقم ${normalized.requestNumber} يحتوي على كود تعيين يحتاج مراجعة (${normalized.technicianAssignmentReview.techId || '-'}). ${issueSummary}. يرجى تعيين الفني يدويًا لهذا الطلب.`,
+        relatedOrderId: createdOrder.id,
+        kind: 'assignment_review',
+      });
+    }
+
+    return delay({ data: { order: createdOrder } });
   },
 
   async updateOrder(orderId, changes = {}) {
@@ -846,7 +1384,7 @@ const localOperationsService = {
       }
     };
 
-    if (activeUser.role === 'customer_service') {
+    if (['customer_service', 'admin'].includes(activeUser.role)) {
       [
         ['requestNumber', (v) => String(v || '').trim()],
         ['customerName', (v) => String(v || '').trim()],
@@ -883,13 +1421,8 @@ const localOperationsService = {
         nextOrder.status = nextOrder.status === 'completed' ? 'completed' : 'pending';
         nextOrder.auditLog = [
           ...(nextOrder.auditLog || []),
-          buildAuditEntry('customer_service', `طلبت خدمة العملاء إعادة جدولة الطلب. ${nextOrder.rescheduleReason}`),
+          buildAuditEntry(activeUser.role === 'admin' ? 'admin' : 'customer_service', `طلبت الإدارة إعادة جدولة الطلب. ${nextOrder.rescheduleReason}`),
         ];
-        appendNotificationsForRoles(state, ['operations_manager'], {
-          title: 'طلب إعادة جدولة',
-          body: `تم طلب إعادة جدولة ${nextOrder.requestNumber} للعميل ${nextOrder.customerName}.`,
-          relatedOrderId: nextOrder.id,
-        });
       }
 
       if (changes.status === 'canceled') {
@@ -899,17 +1432,12 @@ const localOperationsService = {
         nextOrder.canceledAt = nowIso();
         nextOrder.auditLog = [
           ...(nextOrder.auditLog || []),
-          buildAuditEntry('customer_service', `ألغت خدمة العملاء الطلب. ${nextOrder.cancellationReason}`),
+          buildAuditEntry(activeUser.role === 'admin' ? 'admin' : 'customer_service', `ألغت الإدارة الطلب. ${nextOrder.cancellationReason}`),
         ];
-        appendNotificationsForRoles(state, ['operations_manager'], {
-          title: 'تم إلغاء طلب',
-          body: `تم إلغاء ${nextOrder.requestNumber} للعميل ${nextOrder.customerName}.`,
-          relatedOrderId: nextOrder.id,
-        });
       }
     }
 
-    if (activeUser.role === 'operations_manager') {
+    if (['operations_manager', 'admin'].includes(activeUser.role)) {
       [
         ['scheduledDate', (v) => String(v || '').trim()],
         ['scheduledTime', (v) => String(v || '').trim()],
@@ -948,10 +1476,12 @@ const localOperationsService = {
       nextOrder.auditLog = [
         ...(nextOrder.auditLog || []),
         buildAuditEntry(
-          'operations_manager',
+          activeUser.role === 'admin' ? 'admin' : 'operations_manager',
           changes.contactCustomerNote
-            ? `سجل مدير العمليات تواصلاً مع العميل. ${String(changes.contactCustomerNote || '').trim()}`
-            : 'قام مدير العمليات بتحديث تنسيق الموعد أو الحالة.'
+            ? `${activeUser.role === 'admin' ? 'سجلت الإدارة' : 'سجل مدير العمليات'} تواصلاً مع العميل. ${String(changes.contactCustomerNote || '').trim()}`
+            : activeUser.role === 'admin'
+              ? 'قامت الإدارة بتحديث تنسيق الموعد أو الحالة.'
+              : 'قام مدير العمليات بتحديث تنسيق الموعد أو الحالة.'
         ),
       ];
     }
@@ -987,26 +1517,29 @@ const localOperationsService = {
     const nextOrders = (state.orders || []).map((order) => (String(order.id) === String(orderId) ? nextOrder : order));
     writeState({ ...state, orders: nextOrders });
 
-    if (activeUser.role === 'operations_manager' && changes.status !== undefined && nextOrder.status !== previousStatus) {
-      appendNotificationsForRoles(state, ['customer_service'], {
+    if (['operations_manager', 'admin'].includes(activeUser.role) && changes.status !== undefined && nextOrder.status !== previousStatus) {
+      appendNotificationsForRoles(state, ['admin', 'customer_service'], {
         title: 'تم تحديث حالة الطلب',
         body: `تم تحديث حالة الطلب رقم ${nextOrder.requestNumber} إلى ${ORDER_STATUS_AR_LABELS[nextOrder.status] || nextOrder.status}.`,
         relatedOrderId: nextOrder.id,
       });
     }
 
-    if (activeUser.role === 'operations_manager' && (changes.scheduledDate !== undefined || changes.scheduledTime !== undefined)) {
-      appendNotificationsForRoles(state, ['customer_service'], {
+    if (['operations_manager', 'admin'].includes(activeUser.role) && (changes.scheduledDate !== undefined || changes.scheduledTime !== undefined)) {
+      appendNotificationsForRoles(state, ['admin', 'customer_service'], {
         title: 'تم تنسيق موعد الطلب',
         body: `تم تحديد موعد ${nextOrder.requestNumber} بتاريخ ${nextOrder.scheduledDate || '-'} الساعة ${nextOrder.scheduledTime || '-'}.`,
         relatedOrderId: nextOrder.id,
       });
     }
 
-    if (activeUser.role === 'customer_service' && nextOrder.deliveryType !== 'none') {
+    if (['customer_service', 'admin'].includes(activeUser.role) && nextOrder.status !== previousStatus) {
       appendNotificationsForRoles(state, ['operations_manager'], {
-        title: 'طلب توصيل بأولوية قصوى',
-        body: `تم تحديث ${nextOrder.requestNumber} كطلب ${nextOrder.deliveryType === 'express_24h' ? 'توصيل سريع خلال 24 ساعة' : 'توصيل'} ويتطلب متابعة عاجلة.`,
+        title: 'تم تحديث حالة الطلب',
+        body: appendOperationsRemainingSummary(
+          `تم تحديث حالة الطلب رقم ${nextOrder.requestNumber} إلى ${ORDER_STATUS_AR_LABELS[nextOrder.status] || nextOrder.status}.`,
+          nextOrders
+        ),
         relatedOrderId: nextOrder.id,
       });
     }
@@ -1030,7 +1563,7 @@ const localOperationsService = {
 
   async getSummary() {
     const state = getState();
-    return delay({ data: { summary: buildSummary((state.orders || []).filter((order) => order.status !== 'completed')) } });
+    return delay({ data: { summary: buildSummary(state.orders || []) } });
   },
 };
 
@@ -1039,13 +1572,13 @@ const remoteOperationsService = {
   getTechnicianOrders: (technicianId) => apiClient.get('/operations/technician/orders', { params: { technicianId } }),
   createOrder: (data) => apiClient.post('/operations/orders', data),
   importOrders: (data) => apiClient.post('/operations/orders/import', data),
-  uploadExcelSource: (formData) =>
-    apiClient.post('/operations/excel-import/preview-upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }),
+  createImportJob: (data) => apiClient.post('/operations/orders/import-jobs', data),
+  getImportJob: (jobId) => apiClient.get(`/operations/orders/import-jobs/${String(jobId)}`),
+  processImportJob: (jobId, data) => apiClient.post(`/operations/orders/import-jobs/${String(jobId)}/process`, data),
+  uploadExcelSource: (formData) => apiClient.post('/operations/excel-import/preview-upload', formData),
   createTechnician: (data) => apiClient.post('/operations/technicians', data),
+  updateTechnician: (technicianId, data) => apiClient.put(`/operations/technicians/${String(technicianId)}`, data),
+  deleteTechnician: (technicianId) => apiClient.delete(`/operations/technicians/${String(technicianId)}`),
   updateOrder: (orderId, data) => apiClient.put(`/operations/orders/${String(orderId).replace(/^ORD-/, '')}`, data),
   quickUpdateOrderStatus: (orderId, status) => apiClient.patch(`/orders/${String(orderId).replace(/^ORD-/, '')}`, { status }),
   updateOrderStatus: (orderId, status) =>
@@ -1065,10 +1598,10 @@ const remoteOperationsService = {
 };
 
 export const authService = {
-  login: (email, password) =>
+  login: (email, password, workspaceRole = '') =>
     withFallback(
-      () => apiClient.post('/auth/login', { email, password }),
-      () => localAuthService.login(email, password)
+      () => apiClient.post('/auth/login', { email, password, workspaceRole }),
+      () => localAuthService.login(email, password, workspaceRole)
     ),
   logout: () => removeStorage('authToken'),
 };
@@ -1078,12 +1611,15 @@ export const operationsService = {
     withFallback(
       async () => {
         const response = await remoteOperationsService.getDashboard();
-        const orders = sortOrders((response.data?.orders || []).map(mapRemoteOrder).filter((order) => order.status !== 'completed'));
+        const orders = sortOrders((response.data?.orders || []).map(mapRemoteOrder));
         return {
           data: {
             ...response.data,
             orders,
             summary: response.data?.summary || buildSummary(orders),
+            technicians: Array.isArray(response.data?.technicians) ? response.data.technicians : [],
+            timeStandards: Array.isArray(response.data?.timeStandards) ? response.data.timeStandards : [],
+            areaClusters: Array.isArray(response.data?.areaClusters) ? response.data.areaClusters : [],
           },
         };
       },
@@ -1098,18 +1634,22 @@ export const operationsService = {
       },
       () => localOperationsService.createOrder(data)
     ),
-  importOrdersFromExcel: async (fileName = 'data.xlsx', uploadedPreview = null) => {
-    const preview = uploadedPreview
-      ? { data: uploadedPreview }
-      : backendApiClient
-        ? await backendApiClient.get('/operations/excel-import/preview', {
-            params: { fileName },
-          })
-        : await axios.get('/excel-import/orders.json');
-    const previewData = preview.data || null;
-    const orders = Array.isArray(previewData?.orders) ? previewData.orders.filter((order) => order.importStatus !== 'completed') : [];
+  importOrdersFromExcel: async (fileName = 'data.xlsx', uploadedPreview = null, options = {}) => {
+    if (!uploadedPreview && backendApiClient) {
+      throw new Error('Upload the Excel file again before importing');
+    }
 
-    if (!orders.length) {
+    const preview = uploadedPreview ? { data: uploadedPreview } : await axios.get('/excel-import/orders.json');
+    const previewData = preview.data || null;
+<<<<<<< Updated upstream
+    const orders = Array.isArray(previewData?.orders) ? previewData.orders.filter((order) => order.importStatus !== 'completed') : [];
+=======
+    const orders = Array.isArray(previewData?.orders) ? previewData.orders : [];
+    const previewToken = String(previewData?.previewToken || '').trim();
+    const validPreviewRows = Number(previewData?.summary?.validOrders || orders.length || 0);
+>>>>>>> Stashed changes
+
+    if (!previewToken && !orders.length) {
       return {
         data: {
           importedCount: 0,
@@ -1120,29 +1660,146 @@ export const operationsService = {
       };
     }
 
+<<<<<<< Updated upstream
     const chunkSize = 100;
     let importedCount = 0;
     let skippedCount = 0;
     const skippedOrders = [];
+=======
+    const chunkSize = Math.max(1, Number(options?.chunkSize) || 30);
+    const interChunkDelayMs = Math.max(0, Number(options?.interChunkDelayMs) || 120);
+    const maxRetries = Math.max(0, Number(options?.maxRetries) || 2);
+    const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null;
+    const totalRows = Math.max(0, validPreviewRows);
+    const totalChunks = Math.max(1, Math.ceil(totalRows / chunkSize));
+    const createJobResponse = await remoteOperationsService.createImportJob({
+      fileName,
+      previewToken: previewToken || undefined,
+      orders: previewToken ? undefined : orders,
+      chunkSize,
+    });
+    const jobId = createJobResponse.data?.job?.id;
+    const backgroundQueued = createJobResponse.data?.backgroundQueued !== false;
+    if (!jobId) {
+      throw new Error('Unable to create import job');
+    }
+>>>>>>> Stashed changes
 
-    for (let index = 0; index < orders.length; index += chunkSize) {
-      const chunk = orders.slice(index, index + chunkSize);
-      const response = await remoteOperationsService.importOrders({
-        fileName,
-        orders: chunk,
+    let job = createJobResponse.data?.job || null;
+    if (onProgress && job) {
+      onProgress({
+        currentChunk: Math.min(totalChunks, Math.ceil((Number(job.processedRows) || 0) / chunkSize) || 1),
+        totalChunks,
+        processedRows: Number(job.processedRows) || 0,
+        totalRows: Number(job.totalRows) || totalRows,
+        importedCount: Number(job.importedCount) || 0,
+        createdCount: Number(job.createdCount) || 0,
+        updatedCount: Number(job.updatedCount) || 0,
+        archivedCount: Number(job.archivedCount) || 0,
+        restoredCount: Number(job.restoredCount) || 0,
+        unchangedCount: Number(job.unchangedCount) || 0,
+        skippedCount: Number(job.skippedCount) || 0,
+        jobId,
+        status: job.status,
       });
+<<<<<<< Updated upstream
       importedCount += Number(response.data?.importedCount) || 0;
       skippedCount += Number(response.data?.skippedCount) || 0;
       skippedOrders.push(...(response.data?.skippedOrders || []));
+=======
+    }
+
+    const readJobStatus = async () => {
+      let attempt = 0;
+      while (attempt <= maxRetries) {
+        try {
+          const response = await remoteOperationsService.getImportJob(jobId);
+          return response.data?.job || null;
+        } catch (error) {
+          if (!isTransientImportError(error) || attempt === maxRetries) {
+            throw error;
+          }
+          attempt += 1;
+          await wait(300 * attempt);
+        }
+      }
+      return null;
+    };
+
+    while (!job || !['completed', 'failed'].includes(String(job.status || '').trim())) {
+      if (backgroundQueued) {
+        await wait(Math.max(800, interChunkDelayMs));
+        job = await readJobStatus();
+      } else {
+        let response = null;
+        let attempt = 0;
+        while (attempt <= maxRetries) {
+          try {
+            response = await remoteOperationsService.processImportJob(jobId, {});
+            break;
+          } catch (error) {
+            if (!isTransientImportError(error) || attempt === maxRetries) {
+              throw error;
+            }
+            attempt += 1;
+            await wait(300 * attempt);
+          }
+        }
+        job = response.data?.job || (await readJobStatus()) || null;
+      }
+
+      if (!job) {
+        throw new Error('Import job status could not be read');
+      }
+
+      if (onProgress) {
+        onProgress({
+          currentChunk: Math.min(totalChunks, Math.ceil((Number(job.processedRows) || 0) / chunkSize) || 1),
+          totalChunks,
+          processedRows: Number(job.processedRows) || 0,
+          totalRows: Number(job.totalRows) || totalRows,
+          importedCount: Number(job.importedCount) || 0,
+          createdCount: Number(job.createdCount) || 0,
+          updatedCount: Number(job.updatedCount) || 0,
+          archivedCount: Number(job.archivedCount) || 0,
+          restoredCount: Number(job.restoredCount) || 0,
+          unchangedCount: Number(job.unchangedCount) || 0,
+          skippedCount: Number(job.skippedCount) || 0,
+          jobId,
+          status: job.status,
+        });
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(job.lastError || 'Import job failed');
+      }
+
+      if (!backgroundQueued && job.status !== 'completed' && interChunkDelayMs > 0) {
+        await wait(interChunkDelayMs);
+      }
+>>>>>>> Stashed changes
     }
 
     window.dispatchEvent(new CustomEvent('operations-updated'));
     return {
       data: {
         fileName,
+<<<<<<< Updated upstream
         importedCount,
         skippedCount,
         skippedOrders,
+=======
+        jobId,
+        status: job.status,
+        importedCount: Number(job.importedCount) || 0,
+        createdCount: Number(job.createdCount) || 0,
+        updatedCount: Number(job.updatedCount) || 0,
+        archivedCount: Number(job.archivedCount) || 0,
+        restoredCount: Number(job.restoredCount) || 0,
+        unchangedCount: Number(job.unchangedCount) || 0,
+        skippedCount: Number(job.skippedCount) || 0,
+        skippedOrders: Array.isArray(job.skippedOrders) ? job.skippedOrders : [],
+>>>>>>> Stashed changes
         preview: previewData,
       },
     };
@@ -1159,17 +1816,13 @@ export const operationsService = {
     };
 
     try {
-      return await remoteOperationsService.uploadExcelSource(buildFormData());
+      return await postMultipartForm(`${API_BASE_URL}/operations/excel-import/preview-upload`, buildFormData());
     } catch (error) {
       if (!backendApiClient || (error?.response?.status && error.response.status < 500 && error.response.status !== 404)) {
         throw error;
       }
 
-      return backendApiClient.post('/operations/excel-import/upload', buildFormData(), {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      return postMultipartForm(`${BACKEND_API_BASE_URL}/operations/excel-import/upload`, buildFormData());
     }
   },
   createTechnician: (data) =>
@@ -1181,6 +1834,28 @@ export const operationsService = {
       },
       async () => {
         throw new Error('Technician creation is unavailable in local mode');
+      }
+    ),
+  updateTechnician: (technicianId, data) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.updateTechnician(technicianId, data);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Technician updates are unavailable in local mode');
+      }
+    ),
+  deleteTechnician: (technicianId) =>
+    withFallback(
+      async () => {
+        const response = await remoteOperationsService.deleteTechnician(technicianId);
+        window.dispatchEvent(new CustomEvent('operations-updated'));
+        return response;
+      },
+      async () => {
+        throw new Error('Technician deletion is unavailable in local mode');
       }
     ),
   updateOrder: (orderId, data) =>
@@ -1237,7 +1912,13 @@ export const operationsService = {
       async () => {
         const response = await remoteOperationsService.updateTechnicianStatus(orderId, { status, ...extra });
         window.dispatchEvent(new CustomEvent('operations-updated'));
-        return response;
+        return {
+          ...response,
+          data: {
+            ...response.data,
+            order: response.data?.order ? mapRemoteOrder(response.data.order) : null,
+          },
+        };
       },
       async () => {
         throw new Error('Technician status updates are unavailable in local mode');
@@ -1356,7 +2037,12 @@ export const notificationsService = {
       }
 
       const activeUser = getActiveAuthUser();
-      const items = readStoredNotifications().filter((item) => String(item.userId) === String(activeUser?.id || ''));
+      const activeRole = normalizeRole(activeUser?.role);
+      const items = readStoredNotifications().filter(
+        (item) =>
+          String(item.userId) === String(activeUser?.id || '') &&
+          (!item.targetRole || normalizeRole(item.targetRole) === activeRole)
+      );
       return {
         data: {
           notifications: items,
@@ -1373,8 +2059,12 @@ export const notificationsService = {
         throw error;
       }
       const activeUser = getActiveAuthUser();
+      const activeRole = normalizeRole(activeUser?.role);
       const nextItems = readStoredNotifications().map((item) =>
-        String(item.userId) === String(activeUser?.id || '') ? { ...item, isRead: true } : item
+        String(item.userId) === String(activeUser?.id || '') &&
+        (!item.targetRole || normalizeRole(item.targetRole) === activeRole)
+          ? { ...item, isRead: true }
+          : item
       );
       writeStoredNotifications(nextItems);
       return { data: { ok: true } };
@@ -1386,7 +2076,17 @@ export const footerService = {
   get: () =>
     withFallback(
       () => apiClient.get('/footer'),
-      () => delay({ data: { footer: defaultFooter } })
+      () => delay({ data: { footer: readStoredFooterSettings() } })
+    ),
+  adminGet: () =>
+    withFallback(
+      () => apiClient.get('/admin/footer'),
+      () => delay({ data: { footer: readStoredFooterSettings() } })
+    ),
+  update: (payload) =>
+    withFallback(
+      () => apiClient.put('/admin/footer', payload),
+      () => delay({ data: { message: 'Footer updated', footer: writeStoredFooterSettings(payload) } })
     ),
 };
 
@@ -1394,7 +2094,17 @@ export const homeService = {
   get: () =>
     withFallback(
       () => apiClient.get('/home-settings'),
-      () => delay({ data: { homeSettings: defaultHomeSettings } })
+      () => delay({ data: { homeSettings: readStoredHomeSettings() } })
+    ),
+  adminGet: () =>
+    withFallback(
+      () => apiClient.get('/admin/home-settings'),
+      () => delay({ data: { homeSettings: readStoredHomeSettings() } })
+    ),
+  update: (payload) =>
+    withFallback(
+      () => apiClient.put('/admin/home-settings', payload),
+      () => delay({ data: { message: 'Home settings updated', homeSettings: writeStoredHomeSettings(payload) } })
     ),
 };
 

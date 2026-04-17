@@ -1,60 +1,73 @@
-# Tarkeeb Pro Edge API (Cloudflare Worker + D1)
+# Edge API
 
-Backend API for Tarkeeb Pro running on Cloudflare Workers with D1 as the main database.
+واجهة الـ API الحالية تعمل محليًا أثناء التطوير على جهازك، مع بقاء الكود متوافقًا مع `Cloudflare Workers + D1` عند الحاجة.
 
-## Supported features
+## المسار المدعوم
 
-- Customer authentication: `POST /api/auth/register`, `POST /api/auth/login`
-- Products: `GET /api/products`, `GET /api/products/:id`
-- Admin product management: `POST|PUT|DELETE /api/products`
-- Customer checkout flow:
-  - `POST /api/cart/checkout`
-  - `GET /api/orders`
-  - `GET /api/orders/:id`
-  - `PUT /api/bookings/:id/cancel`
-- Admin operations:
-  - `GET /api/admin/products`
-  - `GET /api/admin/users`
-  - `PUT /api/admin/users/:id`
-  - `GET /api/admin/bookings`
-  - `PUT /api/admin/bookings/:id`
+- `POST /api/auth/login`
+- `GET /api/operations/dashboard`
+- `GET /api/operations/summary`
+- `POST /api/operations/orders`
+- `PUT /api/operations/orders/:id`
+- `PUT /api/operations/orders/:id/status`
+- `POST /api/operations/excel-import/preview-upload`
+- `POST /api/operations/excel-import/upload`
+- `GET /api/notifications`
+- `PUT /api/notifications/read-all`
+- `PUT /api/notifications/:id/read`
 
-## Cloudflare bindings
+## Bindings
 
-- `DB`: D1 database binding
-- `JWT_SECRET`: Worker secret for auth tokens
-- `CORS_ALLOWED_ORIGINS`: comma-separated local/dev origins and the frontend Worker domain
-- `ACCESS_AUD`: Cloudflare Access audience for the protected direct Worker hostname
-- `ACCESS_JWKS_URL`: Cloudflare Access JWKS endpoint used to verify Access JWTs
+- `DB` ربط `D1`
+- `SEND_EMAIL` ربط Cloudflare Email Routing لإرسال تنبيه عند استقبال بريد جديد
+- `JWT_SECRET` سر JWT
+- `CORS_ALLOWED_ORIGINS` قائمة Origins المحلية
+- `WEB_PUSH_PUBLIC_KEY` المفتاح العام للإشعارات
+- `WEB_PUSH_CONTACT_EMAIL` بريد الجهة المرسلة للإشعارات
+- `INBOUND_EMAIL_ALLOWED_TO` قائمة صناديق الاستقبال المسموح للـ Worker بمعالجتها
+- `INBOUND_EMAIL_FORWARD_TO` قائمة بريد مفصولة بفواصل لتحويل البريد الوارد إليها
+- `INBOUND_EMAIL_ALERT_TO` قائمة بريد مفصولة بفواصل لإرسال ملخص عن الرسائل الواردة
 
-## Variables and Secrets
-
-- Secret: `JWT_SECRET`
-- Vars: `CORS_ALLOWED_ORIGINS`, `ACCESS_AUD`, `ACCESS_JWKS_URL`
-- Binding: `DB`
-
-Set the secret with:
+## التشغيل المحلي
 
 ```bash
-npx wrangler secret put JWT_SECRET
+cd edge-api
+npm install
+npm run dev
 ```
 
-## Setup
+المسار المحلي الافتراضي:
 
-1. `cd edge-api && npm install`
-2. Create D1:
-   - `npx wrangler d1 create tarkeeb_pro_db`
-3. Put the returned `database_id` into `wrangler.toml`
-4. Apply the full schema:
-   - Local: `npm run db:migrate:local`
-   - Remote: `npm run db:migrate:remote`
-5. Add the auth secret:
-   - `npx wrangler secret put JWT_SECRET`
-6. Deploy:
-   - `npm run deploy`
+- `http://127.0.0.1:8787/api`
 
-## Notes
+للتطوير المحلي:
 
-- The frontend Worker can call this API via `Service Bindings` or fallback proxying with `API_ORIGIN`.
-- In production, the frontend usually calls `/api/*` on the same domain, so direct browser CORS is minimal.
-- If the raw `*.workers.dev` API URL is protected by Cloudflare Access, direct browser requests will require a valid Access token. Public browser traffic should use the frontend Worker `/api/*` route instead.
+- ملف `.env` الحالي يكفي لتشغيل `JWT_SECRET` المحلي.
+- `npm run dev` يشغّل `scripts/start-local-backend.mjs`.
+- إذا احتجت تشغيل Wrangler مباشرة ما زال متاحًا عبر `npm run dev:wrangler`.
+
+إذا أردت استقبال رفع Excel من الموقع العام على هذا الخادم المحلي:
+
+- اجعل `JWT_SECRET` المحلي مساويًا لسر الإنتاج حتى تقبل التوكنات القادمة من المستخدمين المسجلين على `kumeelalnahab.com`.
+- انشر هذا الخادم بعنوان عام ثابت، ثم استخدم هذا العنوان في `EXCEL_UPLOAD_ORIGIN` داخل [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml:1).
+
+## المايغريشن
+
+```bash
+npm run db:migrate:local
+npm run db:migrate:remote
+```
+
+مايغريشن الحساب المشترك والأدوار:
+
+- `migrations/0024_shared_internal_workspace_roles.sql`
+
+## ملاحظات
+
+- `D1` هي القاعدة الوحيدة المعتمدة.
+- الواجهة ترسل الدور الفعال عبر `X-Workspace-Role`.
+- الوصول المباشر الإنتاجي إلى الـ API يعتمد على تسجيل الدخول الداخلي وصلاحيات الدور.
+- الواجهة التطويرية مربوطة مباشرة بهذا الخادم عبر [frontend/.env.development](/home/bobby/Desktop/rentit/frontend/.env.development:1).
+- الصناديق الافتراضية المسموحة حاليًا: `hashimaldrweish@kumeelalnahab.com`, `bookings@kumeelalnahab.com`, `customerservice@kumeelalnahab.com`, `info@kumeelalnahab.com`.
+- التحويل الافتراضي الحالي للبريد الوارد يتجه إلى `kumeelalnahab@gmail.com`.
+- معالج `email()` في [src/index.js](/home/bobby/Desktop/rentit/edge-api/src/index.js) يرفض الرسائل إذا لم يتم ضبط `INBOUND_EMAIL_FORWARD_TO` أو `INBOUND_EMAIL_ALERT_TO`.

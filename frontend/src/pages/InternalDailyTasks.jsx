@@ -6,22 +6,38 @@ import OrderMasterDetail from '../components/OrderMasterDetail';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { buildWhatsAppUrl, formatSaudiPhoneDisplay, operationsService } from '../services/api';
+import { canUserPrintTaskReports } from '../utils/workspaceAccess';
+import { getWorkspaceBasePath } from '../utils/workspaceRoles';
 import {
   buildCallUrl,
   buildDisplayStatusBuckets,
   exportOrdersReport,
   formatDateTimeLabel,
   getOperationalDate,
+  getOrderAreaName,
   getOrderDeviceCount,
   getOrderDisplayStatus,
+  getOrderEmail,
+  getOrderExceedSLA,
+  getOrderChatLog,
+  getOrderCourier,
+  getOrderCourierNum,
+  getOrderInstallationDate,
   getOrderPrimaryReference,
   getOrderReferenceText,
   getOrderSearchMetaLines,
   getOrderSoId,
   getOrderTaskDate,
+  orderMatchesDailyTaskDate,
+  getOrderTechId,
+  getOrderTechShortName,
+  getOrderPickupDate,
+  getOrderWithinSLA,
   getOrderWoId,
+  nextDateString,
   orderMatchesDisplayStatus,
 } from '../utils/internalOrders';
+import { getTechnicianCoverageLabel } from '../utils/technicianCoverage';
 
 const operationsRegions = [
   {
@@ -86,7 +102,8 @@ const getScopeMeta = (mode, scopeValue) => {
   }
 
   const dayValue = isDateString(scopeValue) ? scopeValue : getOperationalDate();
-  return { inputType: 'date', startDate: dayValue, endDate: dayValue, exportLabel: dayValue };
+  const nextDayValue = nextDateString(dayValue);
+  return { inputType: 'date', startDate: dayValue, endDate: nextDayValue, exportLabel: `${dayValue}-to-${nextDayValue}` };
 };
 
 const isWithinRange = (value, startDate, endDate) => {
@@ -134,33 +151,53 @@ const compareOrdersByStatusThenRegion = (left, right) => {
 
 const compareOrdersByLatest = (left, right) => `${right.updatedAt || right.createdAt || ''}`.localeCompare(`${left.updatedAt || left.createdAt || ''}`);
 const compareOrdersByCustomer = (left, right) => `${left.customerName || ''}`.localeCompare(`${right.customerName || ''}`, 'ar');
+const getTechnicianCardSortLabel = (technician = {}, lang = 'ar') =>
+  `${String(technician?.name || '').trim()} ${getTechnicianCoverageLabel(technician?.zone || technician?.region, lang)}`.trim();
+
+const compareOrdersByTechnician = (left, right, technicianLookup = new Map(), lang = 'ar') => {
+  const leftTechnician = technicianLookup.get(String(left?.technicianId || '').trim());
+  const rightTechnician = technicianLookup.get(String(right?.technicianId || '').trim());
+  const leftLabel = leftTechnician
+    ? getTechnicianCardSortLabel(leftTechnician, lang)
+    : lang === 'ar'
+      ? 'غير معين'
+      : 'Unassigned';
+  const rightLabel = rightTechnician
+    ? getTechnicianCardSortLabel(rightTechnician, lang)
+    : lang === 'ar'
+      ? 'غير معين'
+      : 'Unassigned';
+  const technicianDiff = leftLabel.localeCompare(rightLabel, 'ar');
+  if (technicianDiff !== 0) {
+    return technicianDiff;
+  }
+  return compareOrdersByRegion(left, right);
+};
 
 const getFilteredSummary = (orders, lang) => ({
   total: orders.length,
   buckets: buildDisplayStatusBuckets(orders, lang),
 });
 
-const getWorkspaceBasePath = (role) => (role === 'operations_manager' ? '/operations-manager' : '/customer-service');
-
 const copy = {
   en: {
     modes: {
       daily: {
-        eyebrow: 'Daily tasks',
-        title: 'Daily task board',
-        subtitle: 'A live day view that refreshes only when the system updates.',
-        scopeLabel: 'Task date',
+        eyebrow: 'Today and tomorrow',
+        title: 'Today and tomorrow task board',
+        subtitle: 'A focused two-day view that keeps today and tomorrow tasks together for quick follow-up.',
+        scopeLabel: 'Start date',
       },
       weekly: {
-        eyebrow: 'Weekly tasks',
-        title: 'Weekly task board',
-        subtitle: 'A structured week view for planning, printing, and operational follow-up.',
+        eyebrow: 'Upcoming week',
+        title: 'Next-week task board',
+        subtitle: 'A structured weekly view that ignores today and starts planning from tomorrow onward.',
         scopeLabel: 'Week start',
       },
       monthly: {
-        eyebrow: 'Monthly tasks',
-        title: 'Monthly task board',
-        subtitle: 'A monthly workload page for broad planning, sorting, and clean print output.',
+        eyebrow: 'Upcoming month',
+        title: 'Next-month task board',
+        subtitle: 'A monthly workload view centered on upcoming tasks starting from tomorrow.',
         scopeLabel: 'Month',
       },
     },
@@ -174,13 +211,20 @@ const copy = {
       weekly: 'Weekly',
       monthly: 'Monthly',
     },
-    regionsTitle: 'Operations regions',
-    regionsHint: 'Filter the period by region, then review the covered cities inside each box.',
-    allRegions: 'All regions',
+    regionsTitle: 'Technicians',
+    regionsHint: 'Filter the period by technician, then review each technician coverage and current workload.',
+    allRegions: 'All technicians',
+    unassignedTechnician: 'Unassigned',
+    technicianAvailability: 'Availability',
+    technicianCoverage: 'Coverage',
+    technicianCurrentTasks: 'Current tasks',
+    technicianTaskSummary: 'Technician summary',
+    technicianContact: 'Contact',
+    noTechnicianTasks: 'No current tasks for this technician in the selected period.',
     sortBy: 'Sort by',
     statusFilter: 'Status',
     sortOptions: {
-      region: 'Region and city',
+      region: 'Technician and city',
       status: 'Status flow',
       latest: 'Latest update',
       customer: 'Customer name',
@@ -236,46 +280,54 @@ const copy = {
     deviceCount: 'Devices',
     devicesTitle: 'Devices in this order',
     contactCustomer: 'Called customer',
+    assignTechnician: 'Assign technician',
     contactPrompt: 'Write the call note for the customer',
   },
   ar: {
     modes: {
       daily: {
-        eyebrow: 'المهام اليومية',
-        title: 'صفحة مهام يومية',
-        subtitle: 'عرض يومي يتحدث فقط عند تحديث النظام، دون تحديثات تلقائية مستمرة.',
-        scopeLabel: 'تاريخ المهام',
+        eyebrow: 'مهام اليوم والغد',
+        title: 'صفحة مهام اليوم والغد',
+        subtitle: 'عرض يومي يجمع مهام اليوم والغد معًا لتسهيل المتابعة السريعة.',
+        scopeLabel: 'تاريخ البداية',
       },
       weekly: {
-        eyebrow: 'المهام الأسبوعية',
-        title: 'صفحة مهام أسبوعية',
-        subtitle: 'عرض أسبوعي منظم للتخطيط، الطباعة، ومتابعة فرق التشغيل بشكل احترافي.',
+        eyebrow: 'مهام الأسبوع القادم',
+        title: 'صفحة مهام أسبوعية قادمة',
+        subtitle: 'عرض أسبوعي يبدأ من الغد ويتجاهل مهام اليوم الحالي عند التخطيط والمتابعة.',
         scopeLabel: 'بداية الأسبوع',
       },
       monthly: {
-        eyebrow: 'المهام الشهرية',
-        title: 'صفحة مهام شهرية',
-        subtitle: 'عرض شهري شامل لتوزيع العمل، الفرز، والطباعة بشكل واضح ومهني.',
+        eyebrow: 'مهام الشهر القادم',
+        title: 'صفحة مهام شهرية قادمة',
+        subtitle: 'عرض شهري يركز على المهام القادمة بدءًا من الغد مع نفس أدوات الفرز والطباعة.',
         scopeLabel: 'الشهر',
       },
     },
     loading: 'جارٍ تحميل المهام...',
     dashboard: 'العودة إلى اللوحة',
     exportPdf: 'تصدير PDF',
-    exportExcel: 'تصدير Excel',
+    exportExcel: 'تصدير إكسل',
     print: 'طباعة الصفحة',
     tabs: {
       daily: 'اليومية',
       weekly: 'الأسبوعية',
       monthly: 'الشهرية',
     },
-    regionsTitle: 'مناطق مدير العمليات',
-    regionsHint: 'قم بفرز الفترة حسب المنطقة، ثم راجع المدن التابعة داخل كل مربع.',
-    allRegions: 'كل المناطق',
+    regionsTitle: 'الفنيون',
+    regionsHint: 'قم بفرز الفترة حسب الفني، ثم راجع تغطية كل فني وحمله الحالي داخل كل مربع.',
+    allRegions: 'كل الفنيين',
+    unassignedTechnician: 'غير معيّن',
+    technicianAvailability: 'الحالة',
+    technicianCoverage: 'التغطية',
+    technicianCurrentTasks: 'المهام الحالية',
+    technicianTaskSummary: 'ملخص الفني',
+    technicianContact: 'التواصل',
+    noTechnicianTasks: 'لا توجد مهام حالية لهذا الفني داخل الفترة المحددة.',
     sortBy: 'الفرز حسب',
     statusFilter: 'الحالة',
     sortOptions: {
-      region: 'المنطقة والمدينة',
+      region: 'الفني والمدينة',
       status: 'تسلسل الحالة',
       latest: 'آخر تحديث',
       customer: 'اسم العميل',
@@ -331,6 +383,7 @@ const copy = {
     deviceCount: 'عدد الأجهزة',
     devicesTitle: 'أجهزة هذا الطلب',
     contactCustomer: 'تم التواصل مع العميل',
+    assignTechnician: 'إسناد لفني',
     contactPrompt: 'اكتب ملاحظة الاتصال مع العميل',
   },
 };
@@ -341,16 +394,18 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   const t = copy[lang] || copy.en;
   const modeCopy = t.modes[mode] || t.modes.daily;
   const workspaceBasePath = getWorkspaceBasePath(user?.role);
+  const canPrintReports = canUserPrintTaskReports(user);
   const [scopeValue, setScopeValue] = useState(() => getInitialScopeValue(mode));
-  const [selectedRegion, setSelectedRegion] = useState('all');
+  const [selectedTechnician, setSelectedTechnician] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [sortKey, setSortKey] = useState('region');
   const [orders, setOrders] = useState([]);
+  const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exportingFormat, setExportingFormat] = useState('');
   const [updatingOrderId, setUpdatingOrderId] = useState('');
   const [statusDrafts, setStatusDrafts] = useState({});
-  const isOperationsManager = user?.role === 'operations_manager';
+  const isTechnicianWorkspace = ['admin', 'operations_manager'].includes(user?.role);
   const resultsSectionRef = useRef(null);
 
   useEffect(() => {
@@ -361,6 +416,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
         }
         const response = await operationsService.getDashboard();
         setOrders(response.data?.orders || []);
+        setTechnicians(response.data?.technicians || []);
       } catch (error) {
         if (!silent) {
           toast.error(error?.response?.data?.message || error.message || 'Unable to load tasks');
@@ -374,7 +430,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
 
     const onSystemUpdated = () => load(true);
     const onDateUpdated = (event) => {
-      const nextDate = event?.detail?.date || getOperationalDate();
+      const nextDate = nextDateString(event?.detail?.date || getOperationalDate());
       if (mode === 'daily') {
         setScopeValue(nextDate);
       } else if (mode === 'weekly') {
@@ -399,25 +455,65 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   const rangeOrders = useMemo(
     () =>
       orders.filter((order) =>
-        isWithinRange(getOrderTaskDate(order), scopeMeta.startDate, scopeMeta.endDate)
+        mode === 'daily'
+          ? orderMatchesDailyTaskDate(order, scopeMeta.startDate)
+          : isWithinRange(getOrderTaskDate(order), scopeMeta.startDate, scopeMeta.endDate)
       ),
-    [orders, scopeMeta.endDate, scopeMeta.startDate]
+    [mode, orders, scopeMeta.endDate, scopeMeta.startDate]
   );
 
+  const technicianLookup = useMemo(
+    () => new Map((technicians || []).map((technician) => [String(technician.id), technician])),
+    [technicians]
+  );
   const regionCards = useMemo(
     () =>
-      operationsRegions.map((region) => ({
-        ...region,
-        count: rangeOrders.filter((order) => getOrderRegionKey(order) === region.key).length,
-      })),
+      [
+        ...operationsRegions.map((region) => ({
+          ...region,
+          orderCount: rangeOrders.filter((order) => getOrderRegionKey(order) === region.key).length,
+        })),
+        {
+          key: 'other',
+          ar: 'غير مصنف',
+          en: 'Unmapped',
+          orderCount: rangeOrders.filter((order) => getOrderRegionKey(order) === 'other').length,
+        },
+      ].filter((region) => region.orderCount > 0),
     [rangeOrders]
   );
+  const technicianCards = useMemo(() => {
+    const cards = (technicians || []).map((technician) => {
+      const scopedOrders = rangeOrders.filter((order) => String(order.technicianId || '') === String(technician.id));
+      return {
+        ...technician,
+        orderCount: scopedOrders.length,
+        devicesCount: scopedOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0),
+        activeTaskRefs: scopedOrders.slice(0, 6).map((order) => getOrderPrimaryReference(order)).filter(Boolean),
+      };
+    });
 
-  const regionScopedOrders = useMemo(
-    () => (selectedRegion === 'all' ? rangeOrders : rangeOrders.filter((order) => getOrderRegionKey(order) === selectedRegion)),
-    [rangeOrders, selectedRegion]
-  );
-  const displayStatusOptions = useMemo(() => buildDisplayStatusBuckets(regionScopedOrders, lang), [lang, regionScopedOrders]);
+    return cards.sort(
+      (left, right) =>
+        right.orderCount - left.orderCount ||
+        right.devicesCount - left.devicesCount ||
+        getTechnicianCardSortLabel(left, lang).localeCompare(getTechnicianCardSortLabel(right, lang), 'ar')
+    );
+  }, [lang, rangeOrders, technicians]);
+
+  const technicianScopedOrders = useMemo(() => {
+    if (selectedTechnician === 'all') {
+      return rangeOrders;
+    }
+    if (isTechnicianWorkspace && selectedTechnician === 'unassigned') {
+      return rangeOrders.filter((order) => !String(order.technicianId || '').trim());
+    }
+    if (isTechnicianWorkspace) {
+      return rangeOrders.filter((order) => String(order.technicianId || '') === String(selectedTechnician));
+    }
+    return rangeOrders.filter((order) => getOrderRegionKey(order) === selectedTechnician);
+  }, [isTechnicianWorkspace, rangeOrders, selectedTechnician]);
+  const displayStatusOptions = useMemo(() => buildDisplayStatusBuckets(technicianScopedOrders, lang), [lang, technicianScopedOrders]);
 
   useEffect(() => {
     if (selectedStatus !== 'all' && !displayStatusOptions.some((item) => item.key === selectedStatus)) {
@@ -427,7 +523,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
 
   const filteredOrders = useMemo(() => {
     const statusScoped =
-      selectedStatus === 'all' ? regionScopedOrders : regionScopedOrders.filter((order) => orderMatchesDisplayStatus(order, selectedStatus, lang));
+      selectedStatus === 'all' ? technicianScopedOrders : technicianScopedOrders.filter((order) => orderMatchesDisplayStatus(order, selectedStatus, lang));
     const sorted = statusScoped.slice();
     if (sortKey === 'status') {
       sorted.sort(compareOrdersByStatusThenRegion);
@@ -435,14 +531,35 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       sorted.sort(compareOrdersByLatest);
     } else if (sortKey === 'customer') {
       sorted.sort(compareOrdersByCustomer);
+    } else if (isTechnicianWorkspace) {
+      sorted.sort((left, right) => compareOrdersByTechnician(left, right, technicianLookup, lang));
     } else {
       sorted.sort(compareOrdersByRegion);
     }
     return sorted;
-  }, [lang, regionScopedOrders, selectedStatus, sortKey]);
+  }, [isTechnicianWorkspace, lang, selectedStatus, sortKey, technicianLookup, technicianScopedOrders]);
 
-  const summary = useMemo(() => getFilteredSummary(regionScopedOrders, lang), [regionScopedOrders, lang]);
+  const summary = useMemo(() => getFilteredSummary(technicianScopedOrders, lang), [technicianScopedOrders, lang]);
   const visibleSummaryBuckets = useMemo(() => summary.buckets, [summary.buckets]);
+  const selectedTechnicianRecord = useMemo(
+    () => technicianCards.find((item) => String(item.id) === String(selectedTechnician)) || null,
+    [selectedTechnician, technicianCards]
+  );
+  const selectedRegionRecord = useMemo(
+    () => regionCards.find((item) => String(item.key) === String(selectedTechnician)) || null,
+    [regionCards, selectedTechnician]
+  );
+  const sortOptions = useMemo(
+    () => ({
+      ...t.sortOptions,
+      region: isTechnicianWorkspace
+        ? t.sortOptions.region
+        : lang === 'ar'
+          ? 'المنطقة والمدينة'
+          : 'Region and city',
+    }),
+    [isTechnicianWorkspace, lang, t.sortOptions]
+  );
 
   const scrollToResults = () => {
     resultsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -454,7 +571,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   };
 
   const handleRegionCardClick = (regionKey = 'all') => {
-    setSelectedRegion(regionKey);
+    setSelectedTechnician(regionKey);
     scrollToResults();
   };
 
@@ -521,22 +638,18 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
     }
   };
 
-  const handleContactCustomer = async (order) => {
-    const note = window.prompt(t.contactPrompt, '');
-    if (!note) {
-      return;
-    }
-
+  const handleAssignTechnician = async (order, technicianId) => {
     try {
       setUpdatingOrderId(String(order.id));
       await operationsService.updateOrder(order.id, {
-        contactCustomerNote: note,
+        technicianId: technicianId || null,
       });
-      toast.success(t.contactCustomer);
+      toast.success(lang === 'ar' ? 'تم تحديث الإسناد.' : 'Assignment updated.');
       const response = await operationsService.getDashboard();
       setOrders(response.data?.orders || []);
+      setTechnicians(response.data?.technicians || []);
     } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || t.contactCustomer);
+      toast.error(error?.response?.data?.message || error.message || t.assignTechnician);
     } finally {
       setUpdatingOrderId('');
     }
@@ -564,15 +677,21 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
         <Link className="btn-light" to={workspaceBasePath}>
           {t.dashboard}
         </Link>
-        <button className="btn-secondary" type="button" onClick={printPage}>
-          {t.print}
-        </button>
-        <button className="btn-primary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportReport('pdf')}>
-          {exportingFormat === 'pdf' ? '...' : t.exportPdf}
-        </button>
-        <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportReport('excel')}>
-          {exportingFormat === 'excel' ? '...' : t.exportExcel}
-        </button>
+        {canPrintReports ? (
+          <>
+            <button className="btn-secondary" type="button" onClick={printPage}>
+              {t.print}
+            </button>
+            <button className="btn-primary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportReport('pdf')}>
+              {exportingFormat === 'pdf' ? '...' : t.exportPdf}
+            </button>
+            <button className="btn-secondary" disabled={Boolean(exportingFormat)} type="button" onClick={() => exportReport('excel')}>
+              {exportingFormat === 'excel' ? '...' : t.exportExcel}
+            </button>
+          </>
+        ) : (
+          <span className="user-chip">{lang === 'ar' ? 'الطباعة محصورة بالحساب المعتمد' : 'Printing is limited to the approved account'}</span>
+        )}
       </div>
 
       <div className="planning-tabs print-hidden">
@@ -601,7 +720,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           <div>
             <label>{t.sortBy}</label>
             <select className="input" value={sortKey} onChange={(event) => setSortKey(event.target.value)}>
-              {Object.entries(t.sortOptions).map(([value, label]) => (
+              {Object.entries(sortOptions).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -627,7 +746,7 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           <span>{t.summary.total}</span>
         </button>
         <button className={`dashboard-stat-link summary-filter-card ${selectedStatus === 'all' ? 'active' : ''}`} type="button" onClick={() => handleSummaryCardClick('all')}>
-          <strong>{regionScopedOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0)}</strong>
+          <strong>{technicianScopedOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0)}</strong>
           <span>{t.deviceCount}</span>
         </button>
         {visibleSummaryBuckets.map((statusItem) => (
@@ -647,34 +766,123 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
       <section className="panel print-hidden">
         <div className="panel-header">
           <div>
-            <h2>{t.regionsTitle}</h2>
-            <p>{t.regionsHint}</p>
+            <h2>{isTechnicianWorkspace ? t.regionsTitle : lang === 'ar' ? 'المناطق' : 'Areas'}</h2>
+            <p>
+              {isTechnicianWorkspace
+                ? t.regionsHint
+                : lang === 'ar'
+                  ? 'صفّ المهام حسب منطقة العميل أو مدينته خلال الفترة المحددة.'
+                  : 'Group tasks by the customer region or city for the selected period.'}
+            </p>
           </div>
         </div>
 
         <div className="daily-region-grid">
           <button
-            className={`dashboard-stat-link region-entry-card ${selectedRegion === 'all' ? 'active' : ''}`}
+            className={`dashboard-stat-link region-entry-card ${selectedTechnician === 'all' ? 'active' : ''}`}
             type="button"
             onClick={() => handleRegionCardClick('all')}
           >
             <strong>{rangeOrders.length}</strong>
-            <span>{t.allRegions}</span>
+            <span>{isTechnicianWorkspace ? t.allRegions : lang === 'ar' ? 'كل المناطق' : 'All areas'}</span>
             <small>{lang === 'ar' ? 'عرض كل مهام الفترة' : 'Show all tasks in this period'}</small>
           </button>
-          {regionCards.map((region) => (
-            <button
-              className={`dashboard-stat-link region-entry-card ${selectedRegion === region.key ? 'active' : ''}`}
-              key={region.key}
-              type="button"
-              onClick={() => handleRegionCardClick(region.key)}
-            >
-              <strong>{region.count}</strong>
-              <span>{lang === 'ar' ? region.ar : region.en}</span>
-              <small>{region.cities.join(' - ')}</small>
-            </button>
-          ))}
+          {isTechnicianWorkspace ? (
+            <>
+              <button
+                className={`dashboard-stat-link region-entry-card ${selectedTechnician === 'unassigned' ? 'active' : ''}`}
+                type="button"
+                onClick={() => handleRegionCardClick('unassigned')}
+              >
+                <strong>{rangeOrders.filter((order) => !String(order.technicianId || '').trim()).length}</strong>
+                <span>{t.unassignedTechnician}</span>
+                <small>{lang === 'ar' ? 'طلبات تحتاج إسنادًا يدويًا' : 'Orders that still need assignment'}</small>
+              </button>
+              {technicianCards.map((technician) => (
+                <button
+                  className={`dashboard-stat-link region-entry-card ${selectedTechnician === technician.id ? 'active' : ''}`}
+                  key={technician.id}
+                  type="button"
+                  onClick={() => handleRegionCardClick(technician.id)}
+                >
+                  <strong>{technician.orderCount}</strong>
+                  <span>{technician.name}</span>
+                  <small>{getTechnicianCoverageLabel(technician.zone || technician.region, lang)}</small>
+                </button>
+              ))}
+            </>
+          ) : (
+            regionCards.map((region) => (
+              <button
+                className={`dashboard-stat-link region-entry-card ${selectedTechnician === region.key ? 'active' : ''}`}
+                key={region.key}
+                type="button"
+                onClick={() => handleRegionCardClick(region.key)}
+              >
+                <strong>{region.orderCount}</strong>
+                <span>{lang === 'ar' ? region.ar : region.en}</span>
+                <small>{lang === 'ar' ? 'تجميع حسب المنطقة' : 'Grouped by region'}</small>
+              </button>
+            ))
+          )}
         </div>
+
+        {isTechnicianWorkspace && selectedTechnician === 'unassigned' ? (
+          <div className="task-mini-panel" style={{ marginTop: 16 }}>
+            <span>{t.technicianTaskSummary}</span>
+            <strong>{t.unassignedTechnician}</strong>
+            <small>{lang === 'ar' ? 'الطلبات الظاهرة هنا غير مرتبطة بأي فني حتى الآن.' : 'The visible orders here are not assigned to any technician yet.'}</small>
+          </div>
+        ) : isTechnicianWorkspace && selectedTechnicianRecord ? (
+          <div className="task-mini-panel" style={{ marginTop: 16 }}>
+            <span>{t.technicianTaskSummary}</span>
+            <strong>{selectedTechnicianRecord.name}</strong>
+            <small>
+              {[
+                `${t.technicianCoverage}: ${getTechnicianCoverageLabel(selectedTechnicianRecord.zone || selectedTechnicianRecord.region, lang)}`,
+                `${t.technicianAvailability}: ${
+                  selectedTechnicianRecord.status === 'busy'
+                    ? lang === 'ar'
+                      ? 'مشغول'
+                      : 'Busy'
+                    : lang === 'ar'
+                      ? 'متاح'
+                      : 'Available'
+                }`,
+                `${lang === 'ar' ? 'الطلبات' : 'Orders'}: ${selectedTechnicianRecord.orderCount || 0}`,
+                `${t.deviceCount}: ${selectedTechnicianRecord.devicesCount || 0}`,
+                selectedTechnicianRecord.phone
+                  ? `${t.technicianContact}: ${formatSaudiPhoneDisplay(selectedTechnicianRecord.phone)}`
+                  : selectedTechnicianRecord.email || '',
+              ]
+                .filter(Boolean)
+                .join(' • ')}
+            </small>
+            <small>
+              {selectedTechnicianRecord.activeTaskRefs?.length
+                ? `${t.technicianCurrentTasks}: ${selectedTechnicianRecord.activeTaskRefs.join(' • ')}`
+                : t.noTechnicianTasks}
+            </small>
+          </div>
+        ) : selectedRegionRecord ? (
+          <div className="task-mini-panel" style={{ marginTop: 16 }}>
+            <span>{lang === 'ar' ? 'ملخص المنطقة' : 'Area summary'}</span>
+            <strong>{lang === 'ar' ? selectedRegionRecord.ar : selectedRegionRecord.en}</strong>
+            <small>
+              {[
+                `${lang === 'ar' ? 'الطلبات' : 'Orders'}: ${selectedRegionRecord.orderCount || 0}`,
+                `${t.deviceCount}: ${technicianScopedOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0)}`,
+              ].join(' • ')}
+            </small>
+            <small>
+              {technicianScopedOrders.length
+                ? technicianScopedOrders.slice(0, 6).map((order) => getOrderPrimaryReference(order)).filter(Boolean).join(' • ')
+                : lang === 'ar'
+                  ? 'لا توجد مهام حالية في هذه المنطقة.'
+                  : 'No current tasks in this area.'}
+            </small>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel print-panel" ref={resultsSectionRef}>
@@ -699,15 +907,16 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
           )}
           renderOrderDetails={(order) => (
             <DailyTaskDetailContent
-              canContactCustomer={isOperationsManager}
+              canAssignTechnician={isTechnicianWorkspace}
               lang={lang}
-              onContactCustomer={handleContactCustomer}
+              onAssignTechnician={handleAssignTechnician}
               order={order}
               t={t}
+              technicians={technicians}
             />
           )}
           renderRowActions={
-            isOperationsManager
+            isTechnicianWorkspace
               ? (order) => (
                   <div className="order-inline-status manager-inline-status">
                     <select
@@ -742,9 +951,41 @@ export function InternalTaskPlanner({ mode = 'daily' }) {
   );
 }
 
-function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactCustomer }) {
+function DailyTaskDetailContent({ order, lang, t, canAssignTechnician, onAssignTechnician, technicians = [] }) {
+  const orderEmail = getOrderEmail(order);
+  const pickupDate = getOrderPickupDate(order);
+  const installationDate = getOrderInstallationDate(order);
+  const courier = getOrderCourier(order);
+  const courierNum = getOrderCourierNum(order);
+  const withinSLA = getOrderWithinSLA(order);
+  const exceedSLA = getOrderExceedSLA(order);
+  const techId = getOrderTechId(order);
+  const techShortName = getOrderTechShortName(order);
+  const areaName = getOrderAreaName(order);
+  const chatLog = getOrderChatLog(order);
+  const taskDate = getOrderTaskDate(order);
+
   return (
     <div className="daily-task-card drawer-task-content">
+      <div className="task-timing-grid">
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'حقول الإكسل' : 'Excel fields'}</span>
+          <strong>{getOrderReferenceText(order, lang)}</strong>
+          <small>{orderEmail || '—'}</small>
+        </div>
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'تواريخ المصدر' : 'Source dates'}</span>
+          <strong>{taskDate || installationDate || pickupDate || '—'}</strong>
+          <small>
+            {pickupDate
+              ? `${lang === 'ar' ? 'الاستلام' : 'Pickup'}: ${pickupDate}`
+              : lang === 'ar'
+                ? 'لا يوجد تاريخ استلام'
+                : 'No pickup date'}
+          </small>
+        </div>
+      </div>
+
       <div className="task-timing-grid">
         <div className="task-mini-panel">
           <span>{t.preferred}</span>
@@ -767,6 +1008,38 @@ function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactC
         <p>{order.serviceSummary || order.workType || '—'}</p>
       </div>
 
+      {(techId || techShortName || areaName) ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'إسناد الفني' : 'Technician assignment'}</span>
+          <strong>{techId || '—'}</strong>
+          <small>{[techShortName, areaName].filter(Boolean).join(' • ') || '—'}</small>
+        </div>
+      ) : null}
+
+      {(courier || courierNum) ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'بيانات الشحن' : 'Courier details'}</span>
+          <strong>{courier || '—'}</strong>
+          <small>{courierNum || '—'}</small>
+        </div>
+      ) : null}
+
+      {(withinSLA || exceedSLA) ? (
+        <div className="task-mini-panel">
+          <span>{lang === 'ar' ? 'مدة التنفيذ' : 'SLA'}</span>
+          <strong>{withinSLA || exceedSLA || '—'}</strong>
+          <small>
+            {withinSLA
+              ? lang === 'ar'
+                ? 'مكتمل ضمن المدة'
+                : 'Completed within SLA'
+              : lang === 'ar'
+                ? 'مكتمل متجاوز للمدة'
+                : 'Completed exceed SLA'}
+          </small>
+        </div>
+      ) : null}
+
       <OrderDeviceBreakdown lang={lang} order={order} title={t.devicesTitle} />
 
       <div className="task-contact-actions">
@@ -786,17 +1059,29 @@ function DailyTaskDetailContent({ order, lang, t, canContactCustomer, onContactC
             {t.map}
           </a>
         ) : null}
-        {canContactCustomer ? (
-          <button className="btn-light" type="button" onClick={() => onContactCustomer(order)}>
-            {t.contactCustomer}
-          </button>
+        {canAssignTechnician ? (
+          <select className="input compact-input order-inline-select" value={order.technicianId || ''} onChange={(event) => onAssignTechnician(order, event.target.value)}>
+            <option value="">{t.assignTechnician}</option>
+            {(technicians || []).map((technician) => (
+              <option key={technician.id} value={technician.id}>
+                {technician.name}
+              </option>
+            ))}
+          </select>
         ) : null}
       </div>
 
       {order.notes ? (
         <div className="task-mini-panel">
           <span>{t.notes}</span>
-          <strong>{order.notes}</strong>
+          <strong style={{ whiteSpace: 'pre-wrap' }}>{order.notes}</strong>
+        </div>
+      ) : null}
+
+      {chatLog ? (
+        <div className="task-mini-panel">
+          <span>Chat Log</span>
+          <strong style={{ whiteSpace: 'pre-wrap' }}>{chatLog}</strong>
         </div>
       ) : null}
 

@@ -1,153 +1,67 @@
-# عمارة النظام | System Architecture
+# System Architecture
 
-## نظرة عامة | Overview
+## Overview
 
-تطبيق Tarkeeb Pro يتبع معمارية **Microservices-ready** مع فصل واضح بين المكونات:
+المعمارية الحالية بسيطة ومباشرة:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    CLIENT LAYER                              │
-├─────────────────────┬─────────────────────────────────────┤
-│   React Web App     │    React Native Mobile App           │
-└─────────────────────┴──────────────┬──────────────────────┘
-                                     │
-                     ┌───────────────┴────────────────┐
-                     │                                 │
-                     ▼                                 ▼
-        ┌──────────────────────────┐    ┌──────────────────────────┐
-        │  FACEBOOK / APPLE AUTH   │    │   BACKEND API SERVER     │
-        │  (OAuth 2.0)             │    │   (Express.js)           │
-        │                          │    │  - User Management       │
-        └──────────────────────────┘    │  - Product Management    │
-                                        │  - Booking System        │
-                                        │  - Payment Processing    │
-                                        │  - Review System         │
-                                        └──────────────────────────┘
-                                                │
-                                ┌───────────────┼───────────────┐
-                                ▼               ▼               ▼
-                        ┌─────────────┐  ┌─────────────┐  ┌────────────┐
-                        │  MongoDB    │  │  Stripe     │  │   Firebase │
-                        │  Database   │  │  Payment    │  │ Notifications
-                        │             │  │  Gateway    │  │            │
-                        └─────────────┘  └─────────────┘  └────────────┘
+```text
+Browser / Desktop Electron
+        |
+        v
+Frontend React
+        |
+        v
+Local API server (`edge-api`, port 8787)
+        |
+        v
+Cloudflare D1
 ```
 
----
+## Main Parts
 
-## مكونات النظام | System Components
+### `frontend/`
 
-### 1. Backend (Node.js + Express)
-- **REST API** للتطبيقات الأمامية
-- **مصادقة JWT** آمنة
-- **نموذج MVC**
-- **معالجة الأخطاء** المركزية
-- **تسجيل العمليات** (Logging)
+- واجهة React للموقع الداخلي.
+- تعرض الصفحة الرئيسية، تسجيل الدخول، اللوحة، المهام، والإشعارات.
+- تبني ملف معاينة Excel ثابتًا من `data/data.xlsx` أثناء `prestart` و `prebuild`.
 
-### 2. Frontend (React)
-- **واجهة مستخدم حديثة** وتفاعلية
-- **إدارة الحالة** باستخدام Zustand
-- **نماذج** باستخدام React Hook Form
-- **تصميم الاستجابة** مع Tailwind CSS
+### `frontend/cloudflare/worker.js`
 
-### 3. Mobile (React Native)
-- **نفس منطق العمل** كـ Web
-- **تجربة محلية** متقدمة
-- **دعم الإشعارات** عبر Firebase
-- **دعم الدفع** عبر Apple Pay و Google Pay
+- يربط الواجهة على الدومين المخصص ويمرر طلبات `/api/*` إلى الـ API.
+- يطبق رؤوس الأمان مثل `CSP`, `HSTS`, `X-Frame-Options`, `nosniff`.
 
-### 4. Database (MongoDB)
-- **تخزين بيانات آمن** ومركزي
-- **نماذج مرنة** مع Mongoose
-- **مؤشرات متقدمة** للبحث السريع
-- **موثوقية عالية** وقابلية التوسع
+### `edge-api/`
 
----
+- يحتوي منطق المصادقة، إدارة الطلبات، الإشعارات، واستيراد Excel.
+- في التطوير المحلي يعمل عبر مشغّل محلي على `127.0.0.1:8787`.
+- يدعم الحساب المشترك مع تحديد الدور الفعال عبر الهيدر `X-Workspace-Role`.
 
-## تدفق البيانات | Data Flow
+### `D1`
 
-### تدفق تسجيل المستخدم | Registration Flow
-```
-1. المستخدم يملأ النموذج → Frontend
-2. التحقق من الصحة → Frontend
-3. إرسال البيانات → Backend
-4. التحقق من البريد الموجود → Database
-5. تشفير كلمة المرور → Backend
-6. حفظ المستخدم → Database
-7. إنشاء JWT Token → Backend
-8. إرجاع البيانات → Frontend
-```
+- قاعدة البيانات الوحيدة للمشروع.
+- تحتفظ بالمستخدمين، أدوار المساحات، الطلبات، الإشعارات، والفنيين.
 
-### تدفق عملية تأجير | Booking Flow
-```
-1. اختيار منتج → Frontend/Mobile
-2. اختيار التواريخ → Frontend/Mobile
-3. عرض السعر الإجمالي → Frontend/Mobile
-4. تأكيد الحجز → Frontend/Mobile
-5. معالجة الدفع → Stripe
-6. حفظ الحجز → Database
-7. إشعار المستخدم → Firebase
-8. تحديث المخزون → Database
-```
+### `supabase/`
 
----
+- هذا المسار مضاف الآن كتأسيس للانتقال المرحلي إلى `Supabase Postgres`.
+- لا يعمل بعد كقاعدة الإنتاج الحالية.
+- يحتوي config ومigrations أولية للمسارات التي كانت موجودة سابقًا في Supabase أو التي نحتاجها للانتقال التدريجي.
 
-## مسارات الـ API | API Routes
+### `desktop/`
 
-```
-Authentication:
-  POST   /api/auth/register
-  POST   /api/auth/login
-  GET    /api/auth/profile
-  PUT    /api/auth/profile
-  POST   /api/auth/refresh-token
+- غلاف Electron لنفس واجهة الويب.
+- يعتمد على ناتج `frontend/build` الذي يُنسخ إلى `desktop/app`.
 
-Products:
-  GET    /api/products (with filters)
-  GET    /api/products/:id
-  POST   /api/products (vendor only)
-  PUT    /api/products/:id (owner only)
-  DELETE /api/products/:id (owner only)
-  GET    /api/products/:id/reviews
+## Internal Flow
 
-Bookings:
-  POST   /api/bookings
-  GET    /api/bookings (user's bookings)
-  GET    /api/bookings/:id
-  PUT    /api/bookings/:id
-  DELETE /api/bookings/:id
+1. خدمة العملاء تدخل الطلب أو ترفعه من Excel.
+2. يتم حفظ الطلب داخل `service_orders`.
+3. مدير العمليات يرى الطلب في لوحته اليومية أو الرئيسية.
+4. عند تحديث الحالة أو إضافة طلب جديد، ينشأ إشعار تشغيلي موجّه للمساحة الصحيحة.
 
-Payments:
-  POST   /api/payments
-  GET    /api/payments/:id
-  POST   /api/payments/:id/refund
+## Security Model
 
-Reviews:
-  POST   /api/reviews
-  GET    /api/reviews/:productId
-  PUT    /api/reviews/:id
-  DELETE /api/reviews/:id
-```
-
----
-
-## نموذج قاعدة البيانات | Database Schema
-
-### Collections الرئيسية:
-
-1. **Users** - بيانات المستخدمين
-2. **Products** - المنتجات والخدمات
-3. **Bookings** - الطلبات
-4. **Payments** - المدفوعات
-5. **Reviews** - التقييمات
-
----
-
-## معايير الأمان | Security Standards
-
-- ✅ تشفير كلمات المرور بـ bcryptjs
-- ✅ مصادقة JWT آمنة
-- ✅ التحقق من صحة الإدخال
-- ✅ حماية CORS
-- ✅ استخدام Helmet للرؤوس الآمنة
-- ✅ دوران التوكن في الجلسات الطويلة
+- الوصول الإنتاجي يعتمد على تسجيل الدخول الداخلي للمستخدمين وصلاحيات الأدوار داخل الـ API.
+- الواجهة المبنية في الإنتاج لا تنشر source maps.
+- الاعتماد الوحيد للبيانات هو `D1`.
+- يوجد الآن هدف migration جديد موثق في [SUPABASE_MIGRATION.md](/home/bobby/Desktop/rentit/docs/SUPABASE_MIGRATION.md)، لكن التشغيل الفعلي لم يُحوّل بعد.

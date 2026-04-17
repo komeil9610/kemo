@@ -3,6 +3,13 @@
   "name": "tarkeeb-pro-monorepo",
   "type": "module",
   "scripts": {
-    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs"
+    "dev:backend": "npm --prefix edge-api run dev",
+    "dev:frontend": "npm --prefix frontend start",
+    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs",
+    "supabase:start": "npx supabase start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:link": "npx supabase link",
+    "supabase:db:push": "npx supabase db push",
+    "supabase:db:pull": "npx supabase db pull"
   }
 }

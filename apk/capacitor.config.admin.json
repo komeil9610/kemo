@@ -1,9 +1,0 @@
-{
-  "appId": "com.tarkeebpro.admin",
-  "appName": "Tarkeeb Pro Admin",
-  "webDir": "www",
-  "server": {
-    "url": "https://tarkeeb-pro-frontend.bobkumeel.workers.dev/mobile/admin",
-    "androidScheme": "https"
-  }
-}

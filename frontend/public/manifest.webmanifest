@@ -1,13 +1,13 @@
 {
-  "name": "Tarkeeb Pro Internal",
-  "short_name": "Tarkeeb Pro",
+  "name": "تركيب برو | TrkeebPro",
+  "short_name": "TrkeebPro",
   "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f5f1e8",
   "theme_color": "#d96b27",
-  "description": "Internal workspace for customer service, the operations manager, and regional accounts.",
+  "description": "تركيب برو | TrkeebPro لخدمات تركيب وصيانة المكيفات باحترافية عالية وخدمة سريعة.",
   "lang": "ar",
   "icons": [
     {
@@ -19,23 +19,23 @@
   ],
   "shortcuts": [
     {
-      "name": "Login",
-      "short_name": "Login",
+      "name": "تسجيل الدخول",
+      "short_name": "دخول",
       "url": "/login"
     },
     {
-      "name": "Regional workspace",
-      "short_name": "Regions",
+      "name": "المناطق",
+      "short_name": "المناطق",
       "url": "/regions"
     },
     {
-      "name": "Customer service",
-      "short_name": "Customer",
+      "name": "خدمة العملاء",
+      "short_name": "العملاء",
       "url": "/customer-service"
     },
     {
-      "name": "Operations manager",
-      "short_name": "Operations",
+      "name": "مدير العمليات",
+      "short_name": "العمليات",
       "url": "/operations-manager"
     }
   ]

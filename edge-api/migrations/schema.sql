@@ -12,6 +12,16 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
+CREATE TABLE IF NOT EXISTS user_workspace_roles (
+  user_id INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, role),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_workspace_roles_role ON user_workspace_roles(role);
+
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   owner_user_id INTEGER,
@@ -50,7 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 
 CREATE TABLE IF NOT EXISTS footer_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
-  about_text TEXT NOT NULL DEFAULT 'Tarkeeb Pro منصة موثوقة لإدارة طلبات التركيب والفنيين بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
+  about_text TEXT NOT NULL DEFAULT 'TrkeebPro منصة موثوقة لإدارة طلبات التركيب والفنيين بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
   useful_links_json TEXT NOT NULL DEFAULT '[]',
   customer_service_links_json TEXT NOT NULL DEFAULT '[]',
   social_links_json TEXT NOT NULL DEFAULT '[]',
@@ -68,23 +78,23 @@ INSERT INTO footer_settings (
 )
 VALUES (
   1,
-  'Tarkeeb Pro منصة موثوقة لإدارة طلبات التركيب والفنيين بسهولة واحترافية، مع تجربة استخدام مرنة ودعم سريع للعملاء.',
-  '[{"label":"الرئيسية","url":"/"},{"label":"المنتجات","url":"/products"},{"label":"طلباتي","url":"/orders"}]',
-  '[{"label":"الدعم","url":"tel:+966558232644"},{"label":"واتساب","url":"https://wa.me/966558232644"},{"label":"اتصل بنا","url":"tel:+966558232644"}]',
-  '[{"platform":"instagram","url":"https://instagram.com/tarkeebpro"},{"platform":"x","url":"https://x.com/tarkeebpro"},{"platform":"linkedin","url":"https://linkedin.com/company/tarkeebpro"}]',
-  'جميع الحقوق محفوظة لكميل'
+  'تركيب برو لخدمات تركيب وصيانة المكيفات بخبرة عالية، سرعة في الوصول، وضمان على جودة العمل.',
+  '[{"label":"Home","url":"/"},{"label":"Login","url":"/login"}]',
+  '[{"label":"Support","url":"tel:0551153304"},{"label":"WhatsApp","url":"https://wa.me/966551153304"},{"label":"Call us","url":"tel:0551153304"}]',
+  '[{"platform":"whatsapp","url":"https://wa.me/966551153304"}]',
+  '© 2026 TrkeebPro'
 )
 ON CONFLICT(id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS home_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
-  hero_kicker TEXT NOT NULL DEFAULT 'Tarkeeb Pro Operations',
-  hero_title TEXT NOT NULL DEFAULT 'Manage customer service and operations from one internal system.',
-  hero_subtitle TEXT NOT NULL DEFAULT 'Dedicated workspaces for customer service and the operations manager.',
-  primary_button_text TEXT NOT NULL DEFAULT 'Sign in',
-  primary_button_url TEXT NOT NULL DEFAULT '/login',
-  secondary_button_text TEXT NOT NULL DEFAULT 'Open login',
-  secondary_button_url TEXT NOT NULL DEFAULT '/login',
+  hero_kicker TEXT NOT NULL DEFAULT 'تركيب برو',
+  hero_title TEXT NOT NULL DEFAULT 'تركيب وصيانة المكيفات باحترافية عالية',
+  hero_subtitle TEXT NOT NULL DEFAULT 'خدمة سريعة | أسعار منافسة | ضمان على العمل',
+  primary_button_text TEXT NOT NULL DEFAULT 'احجز الآن',
+  primary_button_url TEXT NOT NULL DEFAULT '#contact',
+  secondary_button_text TEXT NOT NULL DEFAULT 'تواصل عبر واتساب',
+  secondary_button_url TEXT NOT NULL DEFAULT 'https://wa.me/966551153304',
   stats_json TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -102,14 +112,14 @@ INSERT INTO home_settings (
 )
 VALUES (
   1,
-  'Tarkeeb Pro Operations',
-  'Manage customer service and operations from one internal system.',
-  'Dedicated workspaces for customer service and the operations manager.',
-  'Sign in',
-  '/login',
-  'Open login',
-  '/login',
-  '[{"value":"2","label":"Office roles"},{"value":"1","label":"Unified operations system"},{"value":"Instant","label":"Live coordination"}]'
+  'تركيب برو',
+  'تركيب وصيانة المكيفات باحترافية عالية',
+  'خدمة سريعة | أسعار منافسة | ضمان على العمل',
+  'احجز الآن',
+  '#contact',
+  'تواصل عبر واتساب',
+  'https://wa.me/966551153304',
+  '{"contentVersion":2,"heroNote":"متخصصون في تركيب وصيانة جميع أنواع المكيفات بخبرة عالية وفريق فني محترف، مع اهتمام بالتفاصيل وسرعة في التنفيذ.","heroHighlights":["خدمة سريعة","أسعار منافسة","ضمان على العمل"],"stats":[{"value":"6","label":"خدمات رئيسية"},{"value":"24/7","label":"استجابة سريعة"},{"value":"100%","label":"اهتمام بالنظافة والجودة"}],"aboutTitle":"من نحن","aboutText":"نحن في \"تركيب برو\" متخصصون في تركيب وصيانة جميع أنواع المكيفات، بخبرة عالية وفريق فني محترف. نضمن لك جودة العمل وسرعة التنفيذ بأفضل الأسعار.","servicesTitle":"خدماتنا","services":["تركيب مكيفات سبليت","تركيب مكيفات شباك","فك ونقل المكيفات","صيانة وتنظيف المكيفات","تعبئة فريون","كشف الأعطال"],"featuresTitle":"لماذا تختارنا؟","features":["فنيين محترفين","سرعة في الوصول","أسعار مناسبة","ضمان على الخدمة","خدمة عملاء ممتازة"],"galleryTitle":"أعمالنا","galleryImages":[{"title":"تركيب احترافي","caption":"تنفيذ مرتب واهتمام كامل بالتفاصيل وجودة التشطيب.","imageUrl":"/home-gallery-1.jpg"},{"title":"خدمة ميدانية سريعة","caption":"وصول سريع وتجهيز كامل لخدمة جميع أنواع المكيفات.","imageUrl":"/home-gallery-2.webp"},{"title":"صيانة وتنظيف","caption":"حلول صيانة وتنظيف تعيد كفاءة التبريد وتحافظ على عمر الجهاز.","imageUrl":"/home-gallery-3.jpg"}],"testimonialsTitle":"آراء العملاء","testimonials":["خدمة ممتازة وسريعة، أنصح فيهم","أسعارهم مناسبة وشغلهم نظيف"],"contactTitle":"تواصل معنا","phone":"0551153304","whatsappNumber":"0551153304","coverageText":"نخدم جميع مناطق المملكة","hoursText":"يتم تحديد ساعات العمل لاحقًا"}'
 )
 ON CONFLICT(id) DO NOTHING;
 
@@ -119,6 +129,7 @@ CREATE TABLE IF NOT EXISTS technicians (
   name TEXT NOT NULL,
   phone TEXT NOT NULL,
   zone TEXT NOT NULL,
+  coverage_json TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'available',
   notes TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -252,6 +263,10 @@ CREATE TABLE IF NOT EXISTS service_order_photos (
 
 CREATE INDEX IF NOT EXISTS idx_service_order_photos_order_id ON service_order_photos(order_id);
 
+-- Recreate notifications to keep the local bootstrap compatible with older dev databases
+-- that were created before `target_role` existed.
+DROP TABLE IF EXISTS notifications;
+
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -259,6 +274,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   body TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT 'info',
   related_order_id INTEGER,
+  target_role TEXT NOT NULL DEFAULT '',
   is_read INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -267,16 +283,172 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_target_role ON notifications(target_role);
+
+CREATE TABLE IF NOT EXISTS import_jobs (
+  id TEXT PRIMARY KEY,
+  file_name TEXT NOT NULL DEFAULT 'Excel',
+  status TEXT NOT NULL DEFAULT 'pending',
+  orders_json TEXT NOT NULL DEFAULT '[]',
+  total_rows INTEGER NOT NULL DEFAULT 0,
+  processed_rows INTEGER NOT NULL DEFAULT 0,
+  imported_count INTEGER NOT NULL DEFAULT 0,
+  created_count INTEGER NOT NULL DEFAULT 0,
+  updated_count INTEGER NOT NULL DEFAULT 0,
+  archived_count INTEGER NOT NULL DEFAULT 0,
+  restored_count INTEGER NOT NULL DEFAULT 0,
+  unchanged_count INTEGER NOT NULL DEFAULT 0,
+  skipped_count INTEGER NOT NULL DEFAULT 0,
+  skipped_orders_json TEXT NOT NULL DEFAULT '[]',
+  last_error TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER,
+  created_by_role TEXT NOT NULL DEFAULT '',
+  started_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_created_by_user_id ON import_jobs(created_by_user_id);
+
+CREATE TABLE IF NOT EXISTS import_previews (
+  id TEXT PRIMARY KEY,
+  file_name TEXT NOT NULL DEFAULT 'Excel',
+  orders_json TEXT NOT NULL DEFAULT '[]',
+  created_by_user_id INTEGER,
+  created_by_role TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_previews_created_by_user_id ON import_previews(created_by_user_id);
+
+CREATE TABLE IF NOT EXISTS import_job_chunks (
+  job_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  orders_json TEXT NOT NULL DEFAULT '[]',
+  processed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (job_id, chunk_index),
+  FOREIGN KEY (job_id) REFERENCES import_jobs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_job_chunks_job_id_processed_at
+  ON import_job_chunks(job_id, processed_at, chunk_index);
 
 INSERT INTO users (name, email, password_hash, role, status)
 VALUES
-  ('خدمة العملاء', 'customer-service@tarkeebpro.sa', '70b4b3f2bbc28083db439cac1d94b3d85d41a3e5135faadc45deee8ff6974a29', 'customer_service', 'active'),
-  ('مدير العمليات', 'operations@tarkeebpro.sa', '7c31f434dcc0dfe876cdb3be7905406e0b0ea8a73e91e0ee48f4f855730e23fe', 'operations_manager', 'active')
+  ('كميل', 'bobmorgann2@gmail.com', '229736ba52217be12f8df873c543fe7919be6a85d5097eb2b320c3b8a6ce2d74', 'admin', 'active'),
+  ('مدير العمليات', 'tarkeebpro@gmail.com', 'b93774e2aac1f0ab87d56f366cb71f0294def963bf2e4711cd69ea1c500868ea', 'operations_manager', 'active')
 ON CONFLICT(email) DO UPDATE SET
   name = excluded.name,
   password_hash = excluded.password_hash,
   role = excluded.role,
   status = excluded.status;
+
+DELETE FROM user_workspace_roles
+WHERE user_id = (SELECT id FROM users WHERE email = 'bobmorgann2@gmail.com')
+  AND role != 'admin';
+
+DELETE FROM user_workspace_roles
+WHERE user_id = (SELECT id FROM users WHERE email = 'tarkeebpro@gmail.com')
+  AND role != 'operations_manager';
+
+INSERT INTO user_workspace_roles (user_id, role)
+SELECT id, 'admin'
+FROM users
+WHERE email = 'bobmorgann2@gmail.com'
+ON CONFLICT(user_id, role) DO NOTHING;
+
+INSERT INTO user_workspace_roles (user_id, role)
+SELECT id, 'operations_manager'
+FROM users
+WHERE email = 'tarkeebpro@gmail.com'
+ON CONFLICT(user_id, role) DO NOTHING;
+
+INSERT INTO users (name, email, password_hash, role, status)
+VALUES
+  ('W-J', 'bobmorgann1@gmail.com', '014fb23ca400e9b781a4c7d58819afd151a09868810ce87c4f3b488ea957ace0', 'technician', 'active'),
+  ('D-M', 'bobmorgann112@gmail.com', 'cb9c523529ce2100b9824ba6056e2c6e52d80a14731efd3faba420bc93714ddf', 'technician', 'active'),
+  ('H-R', 'komeil9060@gmail.com', '65372a102dacefd81cc5d1a3cb826a9126b61407e5b81fda1699b6e54403365f', 'technician', 'active'),
+  ('R-A', 'r-a@tarkeebpro.internal', '1e68512df903d3ec75cfd23c8e7e474aadbdedfdca814b1e27cd14acd953ff1f', 'technician', 'active'),
+  ('H-G', 'h-g@tarkeebpro.internal', 'dfaf35533790e6dbf229106b6f2882e0d5f084c26adbf634860ed1990ead11bb', 'technician', 'active'),
+  ('A-D', 'a-d@tarkeebpro.internal', 'a31fb640923267e4dfde4887b4a4df251bf4d1627a4627fbe39f130ef6d41299', 'technician', 'active')
+ON CONFLICT(email) DO UPDATE SET
+  name = excluded.name,
+  password_hash = excluded.password_hash,
+  role = excluded.role,
+  status = excluded.status;
+
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'W-J', '0500000001', 'east', 'available', 'الفني W-J'
+FROM users
+WHERE email = 'bobmorgann1@gmail.com'
+ON CONFLICT(user_id) DO UPDATE SET
+  name = excluded.name,
+  phone = excluded.phone,
+  zone = excluded.zone,
+  status = excluded.status,
+  notes = excluded.notes;
+
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'D-M', '0500000002', 'east', 'available', 'الفني D-M'
+FROM users
+WHERE email = 'bobmorgann112@gmail.com'
+ON CONFLICT(user_id) DO UPDATE SET
+  name = excluded.name,
+  phone = excluded.phone,
+  zone = excluded.zone,
+  status = excluded.status,
+  notes = excluded.notes;
+
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'H-R', '0500000003', 'west', 'available', 'الفني H-R'
+FROM users
+WHERE email = 'komeil9060@gmail.com'
+ON CONFLICT(user_id) DO UPDATE SET
+  name = excluded.name,
+  phone = excluded.phone,
+  zone = excluded.zone,
+  status = excluded.status,
+  notes = excluded.notes;
+
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'R-A', '0500000004', 'central', 'available', 'الفني R-A'
+FROM users
+WHERE email = 'r-a@tarkeebpro.internal'
+ON CONFLICT(user_id) DO UPDATE SET
+  name = excluded.name,
+  phone = excluded.phone,
+  zone = excluded.zone,
+  status = excluded.status,
+  notes = excluded.notes;
+
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'H-G', '0500000005', 'south', 'available', 'الفني H-G'
+FROM users
+WHERE email = 'h-g@tarkeebpro.internal'
+ON CONFLICT(user_id) DO UPDATE SET
+  name = excluded.name,
+  phone = excluded.phone,
+  zone = excluded.zone,
+  status = excluded.status,
+  notes = excluded.notes;
+
+INSERT INTO technicians (user_id, name, phone, zone, status, notes)
+SELECT id, 'A-D', '0500000006', 'central', 'available', 'الفني A-D'
+FROM users
+WHERE email = 'a-d@tarkeebpro.internal'
+ON CONFLICT(user_id) DO UPDATE SET
+  name = excluded.name,
+  phone = excluded.phone,
+  zone = excluded.zone,
+  status = excluded.status,
+  notes = excluded.notes;
 
 -- Push Notification Subscriptions
 CREATE TABLE IF NOT EXISTS push_subscriptions (

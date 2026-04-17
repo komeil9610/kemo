@@ -40,10 +40,29 @@ const removeStorage = (key) => {
 };
 
 const normalizeRole = (role) => {
-  if (role === 'admin') {
+  return role || '';
+};
+
+const normalizeWorkspaceRoles = (roles = [], fallbackRole = '') => {
+  const merged = [...(Array.isArray(roles) ? roles : [roles]), fallbackRole]
+    .map((role) => normalizeRole(role))
+    .filter(Boolean);
+  return [...new Set(merged)];
+};
+
+const resolveWorkspaceRole = (requestedRole, roles = [], fallbackRole = '') => {
+  const workspaceRoles = normalizeWorkspaceRoles(roles, fallbackRole);
+  const normalizedRequestedRole = normalizeRole(requestedRole);
+  if (normalizedRequestedRole && workspaceRoles.includes(normalizedRequestedRole)) {
+    return normalizedRequestedRole;
+  }
+  if (workspaceRoles.includes('admin')) {
+    return 'admin';
+  }
+  if (workspaceRoles.includes('operations_manager')) {
     return 'operations_manager';
   }
-  return role || '';
+  return workspaceRoles[0] || '';
 };
 
 const normalizeUser = (user) => {
@@ -51,9 +70,12 @@ const normalizeUser = (user) => {
     return null;
   }
 
+  const workspaceRoles = normalizeWorkspaceRoles(user.workspaceRoles || user.roles, user.role);
+
   return {
     ...user,
-    role: normalizeRole(user.role),
+    role: resolveWorkspaceRole(user.role, workspaceRoles, user.role),
+    workspaceRoles,
   };
 };
 
@@ -91,11 +113,18 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('auth-invalidated', handleInvalidSession);
   }, []);
 
-  const login = async (email, password) => {
+  const persistAuthState = (nextToken, nextUser) => {
+    setToken(nextToken);
+    setUser(nextUser);
+    writeStorage('authToken', nextToken);
+    writeStorage('authUser', JSON.stringify(nextUser));
+  };
+
+  const login = async (email, password, workspaceRole = '') => {
     try {
       setLoading(true);
       setError(null);
-      const response = await authService.login(email, password);
+      const response = await authService.login(email, password, workspaceRole);
       const nextToken = response.data?.token;
       const nextUser = normalizeUser(response.data?.user);
 
@@ -103,10 +132,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Login response is incomplete');
       }
 
-      setToken(nextToken);
-      setUser(nextUser);
-      writeStorage('authToken', nextToken);
-      writeStorage('authUser', JSON.stringify(nextUser));
+      persistAuthState(nextToken, nextUser);
       return nextUser;
     } catch (err) {
       const message = err?.response?.data?.message || err.message || 'Sign in failed';
@@ -126,30 +152,49 @@ export const AuthProvider = ({ children }) => {
     authService.logout();
   };
 
+  const setActiveRole = (nextRole) => {
+    setUser((current) => {
+      const normalizedCurrent = normalizeUser(current);
+      if (!normalizedCurrent) {
+        return current;
+      }
+
+      const resolvedRole = resolveWorkspaceRole(nextRole, normalizedCurrent.workspaceRoles, normalizedCurrent.role);
+      if (!resolvedRole || resolvedRole === normalizedCurrent.role) {
+        return normalizedCurrent;
+      }
+
+      const nextUser = {
+        ...normalizedCurrent,
+        role: resolvedRole,
+      };
+      writeStorage('authUser', JSON.stringify(nextUser));
+      return nextUser;
+    });
+  };
+
   const permissions = useMemo(
     () => ({
-      canCreateOrders: user?.role === 'customer_service',
-      canManageStatuses: user?.role === 'operations_manager',
-      canViewBoard: ['customer_service', 'operations_manager'].includes(user?.role),
-      canManageSystem: user?.role === 'operations_manager',
+      canCreateOrders: ['admin', 'customer_service'].includes(user?.role),
+      canManageStatuses: ['admin', 'operations_manager', 'technician'].includes(user?.role),
+      canViewBoard: ['admin', 'customer_service', 'operations_manager', 'technician'].includes(user?.role),
+      canManageSystem: user?.role === 'admin',
     }),
     [user?.role]
   );
 
-  const value = useMemo(
-    () => ({
-      user,
-      token,
-      loading,
-      error,
-      login,
-      logout,
-      register: async () => false,
-      permissions,
-      isAdmin: user?.role === 'operations_manager',
-    }),
-    [error, loading, permissions, token, user]
-  );
+  const value = {
+    user,
+    token,
+    loading,
+    error,
+    login,
+    setActiveRole,
+    logout,
+    register: async () => false,
+    permissions,
+    isAdmin: user?.role === 'admin',
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "npm run dev:local",
+    "dev:local": "node ./scripts/start-local-backend.mjs",
+    "dev:wrangler": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 execute tarkeeb_pro_db --local --file=./migrations/schema.sql",
     "db:migrate:remote": "wrangler d1 execute tarkeeb_pro_db --remote --file=./migrations/schema.sql",
-    "db:sync:supabase": "node ./scripts/sync-d1-to-supabase.mjs",
     "admin:sql": "node ./scripts/generate-admin-sql.mjs"
   },
   "devDependencies": {

@@ -1,19 +1,11 @@
-# Frontend - Tarkeeb Pro Internal
+# Frontend
 
-واجهة React الحالية مخصصة بالكامل للنظام الداخلي بين خدمة العملاء ومدير العمليات.
-
-الواجهة تركز على:
-
-- الصفحة الرئيسية التعريفية
-- تسجيل الدخول الداخلي
-- لوحة موحدة لإدارة الطلبات
-- عرض الطلبات الكبيرة بشكل بصري وواضح
-
----
+واجهة React الحالية تدير المسار الداخلي بين خدمة العملاء ومدير العمليات فقط.
 
 ## التشغيل
 
 ```bash
+cd frontend
 npm install
 npm start
 ```
@@ -24,47 +16,43 @@ npm start
 npm run build
 ```
 
-## النشر على Cloudflare
+أثناء `prestart` و `prebuild` يتم توليد ملف المعاينة من:
+
+- `../data/data.xlsx`
+
+وينتج عنه:
+
+- `public/excel-import/orders.json`
+
+## النشر
 
 ```bash
 npm run cf:deploy
 ```
 
----
+قبل النشر الإنتاجي:
+
+- اضبط `API_ORIGIN` الصحيح في [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml)
+- البناء الإنتاجي يعطل source maps
 
 ## الصفحات الأساسية
 
 - `src/pages/Home.jsx`
-  الصفحة الرئيسية التي تشرح قيمة النظام الجديدة وكيف يسهّل العمل على خدمة العملاء ومدير العمليات.
-
 - `src/pages/Login.jsx`
-  بوابة الدخول الداخلية.
-
 - `src/pages/Dashboard.jsx`
-  لوحة الطلبات الموحدة بنمط `Kanban`.
+- `src/pages/InternalDailyTasks.jsx`
+- `src/pages/InternalWeeklyTasks.jsx`
+- `src/pages/InternalMonthlyTasks.jsx`
+- `src/pages/OperationsDatePage.jsx`
 
----
+## الدخول
 
-## ما الذي تغير عن النسخة السابقة؟
+الحساب المعتمد:
 
-- لم تعد الواجهة موجهة لتجربة فنيين أو منتجات أو حجوزات عامة
-- التركيز أصبح على إنشاء الطلب ومتابعته داخلياً
-- النصوص والرحلة البصرية أصبحت مصممة لتوضيح سهولة إدارة الطلبات الهائلة
+- `bobmorgann2@gmail.com`
+- `Komeil9610@@@`
 
----
+والواجهة تدعم التبديل بين:
 
-## التكامل
-
-الواجهة تعمل مع:
-
-- `frontend/src/services/api.js`
-  وضع محلي fallback
-
-- `edge-api/src/index.js`
-  واجهات API الفعلية خلف Cloudflare
-
----
-
-## حسابات التشغيل
-
-الواجهة لم تعد تعرض بيانات دخول تجريبية. أنشئ حسابات التشغيل الفعلية من `edge-api/scripts/generate-admin-sql.mjs` ثم استخدمها لتسجيل الدخول.
+- `customer_service`
+- `operations_manager`
