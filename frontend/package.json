@@ -41,8 +41,6 @@
     "test": "next test",
     "lint": "next lint",
     "format": "prettier --write ."
-  }
-}
   },
   "browserslist": {
     "production": [
