@@ -1,8 +1,7 @@
 {
   "name": "tarkeeb-pro-frontend",
   "version": "1.0.0",
-  "description": "Tarkeeb Pro Frontend - React Web Application",
-  "homepage": ".",
+  "description": "Tarkeeb Pro Frontend - Next.js Web Application",
   "private": true,
   "dependencies": {
     "@capacitor/core": "^8.3.0",
@@ -12,13 +11,13 @@
     "axios": "^1.4.0",
     "date-fns": "^2.29.3",
     "html2pdf.js": "^0.14.0",
+    "next": "^14.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.43.0",
     "react-hot-toast": "^2.4.0",
     "react-icons": "^4.8.0",
     "react-query": "^3.39.3",
-    "react-router-dom": "^6.10.0",
     "tailwindcss": "^3.3.0",
     "xlsx": "^0.18.5",
     "zustand": "^4.3.7"
@@ -26,28 +25,24 @@
   "devDependencies": {
     "cross-env": "^7.0.3",
     "eslint": "^8.40.0",
-    "prettier": "^2.8.8",
-    "react-scripts": "5.0.1",
-    "wrangler": "^4.39.0"
+    "eslint-config-next": "^14.0.0",
+    "prettier": "^2.8.8"
   },
   "scripts": {
     "prepare:excel-import": "node ../scripts/generate-excel-import-asset.mjs",
-    "prestart": "npm run prepare:excel-import",
+    "predev": "npm run prepare:excel-import",
     "prebuild": "npm run prepare:excel-import",
-    "start": "react-scripts start",
-    "build": "cross-env GENERATE_SOURCEMAP=false react-scripts build && node scripts/inline-build-assets.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "cf:build": "npm run build",
     "cf:deploy": "npm run build && wrangler deploy",
     "cf:dev": "npm run build && wrangler dev",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "lint": "eslint src/",
-    "format": "prettier --write src/"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
+    "test": "next test",
+    "lint": "next lint",
+    "format": "prettier --write ."
+  }
+}
   },
   "browserslist": {
     "production": [
