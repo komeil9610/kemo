@@ -7,7 +7,7 @@ const nextConfig = {
     appDir: false,
   },
 
-  trailingSlash: true,
+  trailingSlash: false,
 
   api: {
     bodyParser: {
