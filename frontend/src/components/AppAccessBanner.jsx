@@ -61,7 +61,7 @@ export default function AppAccessBanner() {
         ? {
             title: 'ثبت النظام على جوالك وفعّل التنبيهات',
             subtitle:
-              'افتحه كتطبيق من الشاشة الرئيسية حتى تصل تحديثات الطلبات بسرعة إلى خدمة العملاء ومدير العمليات وحسابات المناطق.',
+              'افتحه كتطبيق من الشاشة الرئيسية حتى تصل تحديثات الطلبات بسرعة إلى الإدارة ومدير العمليات والحسابات الداخلية.',
             install: 'إضافة إلى الشاشة',
             enableAlerts: 'تفعيل الإشعارات',
             close: 'إخفاء',
@@ -78,7 +78,7 @@ export default function AppAccessBanner() {
         : {
             title: 'Install the workspace and enable alerts',
             subtitle:
-              'Open it like a phone app so order updates reach customer service and operations faster.',
+              'Open it like a phone app so order updates reach admin and operations faster.',
             install: 'Add to home screen',
             enableAlerts: 'Enable notifications',
             close: 'Hide',

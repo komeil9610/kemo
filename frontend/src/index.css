@@ -1029,8 +1029,6 @@ textarea {
   border: 1px solid rgba(217, 107, 39, 0.16);
 }
 
-<<<<<<< Updated upstream
-=======
 .btn-language-compact {
   min-height: 38px;
   padding: 8px 12px;
@@ -1194,8 +1192,6 @@ textarea {
   align-items: center;
   justify-content: center;
 }
-
->>>>>>> Stashed changes
 .user-chip,
 .status-badge {
   border-radius: 999px;

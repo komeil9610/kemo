@@ -8,7 +8,7 @@ export default function ProtectedRoute({ children, adminOnly = false, allowedRol
   const workspaceRoles = Array.isArray(user?.workspaceRoles) ? user.workspaceRoles : [];
   const adminCanAccess =
     user?.role === 'admin' &&
-    allowedRoles.some((role) => ['admin', 'customer_service', 'operations_manager'].includes(role));
+    allowedRoles.some((role) => ['admin', 'operations_manager'].includes(role));
   const matchedRole =
     allowedRoles.length === 0
       ? user?.role

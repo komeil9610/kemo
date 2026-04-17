@@ -22,12 +22,10 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "capacitor://localhost",
 ];
 
-const LOGIN_EMAIL_ALIASES = new Map([
-  ["bobomorgann2@gmail.com", "bobmorgann2@gmail.com"],
-]);
+const LOGIN_EMAIL_ALIASES = new Map([]);
 const PRIVILEGED_INTERNAL_EMAILS = new Map([
-  ["bobmorgann2@gmail.com", ["admin", "customer_service", "operations_manager"]],
-  ["bobomorgann2@gmail.com", ["admin", "customer_service", "operations_manager"]],
+  ["komeil9610@gmail.com", ["admin"]],
+  ["kumeelalnahab@gmail.com", ["operations_manager"]],
 ]);
 
 const DEFAULT_PRODUCT_IMAGE =
@@ -490,8 +488,8 @@ async function sendInboundEmailAlert(message, env, recipients = []) {
 function getWorkspacePathForRole(role) {
   return {
     admin: "/admin",
-    customer_service: "/customer-service",
     operations_manager: "/operations-manager",
+    technician: "/technician",
   }[String(role || "").trim()] || "/login";
 }
 
@@ -695,7 +693,18 @@ async function login(request, env) {
   const technician =
     ["technician"].includes(normalizeServerRole(user.role))
       ? await env.DB.prepare(
-          "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
+          `SELECT
+             id,
+             user_id,
+             name,
+             phone,
+             zone,
+             coverage_json,
+             status,
+             COALESCE(notes, '') AS notes,
+             COALESCE(excel_technician_code, '') AS excel_technician_code
+           FROM technicians
+           WHERE user_id = ?`
         )
           .bind(Number(user.id))
           .first()
@@ -1727,28 +1736,6 @@ async function createServiceOrder(request, env) {
     return json({ message: normalized.error }, 400, request, env);
   }
 
-<<<<<<< Updated upstream
-  const referenceRegistry = await readServiceOrderReferenceRegistry(env);
-  const duplicateReference = findDuplicateOrderReference(referenceRegistry, normalized);
-  if (duplicateReference) {
-    return json({ message: buildDuplicateOrderMessage(duplicateReference) }, 409, request, env);
-  }
-
-  const createdOrderId = await insertServiceOrderRecord(env, normalized, Number(csr.sub), {
-    actor: "customer_service",
-    message: `تم إنشاء الطلب ${normalized.requestNumber} وإرساله إلى مدير العمليات${normalized.deliveryType !== "none" ? ` مع ${normalized.deliveryType === "express_24h" ? "توصيل سريع" : "طلب توصيل"}` : ""}.`,
-  });
-
-  await notifyUsersByRoles(
-    env,
-    ["operations_manager"],
-    normalized.deliveryType === "none" ? "طلب جديد بانتظار العمليات" : "طلب توصيل بأولوية قصوى",
-    normalized.deliveryType === "none"
-      ? `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويحتاج إلى المتابعة.`
-      : `تم إنشاء الطلب رقم ${normalized.requestNumber} للعميل ${normalized.customerName} ويتضمن ${normalized.deliveryType === "express_24h" ? "توصيلاً سريعاً خلال 24 ساعة" : "توصيلاً"} ويحتاج إلى متابعة عاجلة.`,
-    createdOrderId
-  );
-=======
   const registry = await readServiceOrderReferenceRegistry(env, null, { includeArchived: true });
   const conflict = findDuplicateOrderReference(registry, normalized);
   if (conflict) {
@@ -1768,7 +1755,6 @@ async function createServiceOrder(request, env) {
   if (!orderId) {
     return json({ message: "Failed to create manual order" }, 500, request, env);
   }
->>>>>>> Stashed changes
 
   await notifyOperationsManagersAboutNewOrder(env, normalized, orderId);
   await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId);
@@ -1784,12 +1770,6 @@ async function createServiceOrder(request, env) {
   );
 }
 
-<<<<<<< Updated upstream
-async function importServiceOrders(request, env) {
-  const csr = await requireRoles(request, env, ["customer_service"]);
-  if (!csr) {
-    return json({ message: "Customer service access required" }, 403, request, env);
-=======
 function resolveImportActorRole(actor = {}) {
   const normalizedActorRole = normalizeServerRole(actor.role);
   return normalizedActorRole === "admin"
@@ -1847,7 +1827,6 @@ async function readImportPreviewById(env, previewId) {
   const row = await env.DB.prepare("SELECT * FROM import_previews WHERE id = ?").bind(String(previewId || "")).first();
   if (!row) {
     return null;
->>>>>>> Stashed changes
   }
 
   return {
@@ -1865,14 +1844,6 @@ async function enqueueImportJobIfSupported(env, jobId) {
     return false;
   }
 
-<<<<<<< Updated upstream
-  const existingReferences = await readServiceOrderReferenceRegistry(env);
-  const seenRequestNumbers = new Set();
-  const seenSoIds = new Set();
-  const seenWoIds = new Set();
-  const validOrders = [];
-  const skippedOrders = [];
-=======
   await queue.send({
     jobId: String(jobId || "").trim(),
     queuedAt: new Date().toISOString(),
@@ -1999,9 +1970,9 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
   const sourceFileName = String(options.fileName || "Excel").trim() || "Excel";
   const notify = options.notify !== false;
   const existingReferences = await readServiceOrderReferenceRegistry(env, null, { includeArchived: true });
+  const technicianCodeLookup = await readTechnicianExcelCodeLookup(env);
   const workingRegistry = {
     requestNumbers: new Map(existingReferences.requestNumbers),
-    idRefs: new Map(existingReferences.idRefs),
     soIds: new Map(existingReferences.soIds),
     woIds: new Map(existingReferences.woIds),
   };
@@ -2012,7 +1983,6 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
   let restoredCount = 0;
   let unchangedCount = 0;
   const actorRole = resolveImportActorRole(actor);
->>>>>>> Stashed changes
 
   for (const item of Array.isArray(rawOrders) ? rawOrders : []) {
     const normalized = normalizeServiceOrderInput(item);
@@ -2026,57 +1996,6 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
       continue;
     }
 
-<<<<<<< Updated upstream
-    if (normalized.importStatus === "completed") {
-      skippedOrders.push({
-        requestNumber: normalized.requestNumber,
-        reason: "Completed Excel orders are ignored and not uploaded",
-      });
-      continue;
-    }
-
-    const refs = readServiceOrderReferenceIds(normalized);
-    const requestKey = normalizeOrderReferenceKey(refs.requestNumber);
-    const soKey = normalizeOrderReferenceKey(refs.soId);
-    const woKey = normalizeOrderReferenceKey(refs.woId);
-
-    if (!requestKey || seenRequestNumbers.has(requestKey)) {
-      skippedOrders.push({
-        requestNumber: refs.requestNumber || requestNumber,
-        reason: "Duplicate request number inside the Excel import batch",
-      });
-      continue;
-    }
-
-    if (soKey && seenSoIds.has(soKey)) {
-      skippedOrders.push({
-        requestNumber: refs.requestNumber || requestNumber,
-        reason: `Duplicate SO ID inside the Excel import batch: ${refs.soId}`,
-      });
-      continue;
-    }
-
-    if (woKey && seenWoIds.has(woKey)) {
-      skippedOrders.push({
-        requestNumber: refs.requestNumber || requestNumber,
-        reason: `Duplicate WO ID inside the Excel import batch: ${refs.woId}`,
-      });
-      continue;
-    }
-
-    const duplicateReference = findDuplicateOrderReference(existingReferences, normalized);
-    if (duplicateReference) {
-      skippedOrders.push({
-        requestNumber: refs.requestNumber || requestNumber,
-        reason: buildDuplicateOrderMessage(duplicateReference),
-      });
-      continue;
-    }
-
-    seenRequestNumbers.add(requestKey);
-    if (soKey) {
-      seenSoIds.add(soKey);
-=======
     const duplicateReference = findDuplicateOrderReference(workingRegistry, normalized);
 
     if (duplicateReference) {
@@ -2090,7 +2009,7 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
                 role: actorRole,
                 sub: actor.sub,
               },
-              { notify }
+              { notify, technicianCodeLookup }
             )
           : await syncExistingServiceOrderFromIncomingData(
               env,
@@ -2100,7 +2019,7 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
                 role: actorRole,
                 sub: actor.sub,
               },
-              { notify }
+              { notify, technicianCodeLookup }
             );
       registerOrderReferenceIds(workingRegistry, normalized, {
         orderId: syncResult?.order?.numericId || duplicateReference.orderId,
@@ -2124,15 +2043,21 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
       continue;
     }
 
-    const orderId = await insertServiceOrderRecord(env, normalized, Number(actor.sub || 0) || null, {
-      actor: actorRole,
-      message:
-        actorRole === "admin"
-          ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة الإدارة.`
-          : actorRole === "operations_manager"
-            ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة مدير العمليات.`
-            : `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil وإرساله إلى مدير العمليات.`,
-    });
+    const orderId = await insertServiceOrderRecord(
+      env,
+      normalized,
+      Number(actor.sub || 0) || null,
+      {
+        actor: actorRole,
+        message:
+          actorRole === "admin"
+            ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة الإدارة.`
+            : actorRole === "operations_manager"
+              ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة مدير العمليات.`
+              : `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil وإرساله إلى مدير العمليات.`,
+      },
+      { technicianCodeLookup }
+    );
     if (orderId) {
       registerOrderReferenceIds(workingRegistry, normalized, {
         orderId,
@@ -2140,53 +2065,12 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
       });
       if (notify) {
         await notifyOperationsManagersAboutNewOrder(env, normalized, orderId);
-        await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId);
+        await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId, { technicianCodeLookup });
       }
       createdCount += 1;
->>>>>>> Stashed changes
     }
-    if (woKey) {
-      seenWoIds.add(woKey);
-    }
-    validOrders.push(normalized);
   }
 
-  if (!validOrders.length) {
-    return json(
-      {
-        importedCount: 0,
-        skippedCount: skippedOrders.length,
-        skippedOrders,
-        orders: [],
-      },
-      200,
-      request,
-      env
-    );
-  }
-
-  let importedCount = 0;
-  for (const normalized of validOrders) {
-    const orderId = await insertServiceOrderRecord(env, normalized, Number(csr.sub), {
-      actor: "customer_service",
-      message: `تم استيراد الطلب ${normalized.requestNumber} من ملف Excel وإرساله إلى مدير العمليات.`,
-    });
-    importedCount += orderId ? 1 : 0;
-  }
-
-<<<<<<< Updated upstream
-  return json(
-    {
-      fileName: sourceFileName,
-      importedCount,
-      skippedCount: skippedOrders.length,
-      skippedOrders,
-    },
-    201,
-    request,
-    env
-  );
-=======
   return {
     fileName: sourceFileName,
     importedCount: createdCount + updatedCount + archivedCount + restoredCount + unchangedCount,
@@ -2308,7 +2192,6 @@ async function processImportJob(request, jobId, env) {
     const message = String(error?.message || error || "Import job failed").trim() || "Import job failed";
     return json({ message, job: await readImportJobById(env, jobId) }, 500, request, env);
   }
->>>>>>> Stashed changes
 }
 
 async function previewExcelUpload(request, env) {
@@ -2382,7 +2265,7 @@ async function previewExcelUpload(request, env) {
   );
 }
 
-async function insertServiceOrderRecord(env, normalized, createdByUserId, auditEntry) {
+async function insertServiceOrderRecord(env, normalized, createdByUserId, auditEntry, options = {}) {
   const initialStatus = normalizeImportedOrderStatus(normalized.importStatus);
   const scheduledTime = ["scheduled", "completed"].includes(initialStatus) ? normalized.preferredTime : "";
   const canceledAt =
@@ -2393,6 +2276,7 @@ async function insertServiceOrderRecord(env, normalized, createdByUserId, auditE
     initialStatus === "completed" && normalized.preferredDate
       ? `${normalized.preferredDate}T${normalized.preferredTime || "09:00"}:00`
       : null;
+  const linkedTechnician = resolveLinkedTechnicianFromImportedAssignment(normalized, options.technicianCodeLookup).technician;
 
   const created = await env.DB.prepare(
     `INSERT INTO service_orders (
@@ -2435,7 +2319,7 @@ async function insertServiceOrderRecord(env, normalized, createdByUserId, auditE
       "",
       canceledAt,
       completedAt,
-      null,
+      linkedTechnician?.id || null,
       0,
       0,
       0,
@@ -2456,8 +2340,6 @@ async function insertServiceOrderRecord(env, normalized, createdByUserId, auditE
   return created.meta.last_row_id;
 }
 
-<<<<<<< Updated upstream
-=======
 async function readArchivedServiceOrderRowById(env, archiveId) {
   try {
     return await env.DB.prepare(
@@ -2709,6 +2591,12 @@ async function syncExistingServiceOrderFromIncomingData(env, existingOrderId, no
     nextStatus === "canceled"
       ? existingOrder.canceledAt || `${nextPreferredDate || new Date().toISOString().slice(0, 10)}T${nextPreferredTime || "09:00"}:00`
       : null;
+  const linkedTechnician = resolveLinkedTechnicianFromImportedAssignment(normalized, options.technicianCodeLookup).technician;
+  const nextTechnicianId = linkedTechnician?.id
+    ? Number(linkedTechnician.id)
+    : existingOrder.technicianId
+      ? Number(existingOrder.technicianId)
+      : null;
   const nextServiceCategory = inferServiceCategory(normalized.serviceSummary || existingOrder.workType);
   const nextServiceItemsJson = JSON.stringify(normalized.acDetails || []);
   const nextValues = {
@@ -2736,6 +2624,7 @@ async function syncExistingServiceOrderFromIncomingData(env, existingOrderId, no
     notes: nextNotes,
     canceledAt: nextCanceledAt,
     completedAt: nextCompletedAt,
+    technicianId: nextTechnicianId,
     serviceItemsJson: nextServiceItemsJson,
   };
   const hasDataChanges =
@@ -2763,6 +2652,7 @@ async function syncExistingServiceOrderFromIncomingData(env, existingOrderId, no
     String(existingOrder.notes || "") !== String(nextValues.notes || "") ||
     String(existingOrder.canceledAt || "") !== String(nextValues.canceledAt || "") ||
     String(existingOrder.completedAt || "") !== String(nextValues.completedAt || "") ||
+    Number(existingOrder.technicianId || 0) !== Number(nextValues.technicianId || 0) ||
     JSON.stringify(existingOrder.acDetails || []) !== nextValues.serviceItemsJson;
   const nextAuditLog = hasDataChanges
     ? normalizeAuditLogEntries([
@@ -2785,7 +2675,7 @@ async function syncExistingServiceOrderFromIncomingData(env, existingOrderId, no
        SET customer_name = ?, phone = ?, secondary_phone = ?, whatsapp_phone = ?, district = ?, city = ?, address = ?,
            address_text = ?, landmark = ?, map_link = ?, ac_type = ?, service_category = ?, work_type = ?, ac_count = ?,
            status = ?, priority = ?, delivery_type = ?, preferred_date = ?, preferred_time = ?, scheduled_date = ?,
-           scheduled_time = ?, source = ?, notes = ?, canceled_at = ?, completed_at = ?, service_items_json = ?,
+           scheduled_time = ?, source = ?, notes = ?, canceled_at = ?, completed_at = ?, technician_id = ?, service_items_json = ?,
            audit_log_json = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`
     )
@@ -2815,6 +2705,7 @@ async function syncExistingServiceOrderFromIncomingData(env, existingOrderId, no
         nextValues.notes,
         nextValues.canceledAt,
         nextValues.completedAt,
+        nextValues.technicianId,
         nextValues.serviceItemsJson,
         JSON.stringify(nextAuditLog),
         orderId
@@ -2831,7 +2722,9 @@ async function syncExistingServiceOrderFromIncomingData(env, existingOrderId, no
 
   if (options.notify !== false) {
     if (hasDataChanges && !archived && !["completed", "canceled"].includes(nextStatus)) {
-      await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId);
+      await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId, {
+        technicianCodeLookup: options.technicianCodeLookup,
+      });
     }
 
     if (actorRole === "customer_service" && (previousStatus !== nextStatus || archived)) {
@@ -2965,8 +2858,6 @@ async function syncArchivedServiceOrderFromIncomingData(env, archiveId, normaliz
     restoredFromArchive: true,
   };
 }
-
->>>>>>> Stashed changes
 async function createTechnician(request, env) {
   const manager = await requireRoles(request, env, ["admin", "operations_manager"]);
   if (!manager) {
@@ -2980,12 +2871,15 @@ async function createTechnician(request, env) {
   const phone = normalizeSaudiPhoneNumber(body.phone);
   const password = String(body.password || "").trim();
   const coverageKeys = normalizeTechnicianCoverageKeys(body.coverageKeys || body.regions || body.region || body.cityCoverage || "");
+  const excelTechnicianCode = normalizeExcelTechnicianCode(
+    body.excelTechnicianCode || body.technicianCode || body.techId || body.techCode || ""
+  );
   const region = coverageKeys[0] || "";
   const notes = String(body.notes || "").trim();
   const status = normalizeTechnicianStatus(body.status);
 
-  if (!firstName || !lastName || !email || !phone || !password || !coverageKeys.length) {
-    return json({ message: "All technician fields are required" }, 400, request, env);
+  if (!firstName || !lastName || !email || !phone || !password || !coverageKeys.length || !excelTechnicianCode) {
+    return json({ message: "All technician fields and the Excel technician code are required" }, 400, request, env);
   }
 
   const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
@@ -2994,6 +2888,16 @@ async function createTechnician(request, env) {
 
   if (existing) {
     return json({ message: "This email is already registered" }, 409, request, env);
+  }
+
+  const duplicateCode = await env.DB.prepare(
+    "SELECT id FROM technicians WHERE excel_technician_code = ? LIMIT 1"
+  )
+    .bind(excelTechnicianCode)
+    .first();
+
+  if (duplicateCode) {
+    return json({ message: "This Excel technician code is already linked to another technician" }, 409, request, env);
   }
 
   const passwordHash = await hashPassword(password, email);
@@ -3007,13 +2911,24 @@ async function createTechnician(request, env) {
 
   const userId = createdUser.meta.last_row_id;
   await env.DB.prepare(
-    "INSERT INTO technicians (user_id, name, phone, zone, coverage_json, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO technicians (user_id, name, phone, zone, coverage_json, status, notes, excel_technician_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   )
-    .bind(Number(userId), userName, phone, region, JSON.stringify(coverageKeys), status, notes)
+    .bind(Number(userId), userName, phone, region, JSON.stringify(coverageKeys), status, notes, excelTechnicianCode)
     .run();
 
   const technician = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE user_id = ?"
+    `SELECT
+       id,
+       user_id,
+       name,
+       phone,
+       zone,
+       coverage_json,
+       status,
+       COALESCE(notes, '') AS notes,
+       COALESCE(excel_technician_code, '') AS excel_technician_code
+     FROM technicians
+     WHERE user_id = ?`
   )
     .bind(Number(userId))
     .first();
@@ -3032,6 +2947,7 @@ async function createTechnician(request, env) {
         region,
         coverageKeys,
         notes,
+        excelTechnicianCode,
       },
       technician: mapTechnician(technician || {
         id: Number(userId),
@@ -3069,6 +2985,7 @@ async function updateTechnician(request, technicianId, env) {
       t.coverage_json,
       t.status,
       COALESCE(t.notes, '') AS notes,
+      COALESCE(t.excel_technician_code, '') AS excel_technician_code,
       u.email
      FROM technicians t
      JOIN users u ON u.id = t.user_id
@@ -3089,6 +3006,9 @@ async function updateTechnician(request, technicianId, env) {
   const coverageKeys = normalizeTechnicianCoverageKeys(
     body.coverageKeys ?? body.regions ?? body.region ?? body.cityCoverage ?? existing.coverage_json ?? existing.zone ?? ""
   );
+  const excelTechnicianCode = normalizeExcelTechnicianCode(
+    body.excelTechnicianCode ?? body.technicianCode ?? body.techId ?? body.techCode ?? existing.excel_technician_code
+  );
   const region = coverageKeys[0] || "";
   const notes = String(body.notes ?? existing.notes ?? "").trim();
   const status = normalizeTechnicianStatus(body.status ?? existing.status);
@@ -3097,8 +3017,8 @@ async function updateTechnician(request, technicianId, env) {
     `${firstName || existing.name.split(" ").slice(0, -1).join(" ")} ${lastName || existing.name.split(" ").slice(-1).join(" ")}`.trim() ||
     existing.name;
 
-  if (!name || !email || !phone || !coverageKeys.length) {
-    return json({ message: "Name, email, phone, and coverage are required" }, 400, request, env);
+  if (!name || !email || !phone || !coverageKeys.length || !excelTechnicianCode) {
+    return json({ message: "Name, email, phone, coverage, and the Excel technician code are required" }, 400, request, env);
   }
 
   const duplicate = await env.DB.prepare(
@@ -3109,6 +3029,16 @@ async function updateTechnician(request, technicianId, env) {
 
   if (duplicate) {
     return json({ message: "This email is already registered" }, 409, request, env);
+  }
+
+  const duplicateCode = await env.DB.prepare(
+    "SELECT id FROM technicians WHERE excel_technician_code = ? AND id != ? LIMIT 1"
+  )
+    .bind(excelTechnicianCode, id)
+    .first();
+
+  if (duplicateCode) {
+    return json({ message: "This Excel technician code is already linked to another technician" }, 409, request, env);
   }
 
   if (password) {
@@ -3125,9 +3055,9 @@ async function updateTechnician(request, technicianId, env) {
   }
 
   await env.DB.prepare(
-    "UPDATE technicians SET name = ?, phone = ?, zone = ?, coverage_json = ?, status = ?, notes = ? WHERE id = ?"
+    "UPDATE technicians SET name = ?, phone = ?, zone = ?, coverage_json = ?, status = ?, notes = ?, excel_technician_code = ? WHERE id = ?"
   )
-    .bind(name, phone, region, JSON.stringify(coverageKeys), status, notes, id)
+    .bind(name, phone, region, JSON.stringify(coverageKeys), status, notes, excelTechnicianCode, id)
     .run();
 
   const technician = await env.DB.prepare(
@@ -3140,6 +3070,7 @@ async function updateTechnician(request, technicianId, env) {
       t.coverage_json,
       t.status,
       COALESCE(t.notes, '') AS notes,
+      COALESCE(t.excel_technician_code, '') AS excel_technician_code,
       u.email
      FROM technicians t
      LEFT JOIN users u ON u.id = t.user_id
@@ -3742,7 +3673,18 @@ async function updateTechnicianAvailability(request, technicianId, env) {
   }
 
   const technician = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
+    `SELECT
+       id,
+       user_id,
+       name,
+       phone,
+       zone,
+       coverage_json,
+       status,
+       COALESCE(notes, '') AS notes,
+       COALESCE(excel_technician_code, '') AS excel_technician_code
+     FROM technicians
+     WHERE id = ?`
   )
     .bind(id)
     .first();
@@ -3763,7 +3705,18 @@ async function updateTechnicianAvailability(request, technicianId, env) {
     .run();
 
   const nextTechnician = await env.DB.prepare(
-    "SELECT id, user_id, name, phone, zone, coverage_json, status, COALESCE(notes, '') AS notes FROM technicians WHERE id = ?"
+    `SELECT
+       id,
+       user_id,
+       name,
+       phone,
+       zone,
+       coverage_json,
+       status,
+       COALESCE(notes, '') AS notes,
+       COALESCE(excel_technician_code, '') AS excel_technician_code
+     FROM technicians
+     WHERE id = ?`
   )
     .bind(id)
     .first();
@@ -3784,8 +3737,10 @@ async function getTechnicianOrders(request, env) {
       t.name,
       t.phone,
       t.zone,
+      t.coverage_json,
       t.status,
       COALESCE(t.notes, '') AS notes,
+      COALESCE(t.excel_technician_code, '') AS excel_technician_code,
       u.email
      FROM technicians t
      LEFT JOIN users u ON u.id = t.user_id
@@ -4493,6 +4448,7 @@ async function readTechnicians(env) {
       t.coverage_json,
       t.status,
       COALESCE(t.notes, '') AS notes,
+      COALESCE(t.excel_technician_code, '') AS excel_technician_code,
       u.email
      FROM technicians t
      LEFT JOIN users u ON u.id = t.user_id
@@ -4523,6 +4479,77 @@ function mapTechnician(row) {
     coverageLabelEn: coverageConfig?.en || row.zone,
     status: row.status,
     notes: row.notes || "",
+    excelTechnicianCode: normalizeExcelTechnicianCode(row.excel_technician_code),
+  };
+}
+
+function normalizeExcelTechnicianCode(value) {
+  const rawValue = String(value || "").trim().toUpperCase();
+  if (!rawValue) {
+    return "";
+  }
+
+  const parsedAssignment = parseTechnicianAssignment(`* ${rawValue} - by:`);
+  return String(parsedAssignment.techId || rawValue).trim().toUpperCase();
+}
+
+async function readTechnicianExcelCodeLookup(env) {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT
+         id,
+         user_id,
+         name,
+         COALESCE(excel_technician_code, '') AS excel_technician_code
+       FROM technicians`
+    ).all();
+
+    return new Map(
+      (results || [])
+        .map((row) => {
+          const excelTechnicianCode = normalizeExcelTechnicianCode(row.excel_technician_code);
+          if (!excelTechnicianCode) {
+            return null;
+          }
+
+          return [
+            excelTechnicianCode,
+            {
+              id: Number(row.id),
+              userId: Number(row.user_id),
+              name: String(row.name || "").trim(),
+              excelTechnicianCode,
+            },
+          ];
+        })
+        .filter(Boolean)
+    );
+  } catch (error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    if (message.includes("no such column") && message.includes("excel_technician_code")) {
+      return new Map();
+    }
+
+    throw error;
+  }
+}
+
+function resolveLinkedTechnicianFromImportedAssignment(normalized = {}, technicianCodeLookup = new Map()) {
+  const assignment = readImportedTechnicianAssignment(normalized);
+  const exactExcelTechnicianCode = normalizeExcelTechnicianCode(
+    assignment.techId || normalized.excelTechnicianCode || normalized.techId || extractImportReferenceValue({ notes: normalized.notes }, "Tech ID")
+  );
+  const shortExcelTechnicianCode = normalizeExcelTechnicianCode(
+    assignment.techCode || extractImportReferenceValue({ notes: normalized.notes }, "Tech Code")
+  );
+  const technician =
+    (exactExcelTechnicianCode ? technicianCodeLookup.get(exactExcelTechnicianCode) || null : null) ||
+    (shortExcelTechnicianCode ? technicianCodeLookup.get(shortExcelTechnicianCode) || null : null);
+
+  return {
+    assignment,
+    excelTechnicianCode: exactExcelTechnicianCode || shortExcelTechnicianCode,
+    technician,
   };
 }
 
@@ -4558,7 +4585,7 @@ function normalizeRoleList(roles = []) {
     new Set(
       (Array.isArray(roles) ? roles : [roles])
         .map((role) => normalizeServerRole(role))
-        .filter(Boolean)
+        .filter((role) => Boolean(role) && role !== "customer_service")
     )
   );
 }
@@ -4713,7 +4740,8 @@ function readServiceOrderReferenceIds(source = {}) {
   };
 }
 
-async function readServiceOrderReferenceRegistry(env, excludeOrderId = null) {
+async function readServiceOrderReferenceRegistry(env, excludeOrderId = null, options = {}) {
+  const includeArchived = options?.includeArchived === true;
   const statement =
     excludeOrderId === null
       ? env.DB.prepare("SELECT id, customer_name, request_number, notes FROM service_orders")
@@ -4731,11 +4759,10 @@ async function readServiceOrderReferenceRegistry(env, excludeOrderId = null) {
     registerOrderReferenceIds(registry, row, {
       orderId: Number(row.id),
       customerName: String(row.customer_name || "").trim(),
+      scope: "active",
     });
   }
 
-<<<<<<< Updated upstream
-=======
   if (includeArchived) {
     let archivedRows = { results: [] };
     try {
@@ -4759,8 +4786,6 @@ async function readServiceOrderReferenceRegistry(env, excludeOrderId = null) {
       });
     }
   }
-
->>>>>>> Stashed changes
   return registry;
 }
 
@@ -4777,6 +4802,9 @@ function registerOrderReferenceIds(registry, source = {}, entry = {}) {
   const refs = readServiceOrderReferenceIds(source);
   const payload = {
     orderId: Number(entry.orderId || source.id || 0),
+    archiveId: Number(entry.archiveId || 0) || null,
+    originalOrderId: Number(entry.originalOrderId || 0) || null,
+    scope: String(entry.scope || "active"),
     customerName: String(entry.customerName || source.customer_name || source.customerName || "").trim(),
     requestNumber: refs.requestNumber,
     soId: refs.soId,
@@ -5571,10 +5599,11 @@ function readImportedTechnicianAssignment(normalized = {}) {
   return parseTechnicianAssignment(chatLog);
 }
 
-async function notifyUsersAboutTechnicianAssignmentReview(env, normalized, relatedOrderId = null) {
-  const assignment = readImportedTechnicianAssignment(normalized);
+async function notifyUsersAboutTechnicianAssignmentReview(env, normalized, relatedOrderId = null, options = {}) {
+  const { assignment, technician } = resolveLinkedTechnicianFromImportedAssignment(normalized, options.technicianCodeLookup);
   const issues = getTechnicianAssignmentIssues(assignment);
-  if (!issues.needsReview) {
+  const hasAssignmentCode = Boolean(normalizeExcelTechnicianCode(assignment.techId));
+  if (!issues.needsReview && (!hasAssignmentCode || technician)) {
     return;
   }
 
@@ -5583,6 +5612,7 @@ async function notifyUsersAboutTechnicianAssignmentReview(env, normalized, relat
   const issueSummary = [
     issues.missingAreaCode ? `رمز المنطقة ${issues.areaCode || "-"} غير موجود` : "",
     issues.missingTechCode ? `رمز الفني ${issues.techCode || "-"} غير موجود` : "",
+    !issues.needsReview && hasAssignmentCode && !technician ? `لا يوجد فني مربوط داخل النظام للكود ${assignment.techId || "-"}` : "",
   ]
     .filter(Boolean)
     .join("، ");
@@ -6137,11 +6167,11 @@ function getDefaultFooterSettings() {
       { label: "Login", url: "/login" },
     ],
     customerServiceLinks: [
-      { label: "Support", url: "tel:0551153304" },
-      { label: "WhatsApp", url: "https://wa.me/966551153304" },
-      { label: "Call us", url: "tel:0551153304" },
+      { label: "Support", url: "tel:0558232644" },
+      { label: "WhatsApp", url: "https://wa.me/966558232644" },
+      { label: "Call us", url: "tel:0558232644" },
     ],
-    socialLinks: [{ platform: "whatsapp", url: "https://wa.me/966551153304" }],
+    socialLinks: [{ platform: "whatsapp", url: "https://wa.me/966558232644" }],
     copyrightText: "© 2026 TrkeebPro",
   };
 }
@@ -6224,7 +6254,7 @@ function getDefaultHomeSettings() {
     primaryButtonText: "احجز الآن",
     primaryButtonUrl: "#contact",
     secondaryButtonText: "تواصل عبر واتساب",
-    secondaryButtonUrl: "https://wa.me/966551153304",
+    secondaryButtonUrl: "https://wa.me/966558232644",
     heroHighlights: ["خدمة سريعة", "أسعار منافسة", "ضمان على العمل"],
     stats: [
       { value: "6", label: "خدمات رئيسية" },
@@ -6266,8 +6296,8 @@ function getDefaultHomeSettings() {
     testimonialsTitle: "آراء العملاء",
     testimonials: ["خدمة ممتازة وسريعة، أنصح فيهم", "أسعارهم مناسبة وشغلهم نظيف"],
     contactTitle: "تواصل معنا",
-    phone: "0551153304",
-    whatsappNumber: "0551153304",
+    phone: "0558232644",
+    whatsappNumber: "0558232644",
     coverageText: "نخدم جميع مناطق المملكة",
     hoursText: "يتم تحديد ساعات العمل لاحقًا",
   };
@@ -6523,7 +6553,7 @@ async function requireRoles(request, env, roles = []) {
   const normalizedAllowedRoles = normalizeRoleList(roles);
   const adminCanAccess =
     normalizedRole === "admin" &&
-    normalizedAllowedRoles.some((role) => ["admin", "customer_service", "operations_manager"].includes(role));
+    normalizedAllowedRoles.some((role) => ["admin", "operations_manager"].includes(role));
 
   if (!payload || (!normalizedAllowedRoles.includes(normalizedRole) && !adminCanAccess)) {
     return null;

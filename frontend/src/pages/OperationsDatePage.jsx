@@ -26,7 +26,6 @@ const copy = {
     dayClosed: 'Current day reports exported and the system moved to the next date.',
     roleBadges: {
       admin: 'Admin',
-      customer_service: 'Customer service',
       operations_manager: 'Operations manager',
     },
   },
@@ -47,7 +46,6 @@ const copy = {
     dayClosed: 'تم تصدير تقارير اليوم الحالي والانتقال إلى اليوم التالي.',
     roleBadges: {
       admin: 'الإدارة',
-      customer_service: 'خدمة العملاء',
       operations_manager: 'مدير العمليات',
     },
   },
@@ -105,7 +103,7 @@ export default function OperationsDatePage() {
   const exportCurrentDay = async (format, showToast = true) => {
     try {
       setExportingFormat(format);
-      await exportOrdersReport({ orders: dailyOrders, lang, scopeLabel: 'csr-daily', fileDate: operationalDate, format });
+      await exportOrdersReport({ orders: dailyOrders, lang, scopeLabel: 'admin-daily', fileDate: operationalDate, format });
       await exportOrdersReport({ orders: dailyOrders, lang, scopeLabel: 'ops-daily', fileDate: operationalDate, format });
       if (showToast) {
         toast.success(t.dayExported);

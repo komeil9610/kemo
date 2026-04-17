@@ -1,5 +1,7 @@
 export const normalizeWorkspaceRole = (role) => String(role || '').trim();
 
+const ACTIVE_WORKSPACE_ROLES = ['admin', 'operations_manager', 'technician'];
+
 export const getWorkspaceBasePath = (role) => {
   const normalized = normalizeWorkspaceRole(role);
   if (normalized === 'admin') {
@@ -11,9 +13,6 @@ export const getWorkspaceBasePath = (role) => {
   if (normalized === 'technician') {
     return '/technician';
   }
-  if (normalized === 'customer_service') {
-    return '/customer-service';
-  }
   return '/login';
 };
 
@@ -22,7 +21,6 @@ export const getWorkspaceRoleLabel = (role, lang = 'ar') => {
   const labels = {
     admin: { ar: 'الإدارة', en: 'Admin' },
     operations_manager: { ar: 'مدير العمليات', en: 'Operations manager' },
-    customer_service: { ar: 'خدمة العملاء', en: 'Customer service' },
     technician: { ar: 'الفني', en: 'Technician' },
   };
 
@@ -30,4 +28,4 @@ export const getWorkspaceRoleLabel = (role, lang = 'ar') => {
 };
 
 export const getWorkspaceRolesForSwitcher = (roles = []) =>
-  (Array.isArray(roles) ? roles : [roles]).filter((role) => ['admin', 'operations_manager', 'customer_service', 'technician'].includes(role));
+  (Array.isArray(roles) ? roles : [roles]).filter((role) => ACTIVE_WORKSPACE_ROLES.includes(role));

@@ -49,10 +49,10 @@ npm run cf:deploy
 
 الحساب المعتمد:
 
-- `bobmorgann2@gmail.com`
+- `komeil9610@gmail.com`
 - `Komeil9610@@@`
 
-والواجهة تدعم التبديل بين:
+وحساب مدير العمليات:
 
-- `customer_service`
-- `operations_manager`
+- `kumeelalnahab@gmail.com`
+- `manger123@`

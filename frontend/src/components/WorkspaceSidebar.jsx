@@ -143,6 +143,9 @@ export default function WorkspaceSidebar() {
               { to: `${workspaceBasePath}/daily`, label: labels.daily },
               { to: `${workspaceBasePath}/weekly`, label: labels.weekly },
               { to: `${workspaceBasePath}/monthly`, label: labels.monthly },
+              ...(user?.role === 'admin' ? [{ to: '/operations-manager', label: labels.operationsOverview }] : []),
+              ...(user?.role === 'admin' ? [{ to: '/operations-manager#assignments', label: labels.assignments }] : []),
+              ...(user?.role === 'admin' ? [{ to: '/operations-manager#excel-sync', label: labels.excelSync }] : []),
             ],
           },
           {

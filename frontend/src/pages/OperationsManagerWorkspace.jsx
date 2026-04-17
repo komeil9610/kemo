@@ -37,6 +37,7 @@ const createTeamForm = () => ({
   email: '',
   phone: '',
   password: '',
+  excelTechnicianCode: '',
   coverageKeys: ['riyadh'],
   notes: '',
   status: 'available',
@@ -54,8 +55,8 @@ const copy = {
     today: 'Today tasks',
     tomorrow: 'Tomorrow tasks',
     excelTitle: 'Excel sync',
-    excelHint: 'Upload the refreshed Excel file, preview the rows, then import only the validated orders from the operations manager account.',
-    excelAccessNote: 'This account can upload and import the latest Zamil Excel file for all days and all incoming requests.',
+    excelHint: 'Upload the refreshed Excel file, preview the rows, then import only the validated orders from the admin or operations manager account.',
+    excelAccessNote: 'Admin and operations manager accounts can upload and import the latest Zamil Excel file for all days and incoming requests.',
     uploadExcel: 'Upload Excel',
     uploadingExcel: 'Uploading...',
     importExcel: 'Import preview',
@@ -136,7 +137,9 @@ const copy = {
     email: 'Email',
     phone: 'Phone',
     password: 'Password',
+    excelTechnicianCode: 'Excel technician code',
     passwordEditHint: 'Leave blank to keep the current password.',
+    excelTechnicianCodeHint: 'Use the technician shortcut from Excel, such as M, G, S, or the full code like J-W when needed.',
     notes: 'Team notes',
     availability: 'Availability',
     coveredCities: 'Covered cities',
@@ -157,8 +160,8 @@ const copy = {
     today: 'مهام اليوم',
     tomorrow: 'مهام الغد',
     excelTitle: 'مزامنة الإكسل',
-    excelHint: 'ارفع ملف الإكسل المحدّث، راجع المعاينة، ثم استورد الطلبات الصالحة فقط من حساب مدير العمليات.',
-    excelAccessNote: 'يستطيع هذا الحساب رفع واستيراد آخر ملف إكسل من الزامل لكل الأيام وكل الطلبات الجديدة.',
+    excelHint: 'ارفع ملف الإكسل المحدّث، راجع المعاينة، ثم استورد الطلبات الصالحة فقط من حساب الإدارة أو مدير العمليات.',
+    excelAccessNote: 'تستطيع حسابات الإدارة ومدير العمليات رفع واستيراد آخر ملف إكسل من الزامل لكل الأيام وكل الطلبات الجديدة.',
     uploadExcel: 'رفع ملف إكسل',
     uploadingExcel: 'جارٍ الرفع...',
     importExcel: 'استيراد المعاينة',
@@ -239,7 +242,9 @@ const copy = {
     email: 'البريد الإلكتروني',
     phone: 'الجوال',
     password: 'كلمة المرور',
+    excelTechnicianCode: 'كود الفني من الإكسل',
     passwordEditHint: 'اتركها فارغة إذا كنت لا تريد تغيير كلمة المرور الحالية.',
+    excelTechnicianCodeHint: 'استخدم اختصار الفني الموجود في الإكسل مثل M أو G أو S، أو الكود الكامل مثل J-W عند الحاجة.',
     notes: 'ملاحظات الفريق',
     availability: 'التوفر',
     coveredCities: 'المدن المغطاة',
@@ -564,6 +569,7 @@ export default function OperationsManagerWorkspace() {
       email: technician?.email || '',
       phone: technician?.phone || '',
       password: '',
+      excelTechnicianCode: technician?.excelTechnicianCode || '',
       coverageKeys: technician?.coverageKeys?.length ? technician.coverageKeys : [technician?.zone || 'central'],
       notes: technician?.notes || '',
       status: technician?.status || 'available',
@@ -1006,6 +1012,7 @@ export default function OperationsManagerWorkspace() {
                   <article className="ops-team-card" key={technician.id}>
                     <div>
                       <strong>{technician.name}</strong>
+                      {technician.excelTechnicianCode ? <p>{t.excelTechnicianCode}: {technician.excelTechnicianCode}</p> : null}
                       <p>{t.coveredCities}</p>
                       <div className="ops-team-coverage-list">
                         {getTechnicianCoverageLabels(technician.coverageKeys || technician.zone, lang).map((label) => (
@@ -1090,6 +1097,7 @@ export default function OperationsManagerWorkspace() {
                   <input className="input" placeholder={t.email} value={teamForm.email} onChange={(event) => setTeamForm((current) => ({ ...current, email: event.target.value }))} />
                   <input className="input" placeholder={t.phone} value={teamForm.phone} onChange={(event) => setTeamForm((current) => ({ ...current, phone: event.target.value }))} />
                   <input className="input" placeholder={t.password} value={teamForm.password} onChange={(event) => setTeamForm((current) => ({ ...current, password: event.target.value }))} />
+                  <input className="input" placeholder={t.excelTechnicianCode} value={teamForm.excelTechnicianCode} onChange={(event) => setTeamForm((current) => ({ ...current, excelTechnicianCode: event.target.value.toUpperCase() }))} />
                   <select className="input" value={teamForm.status} onChange={(event) => setTeamForm((current) => ({ ...current, status: event.target.value }))}>
                     {technicianStatusOptions.map((item) => (
                       <option key={item.value} value={item.value}>
@@ -1098,6 +1106,7 @@ export default function OperationsManagerWorkspace() {
                     ))}
                   </select>
                 </div>
+                <p className="muted">{t.excelTechnicianCodeHint}</p>
                 <p className="muted">{editingTechnicianId ? t.passwordEditHint : t.coverageHelp}</p>
                 <div className="ops-coverage-grid">
                   {technicianCoverageOptions.map((item) => {

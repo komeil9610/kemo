@@ -441,6 +441,7 @@ const TECH_SHORT_NAME_BY_CODE = new Map([
   ["G", "Ghulam"],
   ["M", "Mohsin"],
   ["R", "Rashid"],
+  ["S", "Sajed"],
   ["W", "Waseem"],
 ]);
 

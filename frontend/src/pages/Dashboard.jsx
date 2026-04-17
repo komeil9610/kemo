@@ -143,14 +143,10 @@ const copy = {
     operationsHint: 'Review incoming requests, update statuses, and follow up from the filtered task lists.',
     formHint: 'Enter the request manually using the same columns as the Excel source so manual and imported rows follow one structure.',
     excelImportTitle: 'Excel intake',
-<<<<<<< Updated upstream
-    excelImportHint: 'Upload any Excel file from mobile or browser, ignore completed rows, keep each SO ID, and prepare valid orders for direct import.',
-=======
     excelImportHint: 'Upload an Excel file, sync rows by SO ID, update only changed orders, and archive completed requests automatically.',
     excelImportUpsertNote: 'Existing requests are updated automatically, new requests are added, and duplicate rows inside the same file are merged intelligently.',
     excelOnlyTitle: 'Manual intake follows the Excel schema',
     excelOnlyNotice: 'Use the same Zamil-style columns here so manual requests behave like imported Excel rows.',
->>>>>>> Stashed changes
     excelImportFile: 'Source file: latest uploaded Excel file',
     operationsDate: 'Operations date',
     saveOperationsDate: 'Update date',
@@ -249,15 +245,11 @@ const copy = {
     regionTaskCount: 'Requests in this region',
     deviceCount: 'Devices',
     devicesTitle: 'Devices in this request',
-<<<<<<< Updated upstream
-    successExcelUpload: 'Excel file parsed and prepared for import successfully.',
-=======
     successExcelUpload: (valid, invalid, deduplicated) =>
       `Excel file parsed successfully. ${valid} valid row${valid === 1 ? '' : 's'} ready${invalid ? `, ${invalid} row${invalid === 1 ? '' : 's'} need review` : ''}${deduplicated ? `, ${deduplicated} duplicate row${deduplicated === 1 ? '' : 's'} merged automatically` : ''}.`,
->>>>>>> Stashed changes
     successCreate: 'Request created successfully.',
-    successImport: (imported, skipped) =>
-      `Imported ${imported} request${imported === 1 ? '' : 's'} from Excel${skipped ? ` and skipped ${skipped} duplicate or invalid row${skipped === 1 ? '' : 's'}` : ''}.`,
+    successImport: ({ imported, created, updated, archived, restored, unchanged, skipped }) =>
+      `Excel sync complete. Processed ${imported} row${imported === 1 ? '' : 's'}: created ${created}, updated ${updated}, archived ${archived}, restored ${restored}${unchanged ? `, unchanged ${unchanged}` : ''}${skipped ? `, skipped ${skipped}` : ''}.`,
     successStatus: 'Request updated successfully.',
     successSchedule: 'Schedule saved successfully.',
     successReport: 'Report exported successfully.',
@@ -305,12 +297,6 @@ const copy = {
     customerServicePanel: 'إدخال خدمة العملاء',
     operationsPanel: 'تنسيق مدير العمليات',
     operationsHint: 'راجع الطلبات الواردة وحدّث حالاتها وتابع حسابات المناطق من قوائم المهام المفلترة.',
-<<<<<<< Updated upstream
-    formHint: 'اكتب الطلب كاملاً وبوضوح حتى يستطيع مدير العمليات فهم الحالة وتنسيق الموعد دون أي نقص.',
-    excelImportTitle: 'استيراد Excel',
-    excelImportHint: 'ارفع أي ملف Excel من الجوال أو المتصفح، وسيتم تجاهل الصفوف المكتملة، والحفاظ على SO ID، وتجهيز الطلبات الصالحة للاستيراد المباشر.',
-    excelImportFile: 'ملف المصدر: آخر ملف Excel تم رفعه',
-=======
     formHint: 'أدخل الطلب يدويًا بنفس أعمدة ملف الإكسل حتى يتعامل النظام معه بنفس منطق الصفوف المستوردة.',
     excelImportTitle: 'استيراد الإكسل',
     excelImportHint: 'ارفع ملف الإكسل ليتم ربط الصفوف حسب SO ID، وتحديث الطلبات المتغيرة فقط، وأرشفة الطلبات المكتملة تلقائيًا.',
@@ -318,7 +304,6 @@ const copy = {
     excelOnlyTitle: 'الإدخال اليدوي مطابق لجدول الإكسل',
     excelOnlyNotice: 'استخدم نفس أعمدة ملف الزامل هنا حتى يتعامل النظام مع الطلب اليدوي مثل صفوف الإكسل المستوردة.',
     excelImportFile: 'ملف المصدر: آخر ملف إكسل تم رفعه',
->>>>>>> Stashed changes
     operationsDate: 'تاريخ التشغيل',
     saveOperationsDate: 'تحديث التاريخ',
     moveToNextDate: 'تصدير اليوم والانتقال لليوم التالي',
@@ -416,18 +401,11 @@ const copy = {
     regionTaskCount: 'طلبات هذه المنطقة',
     deviceCount: 'عدد الأجهزة',
     devicesTitle: 'أجهزة هذا الطلب',
-<<<<<<< Updated upstream
-    successExcelUpload: 'تمت قراءة ملف Excel وتجهيزه للاستيراد بنجاح.',
-    successCreate: 'تم إنشاء الطلب بنجاح.',
-    successImport: (imported, skipped) =>
-      `تم استيراد ${imported} طلب${imported === 1 ? '' : 'ات'} من ملف Excel${skipped ? ` مع تجاوز ${skipped} صف${skipped === 1 ? '' : 'وف'} مكرر أو غير صالح` : ''}.`,
-=======
     successExcelUpload: (valid, invalid, deduplicated) =>
       `تمت قراءة ملف الإكسل بنجاح. يوجد ${valid} صف صالح للاستيراد${invalid ? ` و${invalid} صف يحتاج مراجعة` : ''}${deduplicated ? ` مع دمج ${deduplicated} صف مكرر تلقائيًا` : ''}.`,
     successCreate: 'تم إنشاء الطلب بنجاح.',
     successImport: ({ imported, created, updated, archived, restored, unchanged, skipped }) =>
       `اكتملت مزامنة الإكسل. تمت معالجة ${imported} صف، إنشاء ${created}، تحديث ${updated}، أرشفة ${archived}، استعادة ${restored}${unchanged ? `، بدون تغيير ${unchanged}` : ''}${skipped ? `، وتجاوز ${skipped}` : ''}.`,
->>>>>>> Stashed changes
     successStatus: 'تم تحديث الطلب بنجاح.',
     successSchedule: 'تم حفظ الموعد بنجاح.',
     successReport: 'تم تصدير التقرير بنجاح.',
@@ -454,9 +432,7 @@ const deliveryLabel = (value, lang) => {
   return match ? (lang === 'ar' ? match.ar : match.en) : value;
 };
 
-<<<<<<< Updated upstream
 const getRegionConfig = (regionKey) => zamilCoverageByRegion.find((region) => region.key === regionKey) || null;
-=======
 const formatExcelIssueLine = (issue, lang) => {
   const rowLabel = lang === 'ar' ? 'الصف' : 'Row';
   const fieldLabel = lang === 'ar' ? 'الحقل' : 'Field';
@@ -500,7 +476,6 @@ const buildExcelImportToastPayload = (data = {}) => ({
   unchanged: Number(data?.unchangedCount) || 0,
   skipped: Number(data?.skippedCount) || 0,
 });
->>>>>>> Stashed changes
 
 const getRegionByCity = (city) =>
   zamilCoverageByRegion.find((region) => region.cities.includes(String(city || '').trim())) || null;
@@ -667,11 +642,8 @@ export default function Dashboard() {
   const [schedulingId, setSchedulingId] = useState('');
   const [excelSourceFileName, setExcelSourceFileName] = useState('data.xlsx');
   const [excelPreview, setExcelPreview] = useState(null);
-<<<<<<< Updated upstream
-=======
   const [excelImportReport, setExcelImportReport] = useState(null);
   const [excelImportProgress, setExcelImportProgress] = useState(null);
->>>>>>> Stashed changes
   const [operationalDate, setOperationalDateState] = useState(() => getOperationalDate());
   const [form, setForm] = useState(() => createEmptyForm(getOperationalDate()));
   const [scheduleDrafts, setScheduleDrafts] = useState({});
@@ -790,6 +762,7 @@ export default function Dashboard() {
       : getOrdersForView(orders, viewKey);
     return permissions.canManageStatuses ? scopedOrders.slice().sort(compareOrdersByOperationsRegion) : scopedOrders;
   }, [displayStatusBuckets, lang, orders, permissions.canManageStatuses, viewKey]);
+  const previewIssues = useMemo(() => (Array.isArray(excelPreview?.invalidRows) ? excelPreview.invalidRows : []), [excelPreview]);
 
   const statCards = useMemo(
     () => displayStatusBuckets,
@@ -867,9 +840,6 @@ export default function Dashboard() {
       const nextPreview = response.data?.preview || null;
       setExcelSourceFileName(savedFileName);
       setExcelPreview(nextPreview);
-<<<<<<< Updated upstream
-      toast.success(t.successExcelUpload);
-=======
       setExcelImportReport(null);
       setExcelImportProgress(null);
       toast.success(
@@ -884,7 +854,6 @@ export default function Dashboard() {
           duration: 7000,
         });
       }
->>>>>>> Stashed changes
     } catch (error) {
       toast.error(error?.response?.data?.message || error.message || (lang === 'ar' ? 'تعذر رفع ملف الإكسل.' : 'Unable to upload Excel file'));
     } finally {
@@ -907,9 +876,6 @@ export default function Dashboard() {
       const skippedCount = Number(response.data?.skippedCount) || 0;
 
       if (!importedCount && !skippedCount) {
-<<<<<<< Updated upstream
-        toast.error(lang === 'ar' ? 'لم يتم العثور على طلبات صالحة داخل ملف Excel.' : 'No valid Excel orders were found.');
-=======
         toast.error(
           previewIssues.length
             ? buildExcelIssuesToast(previewIssues, lang)
@@ -917,11 +883,11 @@ export default function Dashboard() {
               ? 'لم يتم العثور على طلبات صالحة داخل ملف الإكسل.'
               : 'No valid Excel orders were found.'
         );
->>>>>>> Stashed changes
         return;
       }
 
-      toast.success(t.successImport(importedCount, skippedCount));
+      setExcelImportReport(response.data || null);
+      toast.success(t.successImport(buildExcelImportToastPayload(response.data || {})));
       setExcelPreview(null);
     } catch (error) {
       toast.error(error?.response?.data?.message || error.message || (lang === 'ar' ? 'تعذر استيراد طلبات الإكسل.' : 'Unable to import Excel orders'));
@@ -1423,16 +1389,7 @@ export default function Dashboard() {
               <div className="reference-card">
                 <span className="reference-label">{t.excelImportTitle}</span>
                 <h3>{t.importExcel}</h3>
-<<<<<<< Updated upstream
                 <p>{t.excelImportHint}</p>
-                <small>
-                  {excelPreview?.summary?.validOrders
-                    ? `${excelSourceFileName} • ${excelPreview.summary.validOrders} ${
-                        lang === 'ar' ? 'طلب صالح جاهز للاستيراد' : 'valid orders ready'
-                      }`
-                    : excelSourceFileName}
-                </small>
-=======
                 <div className="coverage-list">
                   <small>
                     {excelPreview?.summary
@@ -1469,7 +1426,6 @@ export default function Dashboard() {
                     ))}
                   </div>
                 ) : null}
->>>>>>> Stashed changes
               </div>
             </div>
 

@@ -641,9 +641,9 @@ const normalizeManualExcelStyleOrderPayload = (payload = {}) => {
 const defaultState = {
   users: [
     {
-      id: 'user-bob-customer-service',
+      id: 'user-bob-admin',
       name: 'كميل',
-      email: 'bobmorgann2@gmail.com',
+      email: 'komeil9610@gmail.com',
       password: 'Komeil9610@@@',
       role: 'admin',
       workspaceRoles: ['admin'],
@@ -652,7 +652,7 @@ const defaultState = {
     {
       id: 'user-tarkeebpro-operations',
       name: 'مدير العمليات',
-      email: 'tarkeebpro@gmail.com',
+      email: 'kumeelalnahab@gmail.com',
       password: 'manger123@',
       role: 'operations_manager',
       workspaceRoles: ['operations_manager'],
@@ -674,7 +674,7 @@ const defaultFooter = {
   customerServiceLinks: [
     { label: 'Support', url: 'tel:0558232644' },
     { label: 'WhatsApp', url: 'https://wa.me/966558232644' },
-    { label: 'Call us', url: 'mailto:bookings@kumeelalnahab.com' },
+    { label: 'Call us', url: 'tel:0558232644' },
   ],
   socialLinks: [
     { platform: 'whatsapp', url: 'https://wa.me/966558232644' },
@@ -1641,13 +1641,9 @@ export const operationsService = {
 
     const preview = uploadedPreview ? { data: uploadedPreview } : await axios.get('/excel-import/orders.json');
     const previewData = preview.data || null;
-<<<<<<< Updated upstream
-    const orders = Array.isArray(previewData?.orders) ? previewData.orders.filter((order) => order.importStatus !== 'completed') : [];
-=======
     const orders = Array.isArray(previewData?.orders) ? previewData.orders : [];
     const previewToken = String(previewData?.previewToken || '').trim();
     const validPreviewRows = Number(previewData?.summary?.validOrders || orders.length || 0);
->>>>>>> Stashed changes
 
     if (!previewToken && !orders.length) {
       return {
@@ -1660,12 +1656,6 @@ export const operationsService = {
       };
     }
 
-<<<<<<< Updated upstream
-    const chunkSize = 100;
-    let importedCount = 0;
-    let skippedCount = 0;
-    const skippedOrders = [];
-=======
     const chunkSize = Math.max(1, Number(options?.chunkSize) || 30);
     const interChunkDelayMs = Math.max(0, Number(options?.interChunkDelayMs) || 120);
     const maxRetries = Math.max(0, Number(options?.maxRetries) || 2);
@@ -1683,7 +1673,6 @@ export const operationsService = {
     if (!jobId) {
       throw new Error('Unable to create import job');
     }
->>>>>>> Stashed changes
 
     let job = createJobResponse.data?.job || null;
     if (onProgress && job) {
@@ -1702,11 +1691,6 @@ export const operationsService = {
         jobId,
         status: job.status,
       });
-<<<<<<< Updated upstream
-      importedCount += Number(response.data?.importedCount) || 0;
-      skippedCount += Number(response.data?.skippedCount) || 0;
-      skippedOrders.push(...(response.data?.skippedOrders || []));
-=======
     }
 
     const readJobStatus = async () => {
@@ -1777,18 +1761,12 @@ export const operationsService = {
       if (!backgroundQueued && job.status !== 'completed' && interChunkDelayMs > 0) {
         await wait(interChunkDelayMs);
       }
->>>>>>> Stashed changes
     }
 
     window.dispatchEvent(new CustomEvent('operations-updated'));
     return {
       data: {
         fileName,
-<<<<<<< Updated upstream
-        importedCount,
-        skippedCount,
-        skippedOrders,
-=======
         jobId,
         status: job.status,
         importedCount: Number(job.importedCount) || 0,
@@ -1799,7 +1777,6 @@ export const operationsService = {
         unchangedCount: Number(job.unchangedCount) || 0,
         skippedCount: Number(job.skippedCount) || 0,
         skippedOrders: Array.isArray(job.skippedOrders) ? job.skippedOrders : [],
->>>>>>> Stashed changes
         preview: previewData,
       },
     };

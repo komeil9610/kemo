@@ -80,8 +80,8 @@ VALUES (
   1,
   'تركيب برو لخدمات تركيب وصيانة المكيفات بخبرة عالية، سرعة في الوصول، وضمان على جودة العمل.',
   '[{"label":"Home","url":"/"},{"label":"Login","url":"/login"}]',
-  '[{"label":"Support","url":"tel:0551153304"},{"label":"WhatsApp","url":"https://wa.me/966551153304"},{"label":"Call us","url":"tel:0551153304"}]',
-  '[{"platform":"whatsapp","url":"https://wa.me/966551153304"}]',
+  '[{"label":"Support","url":"tel:0558232644"},{"label":"WhatsApp","url":"https://wa.me/966558232644"},{"label":"Call us","url":"tel:0558232644"}]',
+  '[{"platform":"whatsapp","url":"https://wa.me/966558232644"}]',
   '© 2026 TrkeebPro'
 )
 ON CONFLICT(id) DO NOTHING;
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS home_settings (
   primary_button_text TEXT NOT NULL DEFAULT 'احجز الآن',
   primary_button_url TEXT NOT NULL DEFAULT '#contact',
   secondary_button_text TEXT NOT NULL DEFAULT 'تواصل عبر واتساب',
-  secondary_button_url TEXT NOT NULL DEFAULT 'https://wa.me/966551153304',
+  secondary_button_url TEXT NOT NULL DEFAULT 'https://wa.me/966558232644',
   stats_json TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -118,8 +118,8 @@ VALUES (
   'احجز الآن',
   '#contact',
   'تواصل عبر واتساب',
-  'https://wa.me/966551153304',
-  '{"contentVersion":2,"heroNote":"متخصصون في تركيب وصيانة جميع أنواع المكيفات بخبرة عالية وفريق فني محترف، مع اهتمام بالتفاصيل وسرعة في التنفيذ.","heroHighlights":["خدمة سريعة","أسعار منافسة","ضمان على العمل"],"stats":[{"value":"6","label":"خدمات رئيسية"},{"value":"24/7","label":"استجابة سريعة"},{"value":"100%","label":"اهتمام بالنظافة والجودة"}],"aboutTitle":"من نحن","aboutText":"نحن في \"تركيب برو\" متخصصون في تركيب وصيانة جميع أنواع المكيفات، بخبرة عالية وفريق فني محترف. نضمن لك جودة العمل وسرعة التنفيذ بأفضل الأسعار.","servicesTitle":"خدماتنا","services":["تركيب مكيفات سبليت","تركيب مكيفات شباك","فك ونقل المكيفات","صيانة وتنظيف المكيفات","تعبئة فريون","كشف الأعطال"],"featuresTitle":"لماذا تختارنا؟","features":["فنيين محترفين","سرعة في الوصول","أسعار مناسبة","ضمان على الخدمة","خدمة عملاء ممتازة"],"galleryTitle":"أعمالنا","galleryImages":[{"title":"تركيب احترافي","caption":"تنفيذ مرتب واهتمام كامل بالتفاصيل وجودة التشطيب.","imageUrl":"/home-gallery-1.jpg"},{"title":"خدمة ميدانية سريعة","caption":"وصول سريع وتجهيز كامل لخدمة جميع أنواع المكيفات.","imageUrl":"/home-gallery-2.webp"},{"title":"صيانة وتنظيف","caption":"حلول صيانة وتنظيف تعيد كفاءة التبريد وتحافظ على عمر الجهاز.","imageUrl":"/home-gallery-3.jpg"}],"testimonialsTitle":"آراء العملاء","testimonials":["خدمة ممتازة وسريعة، أنصح فيهم","أسعارهم مناسبة وشغلهم نظيف"],"contactTitle":"تواصل معنا","phone":"0551153304","whatsappNumber":"0551153304","coverageText":"نخدم جميع مناطق المملكة","hoursText":"يتم تحديد ساعات العمل لاحقًا"}'
+  'https://wa.me/966558232644',
+  '{"contentVersion":2,"heroNote":"متخصصون في تركيب وصيانة جميع أنواع المكيفات بخبرة عالية وفريق فني محترف، مع اهتمام بالتفاصيل وسرعة في التنفيذ.","heroHighlights":["خدمة سريعة","أسعار منافسة","ضمان على العمل"],"stats":[{"value":"6","label":"خدمات رئيسية"},{"value":"24/7","label":"استجابة سريعة"},{"value":"100%","label":"اهتمام بالنظافة والجودة"}],"aboutTitle":"من نحن","aboutText":"نحن في \"تركيب برو\" متخصصون في تركيب وصيانة جميع أنواع المكيفات، بخبرة عالية وفريق فني محترف. نضمن لك جودة العمل وسرعة التنفيذ بأفضل الأسعار.","servicesTitle":"خدماتنا","services":["تركيب مكيفات سبليت","تركيب مكيفات شباك","فك ونقل المكيفات","صيانة وتنظيف المكيفات","تعبئة فريون","كشف الأعطال"],"featuresTitle":"لماذا تختارنا؟","features":["فنيين محترفين","سرعة في الوصول","أسعار مناسبة","ضمان على الخدمة","خدمة عملاء ممتازة"],"galleryTitle":"أعمالنا","galleryImages":[{"title":"تركيب احترافي","caption":"تنفيذ مرتب واهتمام كامل بالتفاصيل وجودة التشطيب.","imageUrl":"/home-gallery-1.jpg"},{"title":"خدمة ميدانية سريعة","caption":"وصول سريع وتجهيز كامل لخدمة جميع أنواع المكيفات.","imageUrl":"/home-gallery-2.webp"},{"title":"صيانة وتنظيف","caption":"حلول صيانة وتنظيف تعيد كفاءة التبريد وتحافظ على عمر الجهاز.","imageUrl":"/home-gallery-3.jpg"}],"testimonialsTitle":"آراء العملاء","testimonials":["خدمة ممتازة وسريعة، أنصح فيهم","أسعارهم مناسبة وشغلهم نظيف"],"contactTitle":"تواصل معنا","phone":"0558232644","whatsappNumber":"0558232644","coverageText":"نخدم جميع مناطق المملكة","hoursText":"يتم تحديد ساعات العمل لاحقًا"}'
 )
 ON CONFLICT(id) DO NOTHING;
 
@@ -132,11 +132,15 @@ CREATE TABLE IF NOT EXISTS technicians (
   coverage_json TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'available',
   notes TEXT NOT NULL DEFAULT '',
+  excel_technician_code TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_technicians_status ON technicians(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_technicians_excel_technician_code
+  ON technicians(excel_technician_code)
+  WHERE TRIM(excel_technician_code) != '';
 
 CREATE TABLE IF NOT EXISTS service_time_standards (
   standard_key TEXT PRIMARY KEY,
@@ -342,8 +346,8 @@ CREATE INDEX IF NOT EXISTS idx_import_job_chunks_job_id_processed_at
 
 INSERT INTO users (name, email, password_hash, role, status)
 VALUES
-  ('كميل', 'bobmorgann2@gmail.com', '229736ba52217be12f8df873c543fe7919be6a85d5097eb2b320c3b8a6ce2d74', 'admin', 'active'),
-  ('مدير العمليات', 'tarkeebpro@gmail.com', 'b93774e2aac1f0ab87d56f366cb71f0294def963bf2e4711cd69ea1c500868ea', 'operations_manager', 'active')
+  ('كميل', 'komeil9610@gmail.com', '7dab4dea5da16f55d1a3d4c907663b895607204804a524d2420b908b7b1f63e2', 'admin', 'active'),
+  ('مدير العمليات', 'kumeelalnahab@gmail.com', '8ee203584d62b70119e28b84475895c84801fa9ab53a7dab94776834925a6081', 'operations_manager', 'active')
 ON CONFLICT(email) DO UPDATE SET
   name = excluded.name,
   password_hash = excluded.password_hash,
@@ -351,104 +355,24 @@ ON CONFLICT(email) DO UPDATE SET
   status = excluded.status;
 
 DELETE FROM user_workspace_roles
-WHERE user_id = (SELECT id FROM users WHERE email = 'bobmorgann2@gmail.com')
+WHERE user_id = (SELECT id FROM users WHERE email = 'komeil9610@gmail.com')
   AND role != 'admin';
 
 DELETE FROM user_workspace_roles
-WHERE user_id = (SELECT id FROM users WHERE email = 'tarkeebpro@gmail.com')
+WHERE user_id = (SELECT id FROM users WHERE email = 'kumeelalnahab@gmail.com')
   AND role != 'operations_manager';
 
 INSERT INTO user_workspace_roles (user_id, role)
 SELECT id, 'admin'
 FROM users
-WHERE email = 'bobmorgann2@gmail.com'
+WHERE email = 'komeil9610@gmail.com'
 ON CONFLICT(user_id, role) DO NOTHING;
 
 INSERT INTO user_workspace_roles (user_id, role)
 SELECT id, 'operations_manager'
 FROM users
-WHERE email = 'tarkeebpro@gmail.com'
+WHERE email = 'kumeelalnahab@gmail.com'
 ON CONFLICT(user_id, role) DO NOTHING;
-
-INSERT INTO users (name, email, password_hash, role, status)
-VALUES
-  ('W-J', 'bobmorgann1@gmail.com', '014fb23ca400e9b781a4c7d58819afd151a09868810ce87c4f3b488ea957ace0', 'technician', 'active'),
-  ('D-M', 'bobmorgann112@gmail.com', 'cb9c523529ce2100b9824ba6056e2c6e52d80a14731efd3faba420bc93714ddf', 'technician', 'active'),
-  ('H-R', 'komeil9060@gmail.com', '65372a102dacefd81cc5d1a3cb826a9126b61407e5b81fda1699b6e54403365f', 'technician', 'active'),
-  ('R-A', 'r-a@tarkeebpro.internal', '1e68512df903d3ec75cfd23c8e7e474aadbdedfdca814b1e27cd14acd953ff1f', 'technician', 'active'),
-  ('H-G', 'h-g@tarkeebpro.internal', 'dfaf35533790e6dbf229106b6f2882e0d5f084c26adbf634860ed1990ead11bb', 'technician', 'active'),
-  ('A-D', 'a-d@tarkeebpro.internal', 'a31fb640923267e4dfde4887b4a4df251bf4d1627a4627fbe39f130ef6d41299', 'technician', 'active')
-ON CONFLICT(email) DO UPDATE SET
-  name = excluded.name,
-  password_hash = excluded.password_hash,
-  role = excluded.role,
-  status = excluded.status;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'W-J', '0500000001', 'east', 'available', 'الفني W-J'
-FROM users
-WHERE email = 'bobmorgann1@gmail.com'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'D-M', '0500000002', 'east', 'available', 'الفني D-M'
-FROM users
-WHERE email = 'bobmorgann112@gmail.com'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'H-R', '0500000003', 'west', 'available', 'الفني H-R'
-FROM users
-WHERE email = 'komeil9060@gmail.com'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'R-A', '0500000004', 'central', 'available', 'الفني R-A'
-FROM users
-WHERE email = 'r-a@tarkeebpro.internal'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'H-G', '0500000005', 'south', 'available', 'الفني H-G'
-FROM users
-WHERE email = 'h-g@tarkeebpro.internal'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
-
-INSERT INTO technicians (user_id, name, phone, zone, status, notes)
-SELECT id, 'A-D', '0500000006', 'central', 'available', 'الفني A-D'
-FROM users
-WHERE email = 'a-d@tarkeebpro.internal'
-ON CONFLICT(user_id) DO UPDATE SET
-  name = excluded.name,
-  phone = excluded.phone,
-  zone = excluded.zone,
-  status = excluded.status,
-  notes = excluded.notes;
 
 -- Push Notification Subscriptions
 CREATE TABLE IF NOT EXISTS push_subscriptions (

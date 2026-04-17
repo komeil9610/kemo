@@ -43,10 +43,12 @@ const normalizeRole = (role) => {
   return role || '';
 };
 
+const ACTIVE_WORKSPACE_ROLES = ['admin', 'operations_manager', 'technician'];
+
 const normalizeWorkspaceRoles = (roles = [], fallbackRole = '') => {
   const merged = [...(Array.isArray(roles) ? roles : [roles]), fallbackRole]
     .map((role) => normalizeRole(role))
-    .filter(Boolean);
+    .filter((role) => Boolean(role) && ACTIVE_WORKSPACE_ROLES.includes(role));
   return [...new Set(merged)];
 };
 
@@ -61,6 +63,9 @@ const resolveWorkspaceRole = (requestedRole, roles = [], fallbackRole = '') => {
   }
   if (workspaceRoles.includes('operations_manager')) {
     return 'operations_manager';
+  }
+  if (workspaceRoles.includes('technician')) {
+    return 'technician';
   }
   return workspaceRoles[0] || '';
 };
@@ -175,9 +180,9 @@ export const AuthProvider = ({ children }) => {
 
   const permissions = useMemo(
     () => ({
-      canCreateOrders: ['admin', 'customer_service'].includes(user?.role),
+      canCreateOrders: user?.role === 'admin',
       canManageStatuses: ['admin', 'operations_manager', 'technician'].includes(user?.role),
-      canViewBoard: ['admin', 'customer_service', 'operations_manager', 'technician'].includes(user?.role),
+      canViewBoard: ['admin', 'operations_manager', 'technician'].includes(user?.role),
       canManageSystem: user?.role === 'admin',
     }),
     [user?.role]

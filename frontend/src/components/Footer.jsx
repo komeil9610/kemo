@@ -40,7 +40,7 @@ const fallbackFooter = {
   customerServiceLinks: [
     { label: 'Support', url: 'tel:0558232644' },
     { label: 'WhatsApp', url: 'https://wa.me/966558232644' },
-    { label: 'Call us', url: 'mailto:bookings@kumeelalnahab.com' },
+    { label: 'Call us', url: 'tel:0558232644' },
   ],
   socialLinks: [{ platform: 'whatsapp', url: 'https://wa.me/966558232644' }],
   copyrightText: '© 2026 TrkeebPro',
