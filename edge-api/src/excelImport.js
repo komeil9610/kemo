@@ -903,16 +903,6 @@ const buildNotes = (sheetName, row, devicesSummary, options = {}) => {
     .join("\n");
 };
 
-<<<<<<< Updated upstream
-const normalizeImportedRow = (sheetName, row) => {
-  const soId = normalizeText(row["SO ID"]);
-  const customerName = normalizeText(row.Customer);
-  const phone = normalizeText(row.Phone);
-  const shippingAddress = normalizeText(row["Shipping Address"]);
-
-  if (!soId || !customerName || !phone || !shippingAddress) {
-    return null;
-=======
 const buildRowError = (sheetName, rowNumber, row, reason, field = "") => ({
   sheetName,
   rowNumber,
@@ -966,7 +956,6 @@ const normalizeImportedRow = (sheetName, row, rowNumber) => {
         missingFields[0] || ""
       ),
     };
->>>>>>> Stashed changes
   }
 
   const { city, district, addressText: resolvedAddressText } = resolveLocation(shippingAddress, shippingCity);
@@ -983,10 +972,6 @@ const normalizeImportedRow = (sheetName, row, rowNumber) => {
   const category = inferImportCategory(preferred.date, importStatus);
   const addressText = resolvedAddressText || shippingAddress || [district || city, city].filter(Boolean).join(", ") || "غير محدد";
 
-<<<<<<< Updated upstream
-  if (!city || !district || !preferred.date || !acDetails.length || importStatus === "completed") {
-    return null;
-=======
   if (!preferred.date) {
     return {
       error: buildRowError(
@@ -1002,7 +987,6 @@ const normalizeImportedRow = (sheetName, row, rowNumber) => {
     return {
       error: buildRowError(sheetName, rowNumber, row, "Devices column is empty or invalid", "Devices"),
     };
->>>>>>> Stashed changes
   }
 
   return {
@@ -1093,10 +1077,6 @@ export const parseInstallationWorkOrdersFromArrayBuffer = (arrayBuffer) => {
 export const parseExcelOrdersFromArrayBuffer = (arrayBuffer, fileName = "data.xlsx") => {
   const workbook = XLSX.read(arrayBuffer, { type: "array", raw: false });
   const orders = [];
-<<<<<<< Updated upstream
-  let invalidRows = 0;
-  let skippedCompletedOrders = 0;
-=======
   const invalidRows = [];
   let deduplicatedRows = 0;
   let importSequence = 0;
@@ -1136,29 +1116,12 @@ export const parseExcelOrdersFromArrayBuffer = (arrayBuffer, fileName = "data.xl
 
     return matches;
   };
->>>>>>> Stashed changes
 
   const sheets = workbook.SheetNames.map((sheetName) => {
     const worksheet = workbook.Sheets[sheetName];
     const headers = getSheetHeaders(worksheet);
     const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false });
 
-<<<<<<< Updated upstream
-    for (const row of rows) {
-      const normalizedStatus = normalizeImportedStatus(row.Status);
-      if (normalizedStatus === "completed") {
-        skippedCompletedOrders += 1;
-        continue;
-      }
-
-      const normalized = normalizeImportedRow(sheetName, row);
-      if (!normalized) {
-        invalidRows += 1;
-        continue;
-      }
-      orders.push(normalized);
-    }
-=======
     rows.forEach((row, index) => {
       const rowNumber = index + 2;
       const normalized = normalizeImportedRow(sheetName, row, rowNumber);
@@ -1203,7 +1166,6 @@ export const parseExcelOrdersFromArrayBuffer = (arrayBuffer, fileName = "data.xl
       registerOrderReferences(existingOrderIndex, preferredOrder);
       deduplicatedRows += 1;
     });
->>>>>>> Stashed changes
 
     return {
       name: sheetName,
@@ -1221,10 +1183,6 @@ export const parseExcelOrdersFromArrayBuffer = (arrayBuffer, fileName = "data.xl
       sheetCount: sheets.length,
       totalRows: sheets.reduce((sum, sheet) => sum + (Number(sheet.rowCount) || 0), 0),
       validOrders: orders.length,
-<<<<<<< Updated upstream
-      skippedCompletedOrders,
-      invalidRows,
-=======
       completedOrders: orders.filter((order) => order.importStatus === "completed").length,
       invalidRows: invalidRows.length,
       duplicateRows: deduplicatedRows,
@@ -1245,7 +1203,6 @@ export const parseExcelOrdersFromArrayBuffer = (arrayBuffer, fileName = "data.xl
           return map;
         }, new Map()).entries()
       ).map(([status, count]) => ({ status, count })),
->>>>>>> Stashed changes
     },
   };
 };
