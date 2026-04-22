@@ -14,6 +14,10 @@ frontend/.next/
 .DS_Store
 *.patch
 
+# Local scratch copies and imported workbooks
+backend/
+installation-team-*-work-orders*.xlsx
+
 desktop/release/
 __pycache__/
 *.pyc
