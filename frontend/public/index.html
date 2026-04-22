@@ -1,48 +1,58 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- اللون الأساسي للتطبيق -->
     <meta name="theme-color" content="#d96b27" />
+
+    <!-- وصف الموقع -->
     <meta
       name="description"
       content="تركيب برو | TrkeebPro لخدمات تركيب وصيانة المكيفات باحترافية عالية وخدمة سريعة في جميع مناطق المملكة."
     />
+
+    <!-- Meta (اختياري - فيسبوك) -->
     <meta
       name="facebook-domain-verification"
       content="4cy5ncil6uyqrri3mjr5x8zqxxif61"
     />
+
+    <!-- دعم PWA -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="تركيب برو | TrkeebPro" />
+    <meta name="apple-mobile-web-app-title" content="TrkeebPro" />
+
+    <!-- أيقونات -->
     <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/favicon.svg" />
+
+    <title>تركيب برو | TrkeebPro</title>
+
+    <!-- تنظيف Service Worker (لمنع الشاشة البيضاء) -->
     <script>
       (function () {
-        if (!('serviceWorker' in navigator)) {
-          return;
-        }
+        if (!('serviceWorker' in navigator)) return;
 
-        navigator.serviceWorker.getRegistrations().then(function (registrations) {
-          registrations.forEach(function (registration) {
-            registration.unregister().catch(function () {
-              return null;
-            });
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (reg) {
+            reg.unregister().catch(function () {});
           });
         });
 
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (key) {
-              caches.delete(key).catch(function () {
-                return null;
-              });
+              caches.delete(key).catch(function () {});
             });
           });
         }
       })();
     </script>
+
+    <!-- تصميم شاشة التحميل -->
     <style>
       :root {
         color-scheme: light;
@@ -65,13 +75,11 @@
         align-items: center;
         justify-content: center;
         padding: 32px 20px;
-        box-sizing: border-box;
       }
 
       .boot-card {
         width: min(100%, 560px);
         background: rgba(255, 255, 255, 0.92);
-        border: 1px solid rgba(64, 37, 14, 0.12);
         border-radius: 24px;
         box-shadow: 0 18px 60px rgba(64, 37, 14, 0.12);
         padding: 28px;
@@ -86,20 +94,17 @@
         color: #b45419;
         font-size: 13px;
         font-weight: 700;
-        letter-spacing: 0.02em;
       }
 
       .boot-title {
         margin: 16px 0 10px;
         font-size: 32px;
-        line-height: 1.2;
       }
 
       .boot-text {
         margin: 0;
         color: #5c4635;
         line-height: 1.8;
-        font-size: 16px;
       }
 
       .boot-actions {
@@ -111,10 +116,6 @@
       }
 
       .boot-link {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 150px;
         padding: 12px 18px;
         border-radius: 14px;
         text-decoration: none;
@@ -132,18 +133,20 @@
         border: 1px solid rgba(141, 75, 31, 0.22);
       }
     </style>
-    <title>تركيب برو | TrkeebPro</title>
   </head>
+
   <body>
     <noscript>يرجى تفعيل JavaScript لتشغيل الموقع.</noscript>
+
     <div id="root">
       <div class="boot-shell">
         <div class="boot-card">
           <span class="boot-badge">TrkeebPro</span>
           <h1 class="boot-title">جاري فتح النظام</h1>
           <p class="boot-text">
-            إذا تأخر التحميل أو ظهرت شاشة بيضاء سابقًا، فهذا الإصدار يعرض صفحة مؤقتة بدل الفراغ حتى يكتمل فتح التطبيق.
+            إذا تأخر التحميل، اضغط تحديث أو انتقل لتسجيل الدخول.
           </p>
+
           <div class="boot-actions">
             <a class="boot-link boot-link-primary" href="/login">تسجيل الدخول</a>
             <a class="boot-link boot-link-secondary" href="/">تحديث الصفحة</a>
