@@ -1,7 +1,7 @@
 {
   "name": "tarkeeb-pro-frontend",
   "version": "1.0.0",
-  "description": "Tarkeeb Pro Frontend - Next.js Web Application",
+  "description": "Tarkeeb Pro Frontend - React Web Application",
   "private": true,
   "dependencies": {
     "@capacitor/core": "^8.3.0",
@@ -12,7 +12,6 @@
     "date-fns": "^2.29.3",
     "html2pdf.js": "^0.14.0",
     "jsonwebtoken": "^9.0.2",
-    "next": "^14.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.43.0",
@@ -27,7 +26,6 @@
   "devDependencies": {
     "cross-env": "^7.0.3",
     "eslint": "^8.40.0",
-    "eslint-config-next": "^14.0.0",
     "prettier": "^2.8.8",
     "react-scripts": "^5.0.1"
   },
@@ -41,8 +39,8 @@
     "cf:build": "cross-env GENERATE_SOURCEMAP=false npm run build",
     "cf:deploy": "npm run cf:build && wrangler deploy",
     "cf:dev": "npm run cf:build && wrangler dev",
-    "test": "next test",
-    "lint": "next lint",
+    "test": "react-scripts test",
+    "lint": "react-scripts test --watchAll=false",
     "format": "prettier --write ."
   },
   "browserslist": {

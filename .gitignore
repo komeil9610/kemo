@@ -1,18 +1,21 @@
 node_modules/
 .env
+.env.local
+.env.vercel
+.env.*.local
+.vercel/
 .dev.vars
 .dev.vars.*
 *.log
 dist/
 build/
+.next/
+frontend/.next/
 .DS_Store
 *.patch
 
 desktop/release/
-<<<<<<< Updated upstream
-=======
 __pycache__/
 *.pyc
 .venv/
 venv/
->>>>>>> Stashed changes

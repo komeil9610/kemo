@@ -19,7 +19,7 @@ export const legalIdentity = {
 export const legalBrandStatement = {
   ar: [
     'تركيب برو هي علامة تجارية مملوكة ومدارة بواسطة هاشم محسن آل درويش،',
-    'وتعمل عبر الموقع الرسمي kumeelalnahab.com',
+    'صنع بحب بواسطة كميل ال نهاب',
   ],
   en: [
     'TrkeebPro is a service brand owned and operated by Hashem Mohsen Al Darwish,',

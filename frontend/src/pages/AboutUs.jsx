@@ -26,7 +26,7 @@ export default function AboutUs() {
           ))}
           <p>
             {lang === 'ar'
-              ? 'تركيب برو هي علامة تجارية مملوكة ومدارة بواسطة هاشم محسن آل درويش، وتعمل عبر الموقع الرسمي kumeelalnahab.com.'
+              ? 'تركيب برو هي علامة تجارية مملوكة ومدارة بواسطة هاشم محسن آل درويش، صنع بحب بواسطة كميل ال نهاب.'
               : 'TrkeebPro is the service brand for AC installation and maintenance, owned and managed by Hashem Mohsen Al Darwish.'}
           </p>
         </article>
