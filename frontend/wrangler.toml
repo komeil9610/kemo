@@ -20,3 +20,4 @@ service = "tarkeeb-pro-edge-api"
 [vars]
 API_ORIGIN = "https://api.kumeelalnahab.com"
 EXCEL_UPLOAD_ORIGIN = "https://excel-upload.kumeelalnahab.com"
+ADMIN_FRONTEND_ORIGIN = ""

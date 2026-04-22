@@ -140,10 +140,16 @@ export default function Navbar() {
   const dashboardBasePath = getWorkspaceBasePath(user?.role);
   const roleLabel = getWorkspaceRoleLabel(user?.role, lang);
   const workspaceButtons = getWorkspaceRolesForSwitcher(workspaceRoles);
+  const shouldReloadWorkspace = (role, path) => role === 'admin' && String(path || '').startsWith('/admin');
 
   const switchWorkspace = (nextRole) => {
+    const nextPath = getWorkspaceBasePath(nextRole);
     setActiveRole(nextRole);
-    navigate(getWorkspaceBasePath(nextRole));
+    if (shouldReloadWorkspace(nextRole, nextPath)) {
+      window.location.assign(nextPath);
+      return;
+    }
+    navigate(nextPath);
   };
 
   return (
@@ -156,9 +162,15 @@ export default function Navbar() {
 
         <div className="nav-links nav-links-minimal">
           {token ? (
+            shouldReloadWorkspace(user?.role, dashboardBasePath) ? (
+              <a className="workspace-link-pill" href={dashboardBasePath}>
+                {lang === 'ar' ? 'لوحة العمل' : 'Workspace'}
+              </a>
+            ) : (
             <Link className="workspace-link-pill" to={dashboardBasePath}>
               {lang === 'ar' ? 'لوحة العمل' : 'Workspace'}
             </Link>
+            )
           ) : (
             <Link to="/">{t('home')}</Link>
           )}

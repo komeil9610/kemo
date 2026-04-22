@@ -20,6 +20,12 @@
 - `https://www.kumeelalnahab.com`
 - `https://api.kumeelalnahab.com`
 
+تقسيم الواجهة:
+
+- مسارات الإدارة `/admin` تمر عبر Cloudflare Worker إلى Vercel باستخدام `ADMIN_FRONTEND_ORIGIN`.
+- بقية الحسابات، مثل مدير العمليات والفنيين، تبقى على واجهة Cloudflare الأساسية.
+- ضع رابط Vercel الإنتاجي الصحيح في `ADMIN_FRONTEND_ORIGIN` داخل [frontend/wrangler.toml](/home/bobby/Desktop/rentit/frontend/wrangler.toml:1) أو كمتغير بيئة في Cloudflare.
+
 ## المسار التشغيلي
 
 1. خدمة العملاء تنشئ الطلب أو تستورده من Excel.

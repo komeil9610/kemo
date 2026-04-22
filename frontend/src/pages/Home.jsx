@@ -109,9 +109,9 @@ export default function Home() {
           {isAdmin ? (
             <div className="home-admin-bar">
               <span>{user?.email}</span>
-              <Link className="btn-light" to="/admin/homepage">
+              <a className="btn-light" href="/admin/homepage">
                 {ui.adminCta}
-              </Link>
+              </a>
             </div>
           ) : null}
 

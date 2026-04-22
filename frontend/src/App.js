@@ -35,9 +35,18 @@ function getHomeRouteForRole(role) {
   return getWorkspaceBasePath(role);
 }
 
+function HardRedirect({ to }) {
+  React.useEffect(() => {
+    window.location.replace(to);
+  }, [to]);
+
+  return null;
+}
+
 function WorkspaceRedirect() {
   const { user } = useAuth();
-  return <Navigate to={getHomeRouteForRole(user?.role)} replace />;
+  const nextPath = getHomeRouteForRole(user?.role);
+  return user?.role === 'admin' && nextPath.startsWith('/admin') ? <HardRedirect to={nextPath} /> : <Navigate to={nextPath} replace />;
 }
 
 function LegacyDashboardRedirect() {
@@ -45,7 +54,7 @@ function LegacyDashboardRedirect() {
   const location = useLocation();
   const nextBase = getHomeRouteForRole(user?.role);
   const nextPath = location.pathname.replace(/^\/dashboard/, nextBase);
-  return <Navigate to={nextPath} replace />;
+  return user?.role === 'admin' && nextPath.startsWith('/admin') ? <HardRedirect to={nextPath} /> : <Navigate to={nextPath} replace />;
 }
 
 function AppChrome() {

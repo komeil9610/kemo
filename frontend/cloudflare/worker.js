@@ -6,6 +6,14 @@
 const FILE_EXTENSION_REGEX = /\.[a-zA-Z0-9]+$/;
 const INTERNAL_PROXY_HEADER = "X-Tarkeeb-Pro-Internal";
 const INTERNAL_PROXY_SECRET_HEADER = "X-Tarkeeb-Pro-Proxy-Secret";
+const ADMIN_ROUTE_PREFIXES = ["/admin"];
+const ADMIN_ASSET_PATHS = new Set([
+  "/asset-manifest.json",
+  "/favicon.ico",
+  "/logo192.png",
+  "/logo512.png",
+  "/manifest.json",
+]);
 const EXCEL_UPLOAD_PATHS = new Set([
   "/api/operations/excel-import/preview-upload",
   "/api/operations/excel-import/upload",
@@ -18,6 +26,10 @@ const worker = {
 
       if (url.pathname.startsWith("/api/")) {
         return withSecurityHeaders(await proxyApiRequest(request, env), request);
+      }
+
+      if (shouldProxyAdminFrontend(request, url, env)) {
+        return withSecurityHeaders(await proxyAdminFrontendRequest(request, env), request);
       }
 
       if (shouldRecoverSpaNavigation(request, url)) {
@@ -56,6 +68,78 @@ const worker = {
 };
 
 export default worker;
+
+async function proxyAdminFrontendRequest(request, env) {
+  const incomingUrl = new URL(request.url);
+  const adminOrigin = getAdminFrontendOrigin(env);
+  const upstreamUrl = new URL(`${incomingUrl.pathname}${incomingUrl.search}`, adminOrigin);
+  const response = await fetch(createAdminFrontendRequest(request, upstreamUrl.toString()));
+
+  if (response.status !== 404 || !isDocumentRequest(request, incomingUrl)) {
+    return rewriteAdminFrontendRedirect(response, incomingUrl);
+  }
+
+  const indexUrl = new URL("/index.html", adminOrigin);
+  return rewriteAdminFrontendRedirect(
+    await fetch(createAdminFrontendRequest(request, indexUrl.toString())),
+    incomingUrl
+  );
+}
+
+function createAdminFrontendRequest(request, url) {
+  const incomingUrl = new URL(request.url);
+  const headers = new Headers();
+  const headerNamesToForward = [
+    "Accept",
+    "Accept-Encoding",
+    "Accept-Language",
+    "Cache-Control",
+    "If-Modified-Since",
+    "If-None-Match",
+    "User-Agent",
+  ];
+
+  for (const name of headerNamesToForward) {
+    const value = request.headers.get(name);
+    if (value) {
+      headers.set(name, value);
+    }
+  }
+
+  headers.set("X-Forwarded-Host", incomingUrl.host);
+  headers.set("X-Forwarded-Proto", incomingUrl.protocol.replace(":", ""));
+
+  return new Request(url, {
+    method: request.method,
+    headers,
+    redirect: "manual",
+  });
+}
+
+function rewriteAdminFrontendRedirect(response, incomingUrl) {
+  if (![301, 302, 303, 307, 308].includes(response.status)) {
+    return response;
+  }
+
+  const location = response.headers.get("Location");
+  if (!location) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  try {
+    const nextUrl = new URL(location, incomingUrl.origin);
+    headers.set("Location", `${incomingUrl.origin}${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+  } catch {
+    headers.set("Location", incomingUrl.origin);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 async function proxyApiRequest(request, env) {
   const incomingUrl = new URL(request.url);
@@ -190,6 +274,64 @@ function shouldRecoverSpaNavigation(request, url) {
   }
 
   return !FILE_EXTENSION_REGEX.test(url.pathname || "");
+}
+
+function shouldProxyAdminFrontend(request, url, env) {
+  if (!getAdminFrontendOrigin(env)) {
+    return false;
+  }
+
+  const method = String(request.method || "").toUpperCase();
+  if (!["GET", "HEAD"].includes(method)) {
+    return false;
+  }
+
+  if (ADMIN_ROUTE_PREFIXES.some((prefix) => url.pathname === prefix || url.pathname.startsWith(`${prefix}/`))) {
+    return true;
+  }
+
+  return isAdminFrontendAssetRequest(request, url);
+}
+
+function isAdminFrontendAssetRequest(request, url) {
+  if (!url.pathname.startsWith("/static/") && !ADMIN_ASSET_PATHS.has(url.pathname)) {
+    return false;
+  }
+
+  try {
+    const referer = request.headers.get("Referer");
+    if (!referer) {
+      return false;
+    }
+
+    const refererUrl = new URL(referer);
+    return ADMIN_ROUTE_PREFIXES.some(
+      (prefix) => refererUrl.pathname === prefix || refererUrl.pathname.startsWith(`${prefix}/`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isDocumentRequest(request, url) {
+  return (
+    request.method === "GET" &&
+    request.headers.get("Accept")?.includes("text/html") &&
+    !FILE_EXTENSION_REGEX.test(url.pathname)
+  );
+}
+
+function getAdminFrontendOrigin(env) {
+  const origin = String(env.ADMIN_FRONTEND_ORIGIN || "").trim().replace(/\/$/, "");
+  if (!origin) {
+    return "";
+  }
+
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return "";
+  }
 }
 
 async function fetchAsset(request, env) {

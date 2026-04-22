@@ -47,7 +47,12 @@ export default function Login() {
     const nextUser = await login(email, password);
     if (nextUser) {
       await notificationHaptic('success');
-      navigate(location.state?.from || getWorkspaceBasePath(nextUser.role), { replace: true });
+      const nextPath = location.state?.from || getWorkspaceBasePath(nextUser.role);
+      if (nextUser.role === 'admin' && String(nextPath).startsWith('/admin')) {
+        window.location.assign(nextPath);
+        return;
+      }
+      navigate(nextPath, { replace: true });
     } else {
       await notificationHaptic('error');
     }
