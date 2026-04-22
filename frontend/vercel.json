@@ -3,6 +3,7 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm ci",
+  "outputDirectory": "build",
   "env": {
     "JWT_SECRET": "@jwt_secret",
     "DATABASE_URL": "@database_url",
