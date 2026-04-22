@@ -6052,15 +6052,11 @@ function normalizeHomeGalleryImages(value) {
       caption: String(entry?.caption || "").trim(),
       imageUrl: String(entry?.imageUrl || "").trim(),
     }))
-    .filter((entry) => entry.title || entry.caption || entry.imageUrl);
-
-  if (!items.length) {
-    return { error: "Gallery images must include at least one item" };
-  }
+    .filter((entry) => entry.imageUrl && !LEGACY_HOME_GALLERY_IMAGE_URLS.has(entry.imageUrl));
 
   for (const entry of items) {
-    if (!entry.title || !entry.caption) {
-      return { error: "Each gallery image requires title and caption" };
+    if (!entry.imageUrl) {
+      return { error: "Each gallery image requires an image URL" };
     }
   }
 
@@ -6276,23 +6272,7 @@ function getDefaultHomeSettings() {
     featuresTitle: "لماذا تختارنا؟",
     features: ["فنيين محترفين", "سرعة في الوصول", "أسعار مناسبة", "ضمان على الخدمة", "خدمة عملاء ممتازة"],
     galleryTitle: "أعمالنا",
-    galleryImages: [
-      {
-        title: "تركيب احترافي",
-        caption: "تنفيذ مرتب واهتمام كامل بالتفاصيل وجودة التشطيب.",
-        imageUrl: "/home-gallery-1.jpg",
-      },
-      {
-        title: "خدمة ميدانية سريعة",
-        caption: "وصول سريع وتجهيز كامل لخدمة جميع أنواع المكيفات.",
-        imageUrl: "/home-gallery-2.webp",
-      },
-      {
-        title: "صيانة وتنظيف",
-        caption: "حلول صيانة وتنظيف تعيد كفاءة التبريد وتحافظ على عمر الجهاز.",
-        imageUrl: "/home-gallery-3.jpg",
-      },
-    ],
+    galleryImages: [],
     testimonialsTitle: "آراء العملاء",
     testimonials: ["خدمة ممتازة وسريعة، أنصح فيهم", "أسعارهم مناسبة وشغلهم نظيف"],
     contactTitle: "تواصل معنا",
@@ -6302,6 +6282,13 @@ function getDefaultHomeSettings() {
     hoursText: "يتم تحديد ساعات العمل لاحقًا",
   };
 }
+
+const LEGACY_HOME_GALLERY_IMAGE_URLS = new Set([
+  "/home-gallery-1.jpg",
+  "/home-gallery-2.png",
+  "/home-gallery-2.webp",
+  "/home-gallery-3.jpg",
+]);
 
 function parseHomeSettingsPayload(value) {
   try {
@@ -6330,23 +6317,14 @@ function normalizeStoredHomeStats(value, fallback = []) {
   return items.length ? items : fallback;
 }
 
-function normalizeStoredHomeGalleryImages(value, fallback = []) {
-  const items = (Array.isArray(value) ? value : [])
+function normalizeStoredHomeGalleryImages(value) {
+  return (Array.isArray(value) ? value : [])
     .map((entry) => ({
       title: String(entry?.title || "").trim(),
       caption: String(entry?.caption || "").trim(),
       imageUrl: String(entry?.imageUrl || "").trim(),
     }))
-    .filter((entry) => entry.title && entry.caption);
-
-  if (!items.length) {
-    return fallback;
-  }
-
-  return fallback.map((entry, index) => ({
-    ...entry,
-    ...(items[index] || {}),
-  }));
+    .filter((entry) => entry.imageUrl && !LEGACY_HOME_GALLERY_IMAGE_URLS.has(entry.imageUrl));
 }
 
 function parseJsonArray(value) {

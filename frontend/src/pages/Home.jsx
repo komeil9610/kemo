@@ -6,7 +6,6 @@ import { buildWhatsAppUrl, homeService } from '../services/api';
 import { createDefaultHomeSettings, localizeHomeSettings, normalizeHomeSettings } from '../utils/homepageSettings';
 
 const heroFallbackImage = '/home-hero-collage.png';
-const galleryFallbackImages = ['/home-gallery-1.jpg', '/home-gallery-2.webp', '/home-gallery-3.jpg'];
 
 const copy = {
   ar: {
@@ -55,10 +54,6 @@ function ActionButton({ className, label, url }) {
   );
 }
 
-function resolveGalleryImage(imageUrl, index) {
-  return imageUrl || galleryFallbackImages[index] || galleryFallbackImages[0];
-}
-
 export default function Home() {
   const { lang } = useLang();
   const { user, isAdmin } = useAuth();
@@ -94,6 +89,10 @@ export default function Home() {
   const whatsappUrl = useMemo(
     () => buildWhatsAppUrl(displaySettings.whatsappNumber || displaySettings.phone),
     [displaySettings.phone, displaySettings.whatsappNumber]
+  );
+  const galleryImages = useMemo(
+    () => displaySettings.galleryImages.filter((item) => item.imageUrl),
+    [displaySettings.galleryImages]
   );
 
   const contactCards = [
@@ -209,23 +208,27 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="feature-section">
-        <div className="section-heading">
-          <p className="eyebrow">{ui.featuredWork}</p>
-          <h2>{displaySettings.galleryTitle}</h2>
+      {galleryImages.length ? (
+        <div className="feature-section">
+          <div className="section-heading">
+            <p className="eyebrow">{ui.featuredWork}</p>
+            <h2>{displaySettings.galleryTitle}</h2>
+          </div>
+          <div className="home-gallery-grid">
+            {galleryImages.map((item, index) => (
+              <article className="home-gallery-card" key={`${item.imageUrl}-${index}`}>
+                <img alt={item.title || displaySettings.galleryTitle} src={item.imageUrl} />
+                {item.title || item.caption ? (
+                  <div className="home-gallery-copy">
+                    {item.title ? <strong>{item.title}</strong> : null}
+                    {item.caption ? <p>{item.caption}</p> : null}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
         </div>
-        <div className="home-gallery-grid">
-          {displaySettings.galleryImages.map((item, index) => (
-            <article className="home-gallery-card" key={`${item.title}-${index}`}>
-              <img alt={item.title || displaySettings.galleryTitle} src={resolveGalleryImage(item.imageUrl, index)} />
-              <div className="home-gallery-copy">
-                <strong>{item.title}</strong>
-                <p>{item.caption}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
+      ) : null}
 
       <div className="feature-section">
         <div className="section-heading">

@@ -12,6 +12,8 @@ const linesToItems = (value) =>
     .filter(Boolean);
 
 const itemsToLines = (items = []) => (Array.isArray(items) ? items.join('\n') : '');
+const MAX_GALLERY_IMAGE_BYTES = 2 * 1024 * 1024;
+const createGalleryItem = () => ({ title: '', caption: '', imageUrl: '' });
 
 const copyMap = {
   ar: {
@@ -32,7 +34,13 @@ const copyMap = {
     stats: 'الأرقام السريعة',
     helperLines: 'أدخل كل عنصر في سطر مستقل.',
     helperStats: 'لكل سطر استخدم الصيغة: القيمة | العنوان',
-    helperGallery: 'اترك رابط الصورة فارغًا لاستخدام الصور الافتراضية الموجودة داخل المشروع.',
+    helperGallery: 'أضف رابط صورة أو ارفع صورة من جهازك. احذف كل الصور لإخفاء قسم أعمالنا من الصفحة.',
+    addGalleryImage: 'إضافة صورة',
+    removeGalleryImage: 'حذف الصورة',
+    uploadImage: 'رفع صورة',
+    emptyGallery: 'لا توجد صور في قسم أعمالنا الآن.',
+    fileTooLarge: 'حجم الصورة كبير. الحد الأقصى 2 ميجابايت.',
+    invalidFile: 'اختر ملف صورة صالح.',
     heroKicker: 'العنوان الصغير',
     heroTitle: 'العنوان الرئيسي',
     heroSubtitle: 'الوصف المختصر',
@@ -80,7 +88,13 @@ const copyMap = {
     stats: 'Quick stats',
     helperLines: 'Use one item per line.',
     helperStats: 'Use this format per line: value | label',
-    helperGallery: 'Leave image URL empty to keep the bundled project images.',
+    helperGallery: 'Add an image URL or upload an image file. Remove all images to hide the gallery section.',
+    addGalleryImage: 'Add image',
+    removeGalleryImage: 'Remove image',
+    uploadImage: 'Upload image',
+    emptyGallery: 'There are no gallery images right now.',
+    fileTooLarge: 'Image is too large. Maximum size is 2 MB.',
+    invalidFile: 'Choose a valid image file.',
     heroKicker: 'Small headline',
     heroTitle: 'Main headline',
     heroSubtitle: 'Short description',
@@ -173,10 +187,49 @@ export default function HomepageEditor() {
   const setGalleryField = (index, key, value) => {
     setForm((current) => ({
       ...current,
-      galleryImages: current.galleryImages.map((item, itemIndex) =>
+      galleryImages: (Array.isArray(current.galleryImages) ? current.galleryImages : []).map((item, itemIndex) =>
         itemIndex === index ? { ...item, [key]: value } : item
       ),
     }));
+  };
+
+  const addGalleryImage = () => {
+    setForm((current) => ({
+      ...current,
+      galleryImages: [...(Array.isArray(current.galleryImages) ? current.galleryImages : []), createGalleryItem()],
+    }));
+  };
+
+  const removeGalleryImage = (index) => {
+    setForm((current) => ({
+      ...current,
+      galleryImages: (Array.isArray(current.galleryImages) ? current.galleryImages : []).filter((_, itemIndex) => itemIndex !== index),
+    }));
+  };
+
+  const setGalleryImageFromFile = (index, file) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error(copy.invalidFile);
+      return;
+    }
+
+    if (file.size > MAX_GALLERY_IMAGE_BYTES) {
+      toast.error(copy.fileTooLarge);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setGalleryField(index, 'imageUrl', String(reader.result || ''));
+    };
+    reader.onerror = () => {
+      toast.error(copy.invalidFile);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (event) => {
@@ -296,14 +349,30 @@ export default function HomepageEditor() {
           <input className="input" onChange={(event) => setField('galleryTitle', event.target.value)} placeholder={copy.galleryTitle} value={form.galleryTitle} />
           <small className="muted">{copy.helperGallery}</small>
           <div className="homepage-gallery-editor-grid">
-            {form.galleryImages.map((item, index) => (
+            {(Array.isArray(form.galleryImages) ? form.galleryImages : []).map((item, index) => (
               <article className="homepage-gallery-editor-card" key={`gallery-editor-${index}`}>
+                {item.imageUrl ? (
+                  <img className="homepage-gallery-editor-preview" alt={item.title || copy.galleryTitle} src={item.imageUrl} />
+                ) : null}
                 <input className="input" onChange={(event) => setGalleryField(index, 'title', event.target.value)} placeholder={copy.imageTitle} value={item.title} />
                 <textarea className="input textarea" onChange={(event) => setGalleryField(index, 'caption', event.target.value)} placeholder={copy.imageCaption} value={item.caption} />
                 <input className="input" onChange={(event) => setGalleryField(index, 'imageUrl', event.target.value)} placeholder={copy.imageUrl} value={item.imageUrl} />
+                <div className="homepage-gallery-editor-actions">
+                  <label className="btn-light homepage-upload-button">
+                    {copy.uploadImage}
+                    <input accept="image/*" onChange={(event) => setGalleryImageFromFile(index, event.target.files?.[0])} type="file" />
+                  </label>
+                  <button className="btn-secondary" onClick={() => removeGalleryImage(index)} type="button">
+                    {copy.removeGalleryImage}
+                  </button>
+                </div>
               </article>
             ))}
           </div>
+          {form.galleryImages.length ? null : <p className="muted">{copy.emptyGallery}</p>}
+          <button className="btn-light homepage-gallery-add-button" onClick={addGalleryImage} type="button">
+            {copy.addGalleryImage}
+          </button>
         </section>
 
         <section className="panel form-panel">

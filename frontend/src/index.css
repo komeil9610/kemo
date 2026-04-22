@@ -1724,6 +1724,39 @@ h1 {
   padding: 18px;
 }
 
+.homepage-gallery-editor-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 18px;
+  object-fit: cover;
+  background: rgba(17, 120, 100, 0.08);
+}
+
+.homepage-gallery-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.homepage-gallery-editor-actions .btn-light,
+.homepage-gallery-editor-actions .btn-secondary,
+.homepage-gallery-add-button {
+  min-height: 44px;
+}
+
+.homepage-upload-button {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.homepage-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .dashboard-grid {
   grid-template-columns: 1.1fr 0.9fr;
 }
@@ -4748,7 +4781,10 @@ button.dashboard-stat-link {
 
   .home-admin-bar .btn-light,
   .homepage-editor-hero .btn-primary,
-  .homepage-editor-hero .btn-light {
+  .homepage-editor-hero .btn-light,
+  .homepage-gallery-editor-actions .btn-light,
+  .homepage-gallery-editor-actions .btn-secondary,
+  .homepage-gallery-add-button {
     width: 100%;
   }
 }

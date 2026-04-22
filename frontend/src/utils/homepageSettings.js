@@ -36,23 +36,7 @@ const HOME_SETTINGS_DEFAULTS = {
     featuresTitle: 'لماذا تختارنا؟',
     features: ['فنيين محترفين', 'سرعة في الوصول', 'أسعار مناسبة', 'ضمان على الخدمة', 'خدمة عملاء ممتازة'],
     galleryTitle: 'أعمالنا',
-    galleryImages: [
-      {
-        title: 'تركيب احترافي',
-        caption: 'تنفيذ مرتب واهتمام كامل بالتفاصيل وجودة التشطيب.',
-        imageUrl: '/home-gallery-1.jpg',
-      },
-      {
-        title: 'خدمة ميدانية سريعة',
-        caption: 'وصول سريع وتجهيز كامل لخدمة جميع أنواع المكيفات.',
-        imageUrl: '/home-gallery-2.webp',
-      },
-      {
-        title: 'صيانة وتنظيف',
-        caption: 'حلول صيانة وتنظيف تعيد كفاءة التبريد وتحافظ على عمر الجهاز.',
-        imageUrl: '/home-gallery-3.jpg',
-      },
-    ],
+    galleryImages: [],
     testimonialsTitle: 'آراء العملاء',
     testimonials: ['خدمة ممتازة وسريعة، أنصح فيهم', 'أسعارهم مناسبة وشغلهم نظيف'],
     contactTitle: 'تواصل معنا',
@@ -93,23 +77,7 @@ const HOME_SETTINGS_DEFAULTS = {
     featuresTitle: 'Why choose us?',
     features: ['Professional technicians', 'Fast arrival', 'Competitive pricing', 'Service guarantee', 'Excellent customer support'],
     galleryTitle: 'Our work',
-    galleryImages: [
-      {
-        title: 'Professional installation',
-        caption: 'Clean execution with close attention to detail and finishing quality.',
-        imageUrl: '/home-gallery-1.jpg',
-      },
-      {
-        title: 'Fast field service',
-        caption: 'Quick arrival and full readiness to handle all AC service needs.',
-        imageUrl: '/home-gallery-2.webp',
-      },
-      {
-        title: 'Maintenance and cleaning',
-        caption: 'Maintenance and cleaning solutions that restore cooling efficiency and extend unit life.',
-        imageUrl: '/home-gallery-3.jpg',
-      },
-    ],
+    galleryImages: [],
     testimonialsTitle: 'Customer reviews',
     testimonials: ['Excellent and fast service. I highly recommend them.', 'Fair prices and very clean work.'],
     contactTitle: 'Contact us',
@@ -144,21 +112,21 @@ const normalizeStats = (value, fallback = []) => {
   return items.length ? items : clone(fallback);
 };
 
-const normalizeGalleryImages = (value, fallback = []) => {
-  const defaults = clone(fallback);
-  const items = (Array.isArray(value) ? value : []).map((item, index) => ({
-    title: normalizeText(item?.title, defaults[index]?.title || ''),
-    caption: normalizeText(item?.caption, defaults[index]?.caption || ''),
-    imageUrl: normalizeText(item?.imageUrl, defaults[index]?.imageUrl || ''),
-  }));
+const LEGACY_GALLERY_IMAGE_URLS = new Set([
+  '/home-gallery-1.jpg',
+  '/home-gallery-2.png',
+  '/home-gallery-2.webp',
+  '/home-gallery-3.jpg',
+]);
 
-  const merged = defaults.map((item, index) => ({
-    ...item,
-    ...(items[index] || {}),
-  }));
-
-  return merged.length ? merged : defaults;
-};
+const normalizeGalleryImages = (value) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => ({
+      title: normalizeText(item?.title),
+      caption: normalizeText(item?.caption),
+      imageUrl: normalizeText(item?.imageUrl),
+    }))
+    .filter((item) => item.imageUrl && !LEGACY_GALLERY_IMAGE_URLS.has(item.imageUrl));
 
 export const normalizeHomeSettings = (value) => {
   const defaults = createDefaultHomeSettings('ar');
@@ -193,7 +161,7 @@ export const normalizeHomeSettings = (value) => {
     featuresTitle: normalizeText(raw.featuresTitle, defaults.featuresTitle),
     features: normalizeStringList(raw.features, defaults.features),
     galleryTitle: normalizeText(raw.galleryTitle, defaults.galleryTitle),
-    galleryImages: normalizeGalleryImages(raw.galleryImages, defaults.galleryImages),
+    galleryImages: normalizeGalleryImages(raw.galleryImages),
     testimonialsTitle: normalizeText(raw.testimonialsTitle, defaults.testimonialsTitle),
     testimonials: normalizeStringList(raw.testimonials, defaults.testimonials),
     contactTitle: normalizeText(raw.contactTitle, defaults.contactTitle),
