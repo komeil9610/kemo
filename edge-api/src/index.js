@@ -2221,8 +2221,8 @@ async function previewExcelUpload(request, env) {
   }
 
   const originalFileName = String(file.name || "data.xlsx").trim() || "data.xlsx";
-  if (!/\.(xlsx|xls)$/i.test(originalFileName)) {
-    return json({ message: "يرجى رفع ملف Excel بصيغة xlsx أو xls" }, 400, request, env);
+  if (!/\.(xlsx|xls|xlsm)$/i.test(originalFileName)) {
+    return json({ message: "يرجى رفع ملف Excel بصيغة xlsx أو xls أو xlsm" }, 400, request, env);
   }
 
   const arrayBuffer = await file.arrayBuffer();

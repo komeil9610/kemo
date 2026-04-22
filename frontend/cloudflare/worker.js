@@ -150,14 +150,24 @@ async function proxyApiRequest(request, env) {
   if (excelUploadOrigin && EXCEL_UPLOAD_PATHS.has(incomingUrl.pathname)) {
     try {
       const excelUploadUrl = new URL(`${incomingUrl.pathname}${incomingUrl.search}`, excelUploadOrigin);
-      return await fetch(createOriginProxyRequest(request, excelUploadUrl.toString(), env, true));
+      const uploadResponse = await fetch(createOriginProxyRequest(request, excelUploadUrl.toString(), env, true));
+      const isChallenge = uploadResponse.headers.get("cf-mitigated") === "challenge";
+      if (!isChallenge && uploadResponse.status < 500) {
+        return uploadResponse;
+      }
+
+      console.warn("Excel upload origin failed; falling back to edge API", {
+        url: request.url,
+        uploadOrigin: excelUploadOrigin,
+        status: uploadResponse.status,
+        challenge: isChallenge,
+      });
     } catch (error) {
       console.error("Excel upload proxy failed", {
         url: request.url,
         uploadOrigin: excelUploadOrigin,
         error: error?.message || String(error),
       });
-      return textResponse("Excel upload service is temporarily unavailable.", 502);
     }
   }
 

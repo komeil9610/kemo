@@ -17,48 +17,50 @@ function NotificationMenu() {
   const panelRef = useRef(null);
   const seenIdsRef = useRef(new Set());
   const initializedRef = useRef(false);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
-    if (!token) {
-      setItems([]);
-      setUnreadCount(0);
-      initializedRef.current = false;
-      seenIdsRef.current = new Set();
-      return undefined;
+    if (token) {
+      return;
     }
 
-    const pollNotifications = async () => {
-      try {
-        const response = await notificationsService.list();
-        const notifications = response.data?.notifications || [];
-        setItems(notifications);
-        setUnreadCount(response.data?.unreadCount || 0);
+    setItems([]);
+    setUnreadCount(0);
+    initializedRef.current = false;
+    seenIdsRef.current = new Set();
+  }, [token]);
 
-        if (!initializedRef.current) {
-          notifications.forEach((item) => seenIdsRef.current.add(item.id));
-          initializedRef.current = true;
-          return;
-        }
+  const loadNotifications = async () => {
+    if (loadingRef.current) {
+      return;
+    }
 
-        notifications
-          .filter((item) => !seenIdsRef.current.has(item.id))
-          .forEach((item) => {
-            seenIdsRef.current.add(item.id);
-            toast(item.title, { duration: 4500 });
-            sendAppNotification({ key: `navbar-notification-${item.id}`, title: item.title, body: item.body });
-          });
-      } catch {
-        return null;
+    try {
+      loadingRef.current = true;
+      const response = await notificationsService.list();
+      const notifications = response.data?.notifications || [];
+      setItems(notifications);
+      setUnreadCount(response.data?.unreadCount || 0);
+
+      if (!initializedRef.current) {
+        notifications.forEach((item) => seenIdsRef.current.add(item.id));
+        initializedRef.current = true;
+        return;
       }
 
+      notifications
+        .filter((item) => !seenIdsRef.current.has(item.id))
+        .forEach((item) => {
+          seenIdsRef.current.add(item.id);
+          toast(item.title, { duration: 4500 });
+          sendAppNotification({ key: `navbar-notification-${item.id}`, title: item.title, body: item.body });
+        });
+    } catch {
       return null;
-    };
-
-    pollNotifications();
-    const intervalId = window.setInterval(pollNotifications, 8000);
-
-    return () => window.clearInterval(intervalId);
-  }, [token]);
+    } finally {
+      loadingRef.current = false;
+    }
+  };
 
   useEffect(() => {
     setOpen(false);
@@ -95,6 +97,10 @@ function NotificationMenu() {
   const toggleOpen = async () => {
     const nextOpen = !open;
     setOpen(nextOpen);
+
+    if (nextOpen) {
+      await loadNotifications();
+    }
 
     if (nextOpen && unreadCount > 0) {
       await notificationsService.markAllRead();
