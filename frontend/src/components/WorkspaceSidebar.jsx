@@ -30,6 +30,7 @@ export default function WorkspaceSidebar() {
           weekly: 'مهام الأسبوع',
           monthly: 'مهام الشهر',
           tomorrow: 'مهام الغد',
+          followUp: 'متابعة الطلبات',
           myAccount: 'حسابي',
           endOfDay: 'تقرير نهاية اليوم',
           assignments: 'تعيين الفرق',
@@ -39,6 +40,7 @@ export default function WorkspaceSidebar() {
           openMenu: 'فتح قائمة المهام',
           closeMenu: 'إخفاء القائمة',
           role: getWorkspaceRoleLabel(user?.role, 'ar'),
+          adminExcel: 'رفع الإكسل',
         }
       : {
           workspace: 'Workspace',
@@ -55,6 +57,7 @@ export default function WorkspaceSidebar() {
           weekly: 'Weekly tasks',
           monthly: 'Monthly tasks',
           tomorrow: 'Tomorrow tasks',
+          followUp: 'Follow-up jobs',
           myAccount: 'My account',
           endOfDay: 'End-of-day report',
           assignments: 'Team assignments',
@@ -64,6 +67,7 @@ export default function WorkspaceSidebar() {
           openMenu: 'Open task menu',
           closeMenu: 'Hide menu',
           role: getWorkspaceRoleLabel(user?.role, 'en'),
+          adminExcel: 'Excel import',
         };
 
   useEffect(() => {
@@ -107,7 +111,6 @@ export default function WorkspaceSidebar() {
             title: labels.planning,
             items: [
               { to: `${workspaceBasePath}#assignments`, label: labels.assignments },
-              { to: `${workspaceBasePath}#excel-sync`, label: labels.excelSync },
             ],
           },
         ]
@@ -119,6 +122,7 @@ export default function WorkspaceSidebar() {
                 { to: workspaceBasePath, label: labels.technicianOverview, end: true },
                 { to: `${workspaceBasePath}/today`, label: labels.daily },
                 { to: `${workspaceBasePath}/tomorrow`, label: labels.tomorrow },
+                { to: `${workspaceBasePath}/follow-up`, label: labels.followUp },
               ],
             },
             {
@@ -130,24 +134,21 @@ export default function WorkspaceSidebar() {
           {
             title: labels.workspace,
             items: [
-              { to: workspaceBasePath, label: labels.overview, end: true },
-              { to: `${workspaceBasePath}/pending`, label: labels.pending },
-              { to: `${workspaceBasePath}/scheduled`, label: labels.scheduled },
-              { to: `${workspaceBasePath}/in_transit`, label: labels.inTransit },
-              { to: `${workspaceBasePath}/completed`, label: labels.completed },
+              { to: workspaceBasePath, label: user?.role === 'admin' ? labels.adminExcel : labels.overview, end: true },
             ],
           },
-          {
-            title: labels.planning,
-            items: [
-              { to: `${workspaceBasePath}/daily`, label: labels.daily },
-              { to: `${workspaceBasePath}/weekly`, label: labels.weekly },
-              { to: `${workspaceBasePath}/monthly`, label: labels.monthly },
-              ...(user?.role === 'admin' ? [{ to: '/operations-manager', label: labels.operationsOverview }] : []),
-              ...(user?.role === 'admin' ? [{ to: '/operations-manager#assignments', label: labels.assignments }] : []),
-              ...(user?.role === 'admin' ? [{ to: '/operations-manager#excel-sync', label: labels.excelSync }] : []),
-            ],
-          },
+          ...(user?.role === 'admin'
+            ? []
+            : [
+                {
+                  title: labels.planning,
+                  items: [
+                    { to: `${workspaceBasePath}/daily`, label: labels.daily },
+                    { to: `${workspaceBasePath}/weekly`, label: labels.weekly },
+                    { to: `${workspaceBasePath}/monthly`, label: labels.monthly },
+                  ],
+                },
+              ]),
           {
             title: labels.system,
             items: [

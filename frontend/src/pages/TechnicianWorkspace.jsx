@@ -31,6 +31,13 @@ const copy = {
     todayDevices: 'Today devices',
     tomorrowOrders: 'Tomorrow orders',
     activeOrders: 'Active assigned orders',
+    followUpJobs: 'Follow-up jobs',
+    followUpHint: 'Unfinished assigned orders that are overdue, suspended, in transit, or waiting for closure.',
+    followUpEmpty: 'No follow-up jobs need action right now.',
+    followUpReason: 'Follow-up reason',
+    overdueJob: 'Overdue task date',
+    supportPending: 'Support request pending',
+    closurePending: 'Closure pending',
     selectedTask: 'Selected task',
     customer: 'Customer',
     reference: 'Reference',
@@ -120,6 +127,13 @@ const copy = {
     todayDevices: 'أجهزة اليوم',
     tomorrowOrders: 'طلبات الغد',
     activeOrders: 'إجمالي الطلبات المسندة',
+    followUpJobs: 'متابعة الطلبات',
+    followUpHint: 'طلباتك غير المنتهية التي فات تاريخها أو تحتاج دعمًا أو تنتظر إغلاق الزامل.',
+    followUpEmpty: 'لا توجد طلبات متابعة تحتاج إجراء الآن.',
+    followUpReason: 'سبب المتابعة',
+    overdueJob: 'تاريخ المهمة فائت',
+    supportPending: 'طلب دعم بانتظار المتابعة',
+    closurePending: 'الإغلاق بانتظار الإكمال',
     selectedTask: 'الطلب المحدد',
     customer: 'العميل',
     reference: 'المرجع',
@@ -267,6 +281,26 @@ const getAvailableQuickActions = (order) => {
   return actions;
 };
 
+const getFollowUpReasonLabel = (order, operationalDate, t) => {
+  const status = String(order?.status || '').trim();
+  const zamilStatus = String(order?.zamilClosureStatus || '').trim();
+  const taskDate = getOrderTaskDate(order);
+
+  if (status === 'suspended' || status === 'rescheduled') {
+    return t.supportPending;
+  }
+  if (['requested', 'otp_submitted'].includes(zamilStatus)) {
+    return t.closurePending;
+  }
+  if (taskDate && operationalDate && taskDate < operationalDate) {
+    return t.overdueJob;
+  }
+  if (status === 'in_transit') {
+    return t.startRoute;
+  }
+  return t.followUpJobs;
+};
+
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -410,8 +444,29 @@ export default function TechnicianWorkspace() {
     () => activeOrders.filter((order) => orderMatchesDailyTaskDate(order, tomorrowDate)),
     [activeOrders, tomorrowDate]
   );
-  const activeSectionKey = ['today', 'tomorrow', 'account'].includes(String(viewKey || '').trim()) ? String(viewKey).trim() : 'overview';
-  const visibleOrders = activeSectionKey === 'today' ? todayOrders : activeSectionKey === 'tomorrow' ? tomorrowOrders : activeOrders;
+  const followUpOrders = useMemo(
+    () =>
+      activeOrders.filter((order) => {
+        const status = String(order.status || '').trim();
+        const zamilStatus = String(order.zamilClosureStatus || '').trim();
+        const taskDate = getOrderTaskDate(order);
+        return (
+          ['suspended', 'rescheduled', 'in_transit'].includes(status) ||
+          ['requested', 'otp_submitted'].includes(zamilStatus) ||
+          (taskDate && taskDate < operationalDate)
+        );
+      }),
+    [activeOrders, operationalDate]
+  );
+  const activeSectionKey = ['today', 'tomorrow', 'follow-up', 'account'].includes(String(viewKey || '').trim()) ? String(viewKey).trim() : 'overview';
+  const visibleOrders =
+    activeSectionKey === 'today'
+      ? todayOrders
+      : activeSectionKey === 'tomorrow'
+        ? tomorrowOrders
+        : activeSectionKey === 'follow-up'
+          ? followUpOrders
+          : activeOrders;
   const todayDevices = useMemo(() => todayOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0), [todayOrders]);
 
   useEffect(() => {
@@ -431,11 +486,13 @@ export default function TechnicianWorkspace() {
     overview: activeOrders.length,
     today: todayOrders.length,
     tomorrow: tomorrowOrders.length,
+    followUp: followUpOrders.length,
   };
   const tabs = [
     { key: 'overview', label: t.allTasks, count: tabCounts.overview, path: '/technician' },
     { key: 'today', label: t.today, count: tabCounts.today, path: '/technician/today' },
     { key: 'tomorrow', label: t.tomorrow, count: tabCounts.tomorrow, path: '/technician/tomorrow' },
+    { key: 'follow-up', label: t.followUpJobs, count: tabCounts.followUp, path: '/technician/follow-up' },
     { key: 'account', label: t.myAccount, count: null, path: '/technician/account' },
   ];
 
@@ -650,6 +707,15 @@ export default function TechnicianWorkspace() {
               <small>{tomorrowDate}</small>
             </button>
             <button
+              className={`tech-summary-card follow-up interactive-summary-card${activeSectionKey === 'follow-up' ? ' is-active' : ''}`}
+              onClick={() => navigate('/technician/follow-up')}
+              type="button"
+            >
+              <span>{t.followUpJobs}</span>
+              <strong>{followUpOrders.length}</strong>
+              <small>{t.followUpHint}</small>
+            </button>
+            <button
               className={`tech-summary-card interactive-summary-card${activeSectionKey === 'account' ? ' is-active' : ''}`}
               onClick={() => navigate('/technician/account')}
               type="button"
@@ -683,9 +749,17 @@ export default function TechnicianWorkspace() {
           <div className="today-column section-card" id={activeSectionKey === 'tomorrow' ? 'tomorrow' : 'today'}>
             <div className="task-detail-head">
               <div>
-                <h3>{activeSectionKey === 'tomorrow' ? t.tomorrow : activeSectionKey === 'account' ? t.myAccount : t.today}</h3>
+                <h3>
+                  {activeSectionKey === 'tomorrow'
+                    ? t.tomorrow
+                    : activeSectionKey === 'follow-up'
+                      ? t.followUpJobs
+                      : activeSectionKey === 'account'
+                        ? t.myAccount
+                        : t.today}
+                </h3>
                 <p className="muted">
-                  {activeSectionKey === 'tomorrow' ? tomorrowDate : operationalDate}
+                  {activeSectionKey === 'tomorrow' ? tomorrowDate : activeSectionKey === 'follow-up' ? t.followUpHint : operationalDate}
                 </p>
               </div>
             </div>
@@ -757,6 +831,9 @@ export default function TechnicianWorkspace() {
                         <span>{t.status}: {order.statusLabel || order.status || '—'}</span>
                         <span>{t.taskType}: {getTaskTypeLabel(order, t)}</span>
                         <span>{t.taskDate}: {getTaskDateLabel(order)}</span>
+                        {activeSectionKey === 'follow-up' ? (
+                          <span>{t.followUpReason}: {getFollowUpReasonLabel(order, operationalDate, t)}</span>
+                        ) : null}
                       </div>
                       <span className="tech-job-open-hint">{t.openDetails}</span>
                     </button>
@@ -775,7 +852,7 @@ export default function TechnicianWorkspace() {
                 ))}
               </div>
             ) : (
-              <div className="section-card tech-empty-state">{t.noTasks}</div>
+              <div className="section-card tech-empty-state">{activeSectionKey === 'follow-up' ? t.followUpEmpty : t.noTasks}</div>
             )}
           </div>
 

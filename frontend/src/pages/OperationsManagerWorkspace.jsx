@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { buildWhatsAppUrl, canUploadExcelSource, formatSaudiPhoneDisplay, operationsService } from '../services/api';
+import { buildWhatsAppUrl, formatSaudiPhoneDisplay, operationsService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LangContext';
 import { exportOrdersReport, getOperationalDate, getOrderDeviceCount, getOrderDisplayStatus, getOrderPrimaryReference, orderMatchesDailyTaskDate, nextDateString } from '../utils/internalOrders';
@@ -264,17 +264,12 @@ export default function OperationsManagerWorkspace() {
   const canManageTeams = canUserManageOperationsTeams(user);
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
-  const [uploadingExcel, setUploadingExcel] = useState(false);
-  const [importingExcel, setImportingExcel] = useState(false);
   const [printingFormat, setPrintingFormat] = useState('');
   const [updatingOrderId, setUpdatingOrderId] = useState('');
   const [updatingTechnicianId, setUpdatingTechnicianId] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [deletingTechnicianId, setDeletingTechnicianId] = useState('');
   const [teamCoverageFilter, setTeamCoverageFilter] = useState('all');
-  const [excelSourceFileName, setExcelSourceFileName] = useState('data.xlsx');
-  const [excelPreview, setExcelPreview] = useState(null);
-  const [excelImportProgress, setExcelImportProgress] = useState(null);
   const [teamForm, setTeamForm] = useState(() => createTeamForm());
   const [editingTechnicianId, setEditingTechnicianId] = useState('');
   const operationalDate = getOperationalDate();
@@ -335,13 +330,6 @@ export default function OperationsManagerWorkspace() {
   const tomorrowDevices = useMemo(() => tomorrowOrders.reduce((sum, order) => sum + getOrderDeviceCount(order), 0), [tomorrowOrders]);
   const availableTeams = useMemo(() => technicians.filter((item) => item.status === 'available').length, [technicians]);
   const busyTeams = useMemo(() => technicians.filter((item) => item.status === 'busy').length, [technicians]);
-  const excelAnalytics = excelPreview?.analytics || null;
-  const excelInstallationSummary = excelPreview?.installationSummary || null;
-  const excelValidRowsCount = Number(excelPreview?.summary?.validOrders || 0);
-  const excelInvalidRowsCount = Number(excelPreview?.invalidRows?.length || 0);
-  const topExcelStatuses = useMemo(() => (excelAnalytics?.statusBreakdown || []).slice(0, 5), [excelAnalytics]);
-  const topExcelCities = useMemo(() => (excelAnalytics?.cityBreakdown || []).slice(0, 5), [excelAnalytics]);
-  const topExcelTechnicians = useMemo(() => (excelAnalytics?.technicianBreakdown || []).slice(0, 5), [excelAnalytics]);
   const unassignedOrders = useMemo(
     () => [...todayOrders, ...tomorrowOrders].filter((order) => !order.technicianId).length,
     [todayOrders, tomorrowOrders]
@@ -428,49 +416,6 @@ export default function OperationsManagerWorkspace() {
         technicians: (current.technicians || []).filter((item) => String(item.id) !== String(technicianId)),
       };
     });
-  };
-
-  const handleUploadExcel = async (file) => {
-    if (!file) {
-      return;
-    }
-    try {
-      setUploadingExcel(true);
-      const response = await operationsService.uploadExcelSource(file);
-      const preview = response.data?.preview || null;
-      setExcelPreview(preview);
-      setExcelImportProgress(null);
-      setExcelSourceFileName(response.data?.fileName || response.data?.savedFileName || file.name || 'data.xlsx');
-      toast.success(t.previewReady(Number(preview?.summary?.validOrders || 0), Number(preview?.invalidRows?.length || 0)));
-    } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || (lang === 'ar' ? 'تعذر رفع ملف الإكسل.' : 'Unable to upload Excel'));
-    } finally {
-      setUploadingExcel(false);
-    }
-  };
-
-  const handleImportExcel = async () => {
-    if (!excelPreview) {
-      toast.error(lang === 'ar' ? 'ارفع ملف الإكسل أولاً.' : 'Upload an Excel file first.');
-      return;
-    }
-    try {
-      setImportingExcel(true);
-      setExcelImportProgress(null);
-      await operationsService.importOrdersFromExcel(excelSourceFileName, excelPreview, {
-        chunkSize: 30,
-        interChunkDelayMs: 120,
-        maxRetries: 2,
-        onProgress: (progress) => setExcelImportProgress(progress),
-      });
-      toast.success(lang === 'ar' ? 'اكتملت مزامنة ملف الإكسل.' : 'Excel sync completed.');
-      window.dispatchEvent(new CustomEvent('operations-updated'));
-    } catch (error) {
-      toast.error(error?.response?.data?.message || error.message || (lang === 'ar' ? 'تعذر استيراد ملف الإكسل.' : 'Unable to import Excel'));
-    } finally {
-      setImportingExcel(false);
-      setExcelImportProgress(null);
-    }
   };
 
   const handleAssignOrder = async (orderId, technicianId) => {
@@ -764,10 +709,6 @@ export default function OperationsManagerWorkspace() {
             <strong>{technicians.length}</strong>
             <span>{t.jumpTeams}</span>
           </a>
-          <a className="ops-quick-card" href="#excel-sync">
-            <strong>{excelValidRowsCount}</strong>
-            <span>{t.jumpExcel}</span>
-          </a>
           <article className="ops-quick-card muted">
             <strong>{todayUnassignedCount}</strong>
             <span>{t.todayUnassigned}</span>
@@ -809,175 +750,6 @@ export default function OperationsManagerWorkspace() {
         </section>
 
         <div className="ops-side-stack">
-          <section className="panel" id="excel-sync">
-            <div className="panel-header">
-              <div>
-                <h2>{t.excelTitle}</h2>
-                <p>{t.excelHint}</p>
-              </div>
-              <span className="user-chip">{excelSourceFileName}</span>
-            </div>
-
-            {canUploadExcelSource ? (
-              <div className="ops-excel-actions">
-                <label className="btn-light ops-file-label">
-                  <input
-                    accept=".xlsx,.xls"
-                    hidden
-                    type="file"
-                    onChange={(event) => handleUploadExcel(event.target.files?.[0] || null)}
-                  />
-                  {uploadingExcel ? t.uploadingExcel : t.uploadExcel}
-                </label>
-                <button className="btn-secondary" disabled={!excelPreview || importingExcel} type="button" onClick={handleImportExcel}>
-                  {importingExcel ? t.importingExcel : t.importExcel}
-                </button>
-              </div>
-            ) : null}
-
-            {importingExcel && excelImportProgress ? (
-              <p className="muted">
-                {t.importingExcelProgress({
-                  processed: Number(excelImportProgress.processedRows) || 0,
-                  total: Number(excelImportProgress.totalRows) || 0,
-                  currentChunk: Number(excelImportProgress.currentChunk) || 0,
-                  totalChunks: Number(excelImportProgress.totalChunks) || 0,
-                })}
-              </p>
-            ) : null}
-
-            <p className="muted">{t.excelAccessNote}</p>
-
-            <div className="ops-excel-summary">
-              <div>
-                <strong>{excelValidRowsCount}</strong>
-                <span>{t.excelValidRows}</span>
-              </div>
-              <div>
-                <strong>{excelInvalidRowsCount}</strong>
-                <span>{t.excelNeedReview}</span>
-              </div>
-              <div>
-                <strong>{Number(excelInstallationSummary?.totalDevices || excelAnalytics?.totals?.totalDevices || 0)}</strong>
-                <span>{t.excelTotalDevices}</span>
-              </div>
-              <div>
-                <strong>{Number(excelInstallationSummary?.followUpOrders || excelAnalytics?.totals?.followUpOrders || 0)}</strong>
-                <span>{t.excelFollowUp}</span>
-              </div>
-              <div>
-                <strong>{Number(excelInstallationSummary?.assignedTechOrders || excelAnalytics?.totals?.assignedTechOrders || 0)}</strong>
-                <span>{t.excelAssignedTech}</span>
-              </div>
-              <div>
-                <strong>{Number(excelInstallationSummary?.needsReviewOrders || excelAnalytics?.totals?.needsReviewOrders || 0)}</strong>
-                <span>{t.excelNeedsAssignmentReview}</span>
-              </div>
-              <div>
-                <strong>{Number(excelAnalytics?.totals?.overdueFollowUpOrders || 0)}</strong>
-                <span>{t.excelOverdueFollowUp}</span>
-              </div>
-              <div>
-                <strong>{Number(excelInstallationSummary?.withinSLAOrders || excelAnalytics?.totals?.withinSLAOrders || 0)}</strong>
-                <span>{t.excelWithinSla}</span>
-              </div>
-              <div>
-                <strong>{Number(excelInstallationSummary?.exceedSLAOrders || excelAnalytics?.totals?.exceedSLAOrders || 0)}</strong>
-                <span>{t.excelExceedSla}</span>
-              </div>
-            </div>
-
-            {excelAnalytics ? (
-              <div className="ops-task-columns" style={{ marginTop: 14 }}>
-                <div className="ops-task-column">
-                  <div className="ops-task-column-head">
-                    <h3>{t.excelTopStatuses}</h3>
-                  </div>
-                  <div className="analytics-city-table">
-                    {topExcelStatuses.map((item) => (
-                      <article className="analytics-city-row" key={`excel-status-${item.key}`}>
-                        <div>
-                          <strong>{item.status || item.key}</strong>
-                          <small>{item.followUpCount || 0} {t.excelFollowUp}</small>
-                        </div>
-                        <div className="analytics-city-numbers">
-                          <span>{item.count || 0} {t.excelOrdersLabel}</span>
-                          <small>{item.devices || 0} {t.excelDevicesLabel}</small>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="ops-task-column">
-                  <div className="ops-task-column-head">
-                    <h3>{t.excelTopCities}</h3>
-                  </div>
-                  <div className="analytics-city-table">
-                    {topExcelCities.map((item) => (
-                      <article className="analytics-city-row" key={`excel-city-${item.key}`}>
-                        <div>
-                          <strong>{item.city || item.key}</strong>
-                          <small>{item.followUpCount || 0} {t.excelFollowUp}</small>
-                        </div>
-                        <div className="analytics-city-numbers">
-                          <span>{item.count || 0} {t.excelOrdersLabel}</span>
-                          <small>{item.devices || 0} {t.excelDevicesLabel}</small>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="muted" style={{ marginTop: 14 }}>{t.excelNoAnalytics}</p>
-            )}
-
-            {excelAnalytics ? (
-              <section className="ops-team-load-panel" style={{ marginTop: 14 }}>
-                <div className="panel-header">
-                  <div>
-                    <h3>{t.excelTopTechnicians}</h3>
-                    <p>{lang === 'ar' ? 'أكثر الفنيين أو الأكواد ظهورًا داخل ملف Zamil الحالي.' : 'Most frequent technicians or assignment codes in the current Zamil file.'}</p>
-                  </div>
-                </div>
-                <div className="ops-team-list">
-                  {topExcelTechnicians.map((item) => (
-                    <article className="ops-team-card" key={`excel-tech-${item.key}`}>
-                      <div>
-                        <strong>{item.techId || (lang === 'ar' ? 'غير معين' : 'Unassigned')}</strong>
-                        <p>{[item.areaName, item.techShortName].filter(Boolean).join(' • ') || (lang === 'ar' ? 'بدون تفاصيل إضافية' : 'No extra details')}</p>
-                        <small>{[item.areaCode, item.techCode].filter(Boolean).join(' - ')}</small>
-                      </div>
-                      <div className="ops-team-load-grid">
-                        <div>
-                          <span>{t.excelOrdersLabel}</span>
-                          <strong>{item.count || 0}</strong>
-                        </div>
-                        <div>
-                          <span>{t.excelDevicesLabel}</span>
-                          <strong>{item.devices || 0}</strong>
-                        </div>
-                        <div>
-                          <span>{t.excelFollowUp}</span>
-                          <strong>{item.followUpCount || 0}</strong>
-                        </div>
-                        <div>
-                          <span>{t.excelNeedsAssignmentReview}</span>
-                          <strong>{item.needsReview ? 1 : 0}</strong>
-                        </div>
-                        <div>
-                          <span>{lang === 'ar' ? 'المنطقة' : 'Area'}</span>
-                          <strong>{item.areaCode || '—'}</strong>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </section>
-
           <section className="panel">
             <div className="panel-header">
               <div>

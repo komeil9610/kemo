@@ -16,6 +16,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import AdminExcelWorkspace from './pages/AdminExcelWorkspace';
 import InternalDailyTasks from './pages/InternalDailyTasks';
 import InternalWeeklyTasks from './pages/InternalWeeklyTasks';
 import InternalMonthlyTasks from './pages/InternalMonthlyTasks';
@@ -73,7 +74,7 @@ function AppChrome() {
             <Route path="/contact" element={<ContactUs />} />
             <Route path="/login" element={<Login />} />
             <Route path="/oauth/consent" element={<OAuthConsent />} />
-            <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><Dashboard /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminExcelWorkspace /></ProtectedRoute>} />
             <Route path="/admin/daily" element={<ProtectedRoute allowedRoles={['admin']}><InternalDailyTasks /></ProtectedRoute>} />
             <Route path="/admin/weekly" element={<ProtectedRoute allowedRoles={['admin']}><InternalWeeklyTasks /></ProtectedRoute>} />
             <Route path="/admin/monthly" element={<ProtectedRoute allowedRoles={['admin']}><InternalMonthlyTasks /></ProtectedRoute>} />

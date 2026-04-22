@@ -68,11 +68,11 @@ const main = async () => {
   const faviconDataUri = svgToDataUri(faviconSvg);
 
   html = html.replace(
-    /<script[^>]+src="\.\/*static\/js\/[^"]+"[^>]*><\/script>/g,
+    /<script[^>]+src="(?:\.\/|\/)?static\/js\/[^"]+"[^>]*><\/script>/g,
     ''
   );
   html = html.replace(
-    /<link[^>]+href="\.\/*static\/css\/[^"]+"[^>]*>/g,
+    /<link[^>]+href="(?:\.\/|\/)?static\/css\/[^"]+"[^>]*>/g,
     ''
   );
   html = html.replace(/<link[^>]+rel="manifest"[^>]*>/g, '');
