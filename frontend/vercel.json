@@ -1,6 +1,8 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "buildCommand": "npm run build",
+  "framework": "create-react-app",
+  "buildCommand": "GENERATE_SOURCEMAP=false npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm ci --no-audit --fund=false --loglevel=error && npm --prefix ../edge-api ci --omit=dev --no-audit --fund=false --loglevel=error",
   "outputDirectory": "build",
