@@ -4,11 +4,6 @@
   "devCommand": "npm run dev",
   "installCommand": "npm ci",
   "outputDirectory": "build",
-  "env": {
-    "JWT_SECRET": "@jwt_secret",
-    "DATABASE_URL": "@database_url",
-    "ALLOWED_ORIGINS": "@allowed_origins"
-  },
   "functions": {
     "pages/api/**": {
       "maxDuration": 60
