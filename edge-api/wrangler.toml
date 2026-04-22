@@ -9,7 +9,7 @@ routes = [
 ]
 
 [vars]
-CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8501,http://127.0.0.1:8501,http://localhost,http://127.0.0.1,https://localhost,https://127.0.0.1,capacitor://localhost,https://kumeelalnahab.com,https://www.kumeelalnahab.com,https://api.kumeelalnahab.com"
+CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8501,http://127.0.0.1:8501,http://localhost,http://127.0.0.1,https://localhost,https://127.0.0.1,capacitor://localhost,https://kumeelalnahab.com,https://www.kumeelalnahab.com,https://api.kumeelalnahab.com,https://kemo-eight.vercel.app"
 WEB_PUSH_PUBLIC_KEY = "BJDe1im_oVNRMdPrjtBjE7qwlb-CJUDIxxc_Dp-mhPwuiuSgTHcFxWgS3MX-gyVyy3YPMS8nGQ6YaJIb1rrGgyo"
 WEB_PUSH_CONTACT_EMAIL = "ops@tarkeebpro.sa"
 INBOUND_EMAIL_ALLOWED_TO = "hashimaldrweish@kumeelalnahab.com,bookings@kumeelalnahab.com,customerservice@kumeelalnahab.com,info@kumeelalnahab.com"
