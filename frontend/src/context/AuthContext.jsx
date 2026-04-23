@@ -43,7 +43,7 @@ const normalizeRole = (role) => {
   return role || '';
 };
 
-const ACTIVE_WORKSPACE_ROLES = ['admin', 'operations_manager', 'technician'];
+const ACTIVE_WORKSPACE_ROLES = ['admin', 'operations_manager', 'excel_uploader', 'technician'];
 
 const normalizeWorkspaceRoles = (roles = [], fallbackRole = '') => {
   const merged = [...(Array.isArray(roles) ? roles : [roles]), fallbackRole]
@@ -63,6 +63,9 @@ const resolveWorkspaceRole = (requestedRole, roles = [], fallbackRole = '') => {
   }
   if (workspaceRoles.includes('operations_manager')) {
     return 'operations_manager';
+  }
+  if (workspaceRoles.includes('excel_uploader')) {
+    return 'excel_uploader';
   }
   if (workspaceRoles.includes('technician')) {
     return 'technician';
@@ -182,8 +185,9 @@ export const AuthProvider = ({ children }) => {
     () => ({
       canCreateOrders: user?.role === 'admin',
       canManageStatuses: ['admin', 'operations_manager', 'technician'].includes(user?.role),
-      canViewBoard: ['admin', 'operations_manager', 'technician'].includes(user?.role),
+      canViewBoard: ['admin', 'operations_manager', 'excel_uploader', 'technician'].includes(user?.role),
       canManageSystem: user?.role === 'admin',
+      canManageExcelImports: ['admin', 'excel_uploader'].includes(user?.role),
     }),
     [user?.role]
   );

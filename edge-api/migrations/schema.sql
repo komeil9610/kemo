@@ -347,7 +347,8 @@ CREATE INDEX IF NOT EXISTS idx_import_job_chunks_job_id_processed_at
 INSERT INTO users (name, email, password_hash, role, status)
 VALUES
   ('كميل', 'komeil9610@gmail.com', '7dab4dea5da16f55d1a3d4c907663b895607204804a524d2420b908b7b1f63e2', 'admin', 'active'),
-  ('مدير العمليات', 'kumeelalnahab@gmail.com', '8ee203584d62b70119e28b84475895c84801fa9ab53a7dab94776834925a6081', 'operations_manager', 'active')
+  ('مدير العمليات', 'kumeelalnahab@gmail.com', '8ee203584d62b70119e28b84475895c84801fa9ab53a7dab94776834925a6081', 'operations_manager', 'active'),
+  ('رافع الإكسل', 'excel.upload@tarkeebpro.internal', 'e8cad7e8fcb949ba9d0d9d909acd410f03cc5d3d8abfa3fda20e9f80dcdcbbe3', 'excel_uploader', 'active')
 ON CONFLICT(email) DO UPDATE SET
   name = excluded.name,
   password_hash = excluded.password_hash,
@@ -362,6 +363,10 @@ DELETE FROM user_workspace_roles
 WHERE user_id = (SELECT id FROM users WHERE email = 'kumeelalnahab@gmail.com')
   AND role != 'operations_manager';
 
+DELETE FROM user_workspace_roles
+WHERE user_id = (SELECT id FROM users WHERE email = 'excel.upload@tarkeebpro.internal')
+  AND role != 'excel_uploader';
+
 INSERT INTO user_workspace_roles (user_id, role)
 SELECT id, 'admin'
 FROM users
@@ -372,6 +377,12 @@ INSERT INTO user_workspace_roles (user_id, role)
 SELECT id, 'operations_manager'
 FROM users
 WHERE email = 'kumeelalnahab@gmail.com'
+ON CONFLICT(user_id, role) DO NOTHING;
+
+INSERT INTO user_workspace_roles (user_id, role)
+SELECT id, 'excel_uploader'
+FROM users
+WHERE email = 'excel.upload@tarkeebpro.internal'
 ON CONFLICT(user_id, role) DO NOTHING;
 
 -- Push Notification Subscriptions

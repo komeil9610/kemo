@@ -489,6 +489,7 @@ function getWorkspacePathForRole(role) {
   return {
     admin: "/admin",
     operations_manager: "/operations-manager",
+    excel_uploader: "/excel-uploader",
     technician: "/technician",
   }[String(role || "").trim()] || "/login";
 }
@@ -1776,6 +1777,8 @@ function resolveImportActorRole(actor = {}) {
     ? "admin"
     : normalizedActorRole === "operations_manager"
       ? "operations_manager"
+      : normalizedActorRole === "excel_uploader"
+        ? "excel_uploader"
       : "customer_service";
 }
 
@@ -2054,6 +2057,8 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
             ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة الإدارة.`
             : actorRole === "operations_manager"
               ? `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil بواسطة مدير العمليات.`
+              : actorRole === "excel_uploader"
+                ? `تم استيراد الطلب ${normalized.requestNumber} من ملف الإكسل بواسطة حساب رافع الإكسل.`
               : `تم استيراد الطلب ${normalized.requestNumber} من تكامل Zamil وإرساله إلى مدير العمليات.`,
       },
       { technicianCodeLookup }
@@ -2064,7 +2069,7 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
         customerName: normalized.customerName,
       });
       if (notify) {
-        await notifyOperationsManagersAboutNewOrder(env, normalized, orderId);
+        await notifyImportedOrderStakeholders(env, normalized, orderId, { technicianCodeLookup });
         await notifyUsersAboutTechnicianAssignmentReview(env, normalized, orderId, { technicianCodeLookup });
       }
       createdCount += 1;
@@ -2085,9 +2090,9 @@ async function processImportedServiceOrders(env, rawOrders = [], actor = {}, opt
 }
 
 async function importServiceOrders(request, env) {
-  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager", "excel_uploader"]);
   if (!actor) {
-    return json({ message: "Admin, customer service, or operations manager access required" }, 403, request, env);
+    return json({ message: "Internal Excel import access required" }, 403, request, env);
   }
 
   const body = await readJson(request);
@@ -2106,9 +2111,9 @@ async function importServiceOrders(request, env) {
 }
 
 async function createImportJob(request, env) {
-  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager", "excel_uploader"]);
   if (!actor) {
-    return json({ message: "Admin, customer service, or operations manager access required" }, 403, request, env);
+    return json({ message: "Internal Excel import access required" }, 403, request, env);
   }
 
   const body = await readJson(request);
@@ -2195,9 +2200,9 @@ async function processImportJob(request, jobId, env) {
 }
 
 async function previewExcelUpload(request, env) {
-  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager"]);
+  const actor = await requireRoles(request, env, ["admin", "customer_service", "operations_manager", "excel_uploader"]);
   if (!actor) {
-    return json({ message: "Internal access required" }, 403, request, env);
+    return json({ message: "Internal Excel upload access required" }, 403, request, env);
   }
 
   let formData;
@@ -4606,6 +4611,10 @@ function resolveRequestedWorkspaceRole(requestedRole, availableRoles = []) {
     return "operations_manager";
   }
 
+  if (normalizedRoles.includes("excel_uploader")) {
+    return "excel_uploader";
+  }
+
   return normalizedRoles[0] || "";
 }
 
@@ -5783,6 +5792,25 @@ async function notifyOperationsManagersAboutNewOrder(env, normalized, relatedOrd
   const notification = buildOperationsNewOrderNotification(normalized);
   const body = await appendOperationsRemainingSummary(env, notification.body);
   return notifyUsersByRoles(env, ["operations_manager"], notification.title, body, relatedOrderId, "new_order");
+}
+
+async function notifyImportedOrderStakeholders(env, normalized, relatedOrderId, options = {}) {
+  const notification = buildOperationsNewOrderNotification(normalized);
+  const sharedBody = await appendOperationsRemainingSummary(env, notification.body);
+  await notifyUsersByRoles(env, ["admin", "operations_manager"], notification.title, sharedBody, relatedOrderId, "new_order");
+
+  const { technician } = resolveLinkedTechnicianFromImportedAssignment(normalized, options.technicianCodeLookup);
+  if (technician?.user_id && technician?.id) {
+    const reference = normalized?.requestNumber || normalized?.soId || normalized?.woId || String(relatedOrderId || "").trim() || "-";
+    await createNotification(
+      env,
+      technician.user_id,
+      "تمت إضافة مهمة جديدة لك",
+      await buildTechnicianTaskNotificationBody(env, technician.id, `تمت إضافة الطلب رقم ${reference} إلى مهامك.`),
+      "assignment",
+      relatedOrderId
+    );
+  }
 }
 
 async function notifyOperationsManagersAboutStatusChange(env, title, body, relatedOrderId = null) {

@@ -18,7 +18,7 @@ export default function Login() {
       eyebrow: 'Internal login',
       title: 'Sign in to the internal request room',
       subtitle:
-        'This version is reserved for the admin account, operations manager, and assigned technicians through the internal login screen.',
+        'This version is reserved for the admin account, operations manager, the Excel upload account, and assigned technicians through the internal login screen.',
       email: 'Email address',
       password: 'Password',
       submit: 'Sign in',
@@ -29,7 +29,7 @@ export default function Login() {
       eyebrow: 'تسجيل داخلي',
       title: 'سجّل الدخول إلى غرفة الطلبات الداخلية',
       subtitle:
-        'هذه النسخة مخصصة فقط لحساب الإدارة وحساب مدير العمليات وحسابات الفنيين المعيّنة لهم الطلبات، ويتم الدخول إليها من شاشة الدخول الداخلية.',
+        'هذه النسخة مخصصة فقط لحساب الإدارة وحساب مدير العمليات وحساب رافع الإكسل وحسابات الفنيين المعيّنة لهم الطلبات، ويتم الدخول إليها من شاشة الدخول الداخلية.',
       email: 'البريد الإلكتروني',
       password: 'كلمة المرور',
       submit: 'دخول',

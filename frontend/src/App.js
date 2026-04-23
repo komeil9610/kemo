@@ -17,6 +17,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AdminExcelWorkspace from './pages/AdminExcelWorkspace';
+import ExcelUploaderWorkspace from './pages/ExcelUploaderWorkspace';
 import InternalDailyTasks from './pages/InternalDailyTasks';
 import InternalWeeklyTasks from './pages/InternalWeeklyTasks';
 import InternalMonthlyTasks from './pages/InternalMonthlyTasks';
@@ -64,6 +65,7 @@ function AppChrome() {
   const isWorkspaceRoute =
     location.pathname.startsWith('/admin') ||
     location.pathname.startsWith('/operations-manager') ||
+    location.pathname.startsWith('/excel-uploader') ||
     location.pathname.startsWith('/technician') ||
     location.pathname.startsWith('/dashboard');
   const showSidebar = Boolean(token && isWorkspaceRoute && !isMobileShell);
@@ -84,6 +86,7 @@ function AppChrome() {
             <Route path="/login" element={<Login />} />
             <Route path="/oauth/consent" element={<OAuthConsent />} />
             <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminExcelWorkspace /></ProtectedRoute>} />
+            <Route path="/excel-uploader" element={<ProtectedRoute allowedRoles={['excel_uploader']}><ExcelUploaderWorkspace /></ProtectedRoute>} />
             <Route path="/admin/daily" element={<ProtectedRoute allowedRoles={['admin']}><InternalDailyTasks /></ProtectedRoute>} />
             <Route path="/admin/weekly" element={<ProtectedRoute allowedRoles={['admin']}><InternalWeeklyTasks /></ProtectedRoute>} />
             <Route path="/admin/monthly" element={<ProtectedRoute allowedRoles={['admin']}><InternalMonthlyTasks /></ProtectedRoute>} />
@@ -97,12 +100,12 @@ function AppChrome() {
             <Route path="/operations-manager/:viewKey" element={<ProtectedRoute allowedRoles={['operations_manager']}><Dashboard /></ProtectedRoute>} />
             <Route path="/technician" element={<ProtectedRoute allowedRoles={['technician']}><TechnicianWorkspace /></ProtectedRoute>} />
             <Route path="/technician/:viewKey" element={<ProtectedRoute allowedRoles={['technician']}><TechnicianWorkspace /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'technician']}><WorkspaceRedirect /></ProtectedRoute>} />
-            <Route path="/dashboard/operations-date" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
-            <Route path="/dashboard/daily" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
-            <Route path="/dashboard/weekly" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
-            <Route path="/dashboard/monthly" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
-            <Route path="/dashboard/:viewKey" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'excel_uploader', 'technician']}><WorkspaceRedirect /></ProtectedRoute>} />
+            <Route path="/dashboard/operations-date" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'excel_uploader', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+            <Route path="/dashboard/daily" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'excel_uploader', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+            <Route path="/dashboard/weekly" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'excel_uploader', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+            <Route path="/dashboard/monthly" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'excel_uploader', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
+            <Route path="/dashboard/:viewKey" element={<ProtectedRoute allowedRoles={['admin', 'operations_manager', 'excel_uploader', 'technician']}><LegacyDashboardRedirect /></ProtectedRoute>} />
             <Route path="/orders" element={<Navigate to="/dashboard/daily" replace />} />
             <Route path="/tasks" element={<Navigate to="/dashboard/daily" replace />} />
             <Route path="/tasks/daily" element={<Navigate to="/dashboard/daily" replace />} />

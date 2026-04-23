@@ -10,6 +10,9 @@ const copy = {
     eyebrow: 'Admin',
     title: 'Excel import control',
     subtitle: 'Upload the Zamil Excel source, review its quality, then sync validated rows into the operations workflow.',
+    uploaderEyebrow: 'Excel uploader',
+    uploaderTitle: 'Excel upload room',
+    uploaderSubtitle: 'This workspace is limited to receiving the Excel file, validating it, and sending synced requests to admin, operations, and assigned technicians.',
     sourceFile: 'Source file',
     upload: 'Upload Excel',
     uploading: 'Uploading...',
@@ -37,9 +40,11 @@ const copy = {
     noPreview: 'Upload the latest Excel file to see import analytics before syncing.',
     rulesTitle: 'Import rules',
     rulesHint: 'The admin account owns the source data: upload, validate, deduplicate, and sync. Operations then works from the cleaned task board.',
+    uploaderRulesHint: 'This account cannot access the rest of the system. Its only job is to upload the Excel file, validate it, and hand off the synced requests to the internal teams.',
     ruleOne: 'Rows are matched by SO ID where possible, so existing requests are updated instead of duplicated.',
     ruleTwo: 'Completed rows are archived automatically, while changed active rows are restored or updated.',
     ruleThree: 'Invalid rows stay in review and are not imported until the Excel source is corrected.',
+    deliveryHint: 'After sync, new requests are sent to admin, the operations manager, and any assigned technician linked to the Excel code.',
     lastSync: 'Last sync',
     skipped: 'Skipped rows',
     openOperationsDate: 'End-of-day report',
@@ -50,6 +55,9 @@ const copy = {
     eyebrow: 'الإدارة',
     title: 'مركز رفع الإكسل',
     subtitle: 'ارفع ملف الزامل، راجع جودة البيانات، ثم زامن الصفوف الصالحة مع نظام العمليات.',
+    uploaderEyebrow: 'رافع الإكسل',
+    uploaderTitle: 'غرفة رفع الإكسل',
+    uploaderSubtitle: 'هذه المساحة مخصصة فقط لاستقبال ملف الإكسل والتحقق منه ثم إرسال الطلبات المتزامنة إلى الإدارة ومدير العمليات والفنيين المعيّنين.',
     sourceFile: 'ملف المصدر',
     upload: 'رفع ملف إكسل',
     uploading: 'جارٍ الرفع...',
@@ -77,9 +85,11 @@ const copy = {
     noPreview: 'ارفع أحدث ملف إكسل لعرض التحليل قبل الاستيراد.',
     rulesTitle: 'منطق الاستيراد',
     rulesHint: 'حساب الإدارة مسؤول عن مصدر البيانات: الرفع، التحقق، دمج المكرر، والمزامنة. بعدها يعمل مدير العمليات على لوحة مهام نظيفة.',
+    uploaderRulesHint: 'هذا الحساب لا يصل إلى بقية النظام. مهمته الوحيدة رفع ملف الإكسل، التحقق من البيانات، ثم تسليم الطلبات المتزامنة لفرق العمل الداخلية.',
     ruleOne: 'تتم مطابقة الصفوف حسب SO ID قدر الإمكان حتى يتم تحديث الطلب بدل تكراره.',
     ruleTwo: 'الطلبات المكتملة تُؤرشف تلقائيًا، والطلبات النشطة المتغيرة تُستعاد أو تُحدّث.',
     ruleThree: 'الصفوف غير الصالحة تبقى للمراجعة ولا تُستورد حتى يتم تصحيح ملف الإكسل.',
+    deliveryHint: 'بعد المزامنة تُرسل الطلبات الجديدة إلى الإدارة ومدير العمليات والفني المرتبط بكود الإكسل إن وجد.',
     lastSync: 'آخر مزامنة',
     skipped: 'صفوف متجاوزة',
     openOperationsDate: 'تقرير نهاية اليوم',
@@ -125,10 +135,11 @@ const buildImportPayload = (data = {}) => ({
   skipped: Number(data?.skippedCount) || 0,
 });
 
-export default function AdminExcelWorkspace() {
+export default function AdminExcelWorkspace({ workspaceMode = 'admin' }) {
   const { user } = useAuth();
   const { lang, isRTL } = useLang();
   const t = copy[lang] || copy.en;
+  const isUploaderWorkspace = workspaceMode === 'excel_uploader';
   const uploadInputRef = useRef(null);
   const [fileName, setFileName] = useState('data.xlsx');
   const [preview, setPreview] = useState(null);
@@ -220,9 +231,9 @@ export default function AdminExcelWorkspace() {
   return (
     <section className="page-shell admin-excel-shell" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="section-heading">
-        <p className="eyebrow">{t.eyebrow}</p>
-        <h1>{t.title}</h1>
-        <p className="section-subtitle">{t.subtitle}</p>
+        <p className="eyebrow">{isUploaderWorkspace ? t.uploaderEyebrow : t.eyebrow}</p>
+        <h1>{isUploaderWorkspace ? t.uploaderTitle : t.title}</h1>
+        <p className="section-subtitle">{isUploaderWorkspace ? t.uploaderSubtitle : t.subtitle}</p>
       </div>
 
       <section className="panel admin-excel-control-panel">
@@ -255,6 +266,8 @@ export default function AdminExcelWorkspace() {
           </p>
         ) : null}
 
+        <p className="muted">{t.deliveryHint}</p>
+
         <div className="ops-excel-summary admin-excel-summary-grid">
           {metricCards.map((item) => (
             <div key={item.key}>
@@ -270,7 +283,7 @@ export default function AdminExcelWorkspace() {
           <div className="panel-header">
             <div>
               <h2>{t.rulesTitle}</h2>
-              <p>{t.rulesHint}</p>
+              <p>{isUploaderWorkspace ? t.uploaderRulesHint : t.rulesHint}</p>
             </div>
           </div>
           <div className="order-reference-panel">
@@ -281,10 +294,12 @@ export default function AdminExcelWorkspace() {
               </div>
             ))}
           </div>
-          <div className="helper-actions">
-            <Link className="btn-light" to="/admin/operations-date">{t.openOperationsDate}</Link>
-            <Link className="btn-light" to="/admin/homepage">{t.homepage}</Link>
-          </div>
+          {!isUploaderWorkspace ? (
+            <div className="helper-actions">
+              <Link className="btn-light" to="/admin/operations-date">{t.openOperationsDate}</Link>
+              <Link className="btn-light" to="/admin/homepage">{t.homepage}</Link>
+            </div>
+          ) : null}
         </section>
 
         <section className="panel">

@@ -21,6 +21,7 @@ export default function WorkspaceSidebar() {
           system: 'النظام',
           overview: 'الرئيسية التحليلية',
           operationsOverview: 'لوحة مدير العمليات',
+          excelUploaderOverview: 'غرفة رفع الإكسل',
           technicianOverview: 'لوحة الفني',
           pending: 'الطلبات الجديدة',
           scheduled: 'المجدولة',
@@ -48,6 +49,7 @@ export default function WorkspaceSidebar() {
           system: 'System',
           overview: 'Analytics home',
           operationsOverview: 'Operations workspace',
+          excelUploaderOverview: 'Excel upload room',
           technicianOverview: 'Technician workspace',
           pending: 'New requests',
           scheduled: 'Scheduled',
@@ -128,6 +130,13 @@ export default function WorkspaceSidebar() {
             {
               title: labels.system,
               items: [{ to: `${workspaceBasePath}/account`, label: labels.myAccount }],
+            },
+          ]
+      : user?.role === 'excel_uploader'
+        ? [
+            {
+              title: labels.workspace,
+              items: [{ to: workspaceBasePath, label: labels.excelUploaderOverview, end: true }],
             },
           ]
       : [

@@ -202,6 +202,9 @@ const resolveWorkspaceRole = (requestedRole, roles = [], fallbackRole = '') => {
   if (workspaceRoles.includes('operations_manager')) {
     return 'operations_manager';
   }
+  if (workspaceRoles.includes('excel_uploader')) {
+    return 'excel_uploader';
+  }
   return workspaceRoles[0] || '';
 };
 
@@ -656,6 +659,15 @@ const defaultState = {
       password: 'manger123@',
       role: 'operations_manager',
       workspaceRoles: ['operations_manager'],
+      status: 'active',
+    },
+    {
+      id: 'user-excel-uploader',
+      name: 'رافع الإكسل',
+      email: 'excel.upload@tarkeebpro.internal',
+      password: 'ExcelUpload2026@',
+      role: 'excel_uploader',
+      workspaceRoles: ['excel_uploader'],
       status: 'active',
     },
   ],
