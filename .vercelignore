@@ -1,0 +1,17 @@
+.git
+.gitignore
+.vercel
+.vscode
+node_modules
+**/node_modules
+**/.cache
+frontend/build
+frontend/.vercel
+edge-api/.wrangler
+desktop
+backend
+docs
+supabase
+*.log
+Team codes.pdf
+installation-team-*-work-orders*.xlsx
